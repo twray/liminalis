@@ -33,17 +33,52 @@ const appProperties = {
 const keyEventManager = new KeyEventManager();
 const animatableObjectManager = new AnimatableObjectManager();
 
+const colorPalettes = [
+  [
+    '#f15060',
+    '#ff665e',
+    '#ffe800',
+    '#d2515e',
+    '#ff6c2f',
+    '#e45d50',
+    '#ff7477',
+    '#845991',
+    '#775d7a',
+    '#6c5d80',
+    '#f65058',
+    '#d2515e',
+    '#c24f5d',
+    '#9e4c6e',
+    '#b44b65',
+    '#a75154',
+    '#ffb511',
+    '#ffae3b',
+    '#f6a04d',
+    '#ee7f4b',
+    '#ff6f4c',
+    '#bd6439',
+    '#8e595a',
+    '#bd8ca6',
+    '#914e72',
+    '#ff8e91',
+    '#FF4C65',
+  ]
+];
+
 const sketch = () => {  
   const pianoClampedMin = 'C3';
   const pianoClampedMax = 'C6';
 
   let previousBlockDimensions;
+  let currentColorPalletteIndex = 0;
   
   return ({ context, width, height }) => {
     const { rangeFloor } = random;
     const { clamp, lerp, inverseLerp } = math;
     
-    context.fillStyle = '#CCCCCC';
+    context.fillStyle = '#333333';
+    // context.fillStyle = '#CCCCCC';
+
     context.fillRect(0, 0, width, height);
 
     // Just enable this if you want the cool dark mode effects
@@ -55,6 +90,7 @@ const sketch = () => {
     // runSomeDrawingExperiments(context, width, height);
 
     // Initialise Isometric View
+
     const isometricView = new IsometricView(context, width, height);
 
     // Compute and Derive Events
@@ -100,8 +136,6 @@ const sketch = () => {
         0,
         1,
       );
-
-      // Isometric Things Go Here
       
       let blockDimensions;
 
@@ -170,6 +204,13 @@ const sketch = () => {
         };
       }
 
+      const fillColor = colorPalettes[0][currentColorPalletteIndex];
+      
+      currentColorPalletteIndex = 
+        currentColorPalletteIndex < colorPalettes[0].length - 1
+        ? currentColorPalletteIndex + 1
+        : 0;
+
       const renderedBlock = new AnimatableIsometricCuboid({
         isoX: blockDimensions.isoX,
         isoY: blockDimensions.isoY,
@@ -177,7 +218,7 @@ const sketch = () => {
         lengthX: blockDimensions.lengthX,
         lengthY: blockDimensions.lengthY,
         lengthZ: blockDimensions.lengthZ,
-        fill: '#333333',
+        fill: fillColor,
         stroke: '#777777',
       }).show(attack).hide(6000).render(isometricView);
 
