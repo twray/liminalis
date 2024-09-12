@@ -30,7 +30,7 @@ const appProperties = {
   computerKeyboardDebugEnabled: false,
 };
 
-const keyEventManager = new KeyEventManager();
+const keyEventManager = new KeyEventManager('non-major');
 const animatableObjectManager = new AnimatableObjectManager();
 
 const colorPalettes = [
@@ -103,6 +103,11 @@ const sketch = () => {
       .getPlayedArpeggioDirectionForFrame();
     const recentlyPhrasedKeyEvents = keyEventManager
       .getRecentlyPhrasedKeyEvents(2000, 'noteon');
+    const newPhraseDetected = keyEventManager.getNewPhraseDetectionForFrame();
+
+    if (newPhraseDetected) {
+      console.log('new phrase detected');
+    }
 
     if (newChordEvent) {
       console.log('chord detected!');
@@ -204,8 +209,9 @@ const sketch = () => {
         };
       }
 
-      const fillColor = colorPalettes[0][currentColorPalletteIndex];
-      
+      const blockFillColor = colorPalettes[0][currentColorPalletteIndex];
+      const blockStrokeColor = '#777777';
+
       currentColorPalletteIndex = 
         currentColorPalletteIndex < colorPalettes[0].length - 1
         ? currentColorPalletteIndex + 1
@@ -218,8 +224,8 @@ const sketch = () => {
         lengthX: blockDimensions.lengthX,
         lengthY: blockDimensions.lengthY,
         lengthZ: blockDimensions.lengthZ,
-        fill: fillColor,
-        stroke: '#777777',
+        fill: blockFillColor,
+        stroke: blockStrokeColor,
       }).show(attack).hide(6000).render(isometricView);
 
       animatableObjectManager.registerAnimatableObject(renderedBlock);
@@ -238,14 +244,14 @@ const sketch = () => {
   
         // animatableObjectManager.registerAnimatableObject(animatedTileConcept);
 
-        const barcodeStripe = new BarcodeStripe({
-          x: random.rangeFloor(0, width),
-          y: 0,
-          width: 400,
-          height,
-        }).show(attack).hide(attack * 1000).render(context);
+        // const barcodeStripe = new BarcodeStripe({
+        //   x: random.rangeFloor(0, width),
+        //   y: 0,
+        //   width: 400,
+        //   height,
+        // }).show(attack).hide(attack * 1000).render(context);
 
-        animatableObjectManager.registerAnimatableObject(barcodeStripe);
+        // animatableObjectManager.registerAnimatableObject(barcodeStripe);
       }
     });
 
