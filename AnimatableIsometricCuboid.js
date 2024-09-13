@@ -76,7 +76,7 @@ class AnimatableIsometricCuboid extends AnimatableIsometricObject {
     );
     
     let computedStrokeColor;
-
+    
     if (timeSinceFirstShown > decayPeriod - fadeOutAnimationDuration) {
       const strokeAsParsedRGB = parse(stroke).rgb;
       const [ r, g, b ] = strokeAsParsedRGB;
@@ -84,7 +84,7 @@ class AnimatableIsometricCuboid extends AnimatableIsometricObject {
 
       computedStrokeColor = `rgba(${r}, ${g}, ${b}, ${strokeOpacity})`;
     } else {
-      computedStrokeColor = 'transparent';
+      computedStrokeColor = fill !== 'transparent' ? 'transparent' : stroke;
     }
 
     const adjustedAttackValue = easeInQuad(attackValue);

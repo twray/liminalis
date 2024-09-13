@@ -4,6 +4,7 @@ class ModeManager {
   constructor(modeTransitionNote) {
     this.modeTransitionNote = modeTransitionNote;
     this.currentModeIndex = 0;
+    this.timestampSinceTransitionToNewMode = null;
 
     this.modesInOrder = [
       Mode.DARK,
@@ -17,15 +18,25 @@ class ModeManager {
     return modesInOrder[this.currentModeIndex];
   }
 
+  getTimeSinceTransitionMode() {
+    const { timestampSinceTransitionToNewMode } = this;
+    return new Date().getTime() - timestampSinceTransitionToNewMode;
+  }
+
   transitionToNextMode() {
     const { modesInOrder } = this;
     
-    this.currentModeIndex = 
-      this.currentModeIndex + 1 > (modesInOrder.length - 1)
-      ? 0
-      : this.currentModeIndex + 1;
+    if (this.currentModeIndex < (modesInOrder.length - 1)) {
+      this.currentModeIndex++;
+    }
 
-    console.log(`Transitioning to mode: ${this.getCurrentMode()}`);
+    const newlyTransitionedMode = this.getCurrentMode();
+
+    if (newlyTransitionedMode === Mode.TRANSITION_TO_BLOCK) {
+      this.timestampSinceTransitionToNewMode = new Date().getTime();
+    }
+
+    console.log(`Transitioning to mode: ${newlyTransitionedMode}`);
   }
 }
 

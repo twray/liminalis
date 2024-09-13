@@ -1,7 +1,7 @@
 const canvasSketch = require('canvas-sketch');
 const easing = require('easing-utils');
-const palette = require('riso-colors');
-const { random, math } = require('canvas-sketch-util');
+const risoColors = require('riso-colors');
+const { random, math, color } = require('canvas-sketch-util');
 const { WebMidi } = require('webmidi');
 const TweakPane = require('tweakpane');
 
@@ -15,7 +15,6 @@ import IsometricViewTileFaceType from './IsometricViewTileFaceType';
 import Mode from './Mode';
 
 import BarcodeStripe from './BarcodeStripe';
-import AnimatableIsometricTile from './AnimatableIsometricTile';
 import ShootingKey from './ShootingKey';
 import BoxCoil from './BoxCoil';
 import AnimatableIsometricCuboid from './AnimatableIsometricCuboid';
@@ -53,14 +52,33 @@ const sketch = () => {
 
   return ({ context, width, height }) => {
     const { rangeFloor } = random;
-    const { clamp, lerp, inverseLerp } = math;
+    const { clamp, clamp01, lerp, inverseLerp } = math;
+    const { parse } = color;
     
     let mode = modeManager.getCurrentMode();
 
-    context.fillStyle = Mode.DARK ? '#000000' : '#333333';
+    context.fillStyle = '#000000';
     context.fillRect(0, 0, width, height);
 
-    // Just enable this if you want the cool dark mode effects
+    const backgroundTransitionTime = 30000;
+
+    if (
+      [Mode.TRANSITION_TO_BLOCK, Mode.BLOCK].includes(mode)
+      && modeManager.getTimeSinceTransitionMode() !== null
+    ) {
+      const backgroundTransitionIndex = clamp01(
+        modeManager.getTimeSinceTransitionMode() / backgroundTransitionTime,
+        0,
+      );
+
+      const [ r, g, b ] = parse('#DDDDDD').rgb;
+
+      const transitionBackgroundColor = 
+        `rgba(${r}, ${g}, ${b}, ${backgroundTransitionIndex})`;
+      
+      context.fillStyle = transitionBackgroundColor;
+      context.fillRect(0, 0, width, height);
+    }
 
     // Run a Few Drawing Experiments
 
@@ -183,7 +201,7 @@ const sketch = () => {
         }
       }
 
-      if (mode === Mode.BLOCK) {
+      if ([Mode.TRANSITION_TO_BLOCK, Mode.BLOCK].includes(mode)) {
         let blockDimensions;
 
         if (arpeggioDirection && previousBlockDimensions) {
@@ -250,9 +268,14 @@ const sketch = () => {
             ),
           };
         }
-  
-        const blockFillColor = colorPalettes[0].colors[currentColorPalletteIndex];
-        const blockStrokeColor = '#777777';
+
+        const blockFillColor = mode === Mode.TRANSITION_TO_BLOCK
+          ? 'transparent'
+          : colorPalettes[0].colors[currentColorPalletteIndex];
+        
+          const blockStrokeColor = mode === Mode.TRANSITION_TO_BLOCK
+            ? '#FFFFFF'
+            : '#777777';
   
         currentColorPalletteIndex = 
           currentColorPalletteIndex < colorPalettes[0].colors.length - 1
@@ -273,10 +296,6 @@ const sketch = () => {
         previousBlockDimensions = blockDimensions;
   
         animatableObjectManager.registerAnimatableObject(renderedBlock);
-      }
-
-      if (intensityIndex > 0.8) {
-        // Do something intense if in dark mode?
       }
     });
 
