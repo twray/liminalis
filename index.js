@@ -37,7 +37,7 @@ const appProperties = {
 
 const keyEventManager = new KeyEventManager('non-major');
 const animatableObjectManager = new AnimatableObjectManager();
-const modeManager = new ModeManager('F1');
+const modeManager = new ModeManager(['F1', 'D#1']);
 
 const sketch = () => {  
   const pianoClampedMin = 'C3';
@@ -47,7 +47,7 @@ const sketch = () => {
   const maxArpeggioStepValue = 8;
 
   let previousBlockDimensions;
-  let currentColorPalletteIndex = 0;
+  let currentColorPaletteIndex = 0;
   let arpeggioStepCount = 0;
 
   return ({ context, width, height }) => {
@@ -57,24 +57,45 @@ const sketch = () => {
     
     let mode = modeManager.getCurrentMode();
 
-    context.fillStyle = '#000000';
+    context.fillStyle = modeManager.currentlyIsOrPreviouslyHasBeenInMode(
+      Mode.TRANSITION_BACK_TO_DARKNESS
+    ) 
+    ? '#444444'
+    : '#000000';
+
     context.fillRect(0, 0, width, height);
 
-    const backgroundTransitionTime = 30000;
-
     if (
-      [Mode.TRANSITION_TO_BLOCK, Mode.BLOCK].includes(mode)
-      && modeManager.getTimeSinceTransitionMode() !== null
+      modeManager.getTimeSinceTransitionMode() !== null
+      && modeManager.currentlyIsOrPreviouslyHasBeenInMode(
+        Mode.TRANSITION_TO_BLOCK
+      )
+      || modeManager.currentlyIsOrPreviouslyHasBeenInMode(
+        Mode.TRANSITION_BACK_TO_DARKNESS
+      )
     ) {
+
+      const backgroundTransitionTime = 
+        modeManager.currentlyIsOrPreviouslyHasBeenInMode(
+          Mode.TRANSITION_BACK_TO_DARKNESS
+        )
+        ? 10000
+        : 30000;
+
       const backgroundTransitionIndex = clamp01(
         modeManager.getTimeSinceTransitionMode() / backgroundTransitionTime,
         0,
       );
 
+      const backgroundTransitionOpacityBasedOnMode = 
+        mode === Mode.TRANSITION_BACK_TO_DARKNESS
+        ? 1 - backgroundTransitionIndex
+        : backgroundTransitionIndex;
+
       const [ r, g, b ] = parse('#DDDDDD').rgb;
 
       const transitionBackgroundColor = 
-        `rgba(${r}, ${g}, ${b}, ${backgroundTransitionIndex})`;
+        `rgba(${r}, ${g}, ${b}, ${backgroundTransitionOpacityBasedOnMode})`;
       
       context.fillStyle = transitionBackgroundColor;
       context.fillRect(0, 0, width, height);
@@ -201,7 +222,7 @@ const sketch = () => {
         }
       }
 
-      if ([Mode.TRANSITION_TO_BLOCK, Mode.BLOCK].includes(mode)) {
+      if (mode !== Mode.DARK) {
         let blockDimensions;
 
         if (arpeggioDirection && previousBlockDimensions) {
@@ -269,19 +290,43 @@ const sketch = () => {
           };
         }
 
-        const blockFillColor = mode === Mode.TRANSITION_TO_BLOCK
-          ? 'transparent'
-          : colorPalettes[0].colors[currentColorPalletteIndex];
+        let currentPalette = [];
         
-          const blockStrokeColor = mode === Mode.TRANSITION_TO_BLOCK
-            ? '#FFFFFF'
-            : '#777777';
-  
-        currentColorPalletteIndex = 
-          currentColorPalletteIndex < colorPalettes[0].colors.length - 1
-          ? currentColorPalletteIndex + 1
+        switch (mode) {
+          case Mode.BLOCK: {
+            currentPalette = colorPalettes.find(
+              ({ name }) => name === 'sunrise'
+            ).colors;
+            break;
+          }
+          case Mode.TRANSITION_BACK_TO_DARKNESS: {
+            currentPalette = colorPalettes.find(
+              ({ name }) => name === 'grey-skies'
+            ).colors;
+            break;
+          }
+          case Mode.FINAL_BLOCK: {
+            currentPalette = colorPalettes.find(
+              ({ name }) => name === 'brightness'
+            ).colors;
+            break;
+          }
+          default:
+        }
+
+        currentColorPaletteIndex = 
+          currentColorPaletteIndex < currentPalette.length - 1
+          ? currentColorPaletteIndex + 1
           : 0;
-  
+
+        const blocksAreWireFrame = mode === Mode.TRANSITION_TO_BLOCK;
+
+        const blockFillColor = blocksAreWireFrame
+          ? 'transparent'
+          : currentPalette[currentColorPaletteIndex];
+        
+        const blockStrokeColor = blocksAreWireFrame ? '#FFFFFF' : '#777777';
+    
         const renderedBlock = new AnimatableIsometricCuboid({
           isoX: blockDimensions.isoX,
           isoY: blockDimensions.isoY,
@@ -363,7 +408,7 @@ const setUpEventListeners = () => {
   });
 
   const handleNoteOn = (note, number, attack = 1) => {
-    if (note === modeManager.modeTransitionNote) {
+    if (modeManager.modeTransitionNotes.includes(note)) {
       modeManager.transitionToNextMode();
     }
     
