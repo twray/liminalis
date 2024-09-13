@@ -3,19 +3,27 @@ const { random } = require('canvas-sketch-util');
 import AnimatableObject from './AnimatableObject';
 
 class BarcodeStripe extends AnimatableObject {
-  constructor({ x, y, width, height }) {
+  constructor({ x, y, width, height, widthVarianceFactor = 1 }) {
     super();
     
     this.x = x;
     this.y = y;
     this.width = width;
     this.height = height;
+    this.widthVarianceFactor = widthVarianceFactor;
 
     return this;
   }
 
   render(context) {
-    const { x, width, height, attackValue, isVisible } = this;
+    const {
+      x,
+      width,
+      height,
+      widthVarianceFactor, 
+      attackValue,
+      isVisible
+    } = this;
     
     const decayFactor = this.getDecayFactor();
 

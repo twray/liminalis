@@ -78,7 +78,7 @@ class AnimatableIsometricCuboid extends AnimatableIsometricObject {
     let computedStrokeColor;
 
     if (timeSinceFirstShown > decayPeriod - fadeOutAnimationDuration) {
-      const strokeAsParsedRGB = parse(stroke).rgb
+      const strokeAsParsedRGB = parse(stroke).rgb;
       const [ r, g, b ] = strokeAsParsedRGB;
       const strokeOpacity = 1 - strokeFadeOutAnimationTrajectory;
 
