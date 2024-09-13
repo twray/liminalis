@@ -150,20 +150,22 @@ const sketch = () => {
 
           animatableObjectManager.registerAnimatableObject(boxCoil);
           
-          const barcodeXPositionRandomVariation = 
+          if (intensityIndex > 0.7) {
+            const barcodeXPositionRandomVariation = 
             (Math.floor(Math.random() * width / 2)) * arpeggioDirection;
           
-          const barcodeStripe = new BarcodeStripe({
-            x: ((width) / maxArpeggioStepValue) 
-              * arpeggioStepCount 
-              + barcodeXPositionRandomVariation,
-            y: 0,
-            width: width / maxArpeggioStepValue,
-            height,
-            widthVarianceFactor: 10,
-          }).show(attack).hide(2000).render(context);
+            const barcodeStripe = new BarcodeStripe({
+              x: ((width) / maxArpeggioStepValue) 
+                * arpeggioStepCount 
+                + barcodeXPositionRandomVariation,
+              y: 0,
+              width: width / maxArpeggioStepValue,
+              height,
+              widthVarianceFactor: 10,
+            }).show(attack).hide(2000).render(context);
 
-          animatableObjectManager.registerAnimatableObject(barcodeStripe);
+            animatableObjectManager.registerAnimatableObject(barcodeStripe);
+          }
 
           const nextArpeggioStepCount = arpeggioStepCount + arpeggioDirection;
 
