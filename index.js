@@ -7,6 +7,7 @@ const TweakPane = require('tweakpane');
 
 import KeyEventManager from './KeyEventManager';
 import AnimatableObjectManager from './AnimatableObjectManager';
+import ModeManager from './ModeManager';
 
 import IsometricView from './IsometricView';
 
@@ -37,6 +38,7 @@ const appProperties = {
 
 const keyEventManager = new KeyEventManager('non-major');
 const animatableObjectManager = new AnimatableObjectManager();
+const modeManager = new ModeManager('F1');
 
 const sketch = () => {  
   const pianoClampedMin = 'C3';
@@ -49,13 +51,13 @@ const sketch = () => {
   let currentColorPalletteIndex = 0;
   let arpeggioStepCount = 0;
 
-  let mode = Mode.DARK;
-
   return ({ context, width, height }) => {
     const { rangeFloor } = random;
     const { clamp, lerp, inverseLerp } = math;
     
-    context.fillStyle = Mode.DARK ? '#111111' : '#333333';
+    let mode = modeManager.getCurrentMode();
+
+    context.fillStyle = Mode.DARK ? '#000000' : '#333333';
     context.fillRect(0, 0, width, height);
 
     // Just enable this if you want the cool dark mode effects
@@ -342,6 +344,10 @@ const setUpEventListeners = () => {
   });
 
   const handleNoteOn = (note, number, attack = 1) => {
+    if (note === modeManager.modeTransitionNote) {
+      modeManager.transitionToNextMode();
+    }
+    
     keyEventManager.registerNoteOnEvent(note, number, attack);
   }
 
