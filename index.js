@@ -170,7 +170,7 @@ const sketch = () => {
 
           animatableObjectManager.registerAnimatableObject(boxCoil);
           
-          if (intensityIndex > 0.7) {
+          if (intensityIndex > 0.65) {
             const barcodeXPositionRandomVariation = 
             (Math.floor(Math.random() * width / 2)) * arpeggioDirection;
           
