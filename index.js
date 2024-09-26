@@ -193,7 +193,7 @@ const sketch = () => {
           
           if (intensityIndex > 0.65) {
             const barcodeXPositionRandomVariation = 
-            (Math.floor(Math.random() * width / 2)) * arpeggioDirection;
+              (Math.floor(Math.random() * width / 2)) * arpeggioDirection;
           
             const barcodeStripe = new BarcodeStripe({
               x: ((width) / maxArpeggioStepValue) 
