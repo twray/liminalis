@@ -1,26 +1,31 @@
 import AnimatableIsometricObject from "./AnimatableIsometricObject";
+import AnimatableObject from "./AnimatableObject";
+import IsometricView from "./IsometricView";
 
 class AnimatableObjectManager {
-  constructor(maxAnimatableObjects = 1000) {
-    this.animatableObjects = [];
-    this.maxAnimatableObjects = maxAnimatableObjects;
-  }
+  constructor(
+    public animatableObjects: AnimatableObject[] = [],
+    public maxAnimatableObjects: number = 1000
+  ) {}
 
-  registerAnimatableObject(animatableObject) {
+  registerAnimatableObject(animatableObject: AnimatableObject) {
     const { maxAnimatableObjects } = this;
-    
+
     this.animatableObjects.push(animatableObject);
 
     if (this.animatableObjects.length > maxAnimatableObjects) {
       console.warn(
         `Warning: Over ${maxAnimatableObjects} are registered. ` +
-        `Check that your objects are decaying and being cleaned up correctly `
-        `or increase the maximum number of allowed animatable objects.`
+          `Check that your objects are decaying and being cleaned up correctly ` +
+          `or increase the maximum number of allowed animatable objects.`
       );
     }
   }
 
-  renderAnimatableObjects(context, isometricView) {
+  renderAnimatableObjects(
+    context: CanvasRenderingContext2D,
+    isometricView: IsometricView
+  ) {
     this.animatableObjects.forEach((animatableObject) => {
       if (animatableObject instanceof AnimatableIsometricObject) {
         animatableObject.render(isometricView);

@@ -1,3 +1,5 @@
+# macOS system files
+.DS_Store
 
 # Logs
 logs
@@ -129,3 +131,6 @@ dist
 .yarn/build-state.yml
 .yarn/install-state.gz
 .pnp.*
+
+# local output
+output/
