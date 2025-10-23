@@ -75,11 +75,11 @@
     "webmidi": "^3.1.14"
   },
   "scripts": {
-    "build": "tsc",
-    "dev": "tsc --watch",
-    "start": "node dist/index.js",
+    "build": "tsc --watch",
     "clean": "rm -rf dist",
     "prebuild": "npm run clean",
+    "dev": "npm run build & sleep 2 && canvas-sketch dist/index.js --hot",
+    "start": "canvas-sketch dist/index.js",
     "type-check": "tsc --noEmit",
     "type-check:watch": "tsc --noEmit --watch",
     "lint": "tsc --noEmit --strict",
