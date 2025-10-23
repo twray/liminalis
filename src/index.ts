@@ -1,44 +1,35 @@
 import canvasSketch from "canvas-sketch";
-import * as easing from "easing-utils";
-import { random, math, color } from "canvas-sketch-util";
+import { color, math, random } from "canvas-sketch-util";
 import { WebMidi } from "webmidi";
 
-import KeyEventManager from "./KeyEventManager.js";
-import AnimatableObjectManager from "./AnimatableObjectManager.js";
-import ModeManager from "./ModeManager.js";
-import IsometricView from "./IsometricView.js";
-import IsometricViewTileFaceType from "./IsometricViewTileFaceType.js";
-import Mode from "./Mode.js";
-import BarcodeStripe from "./BarcodeStripe.js";
-import ShootingKey from "./ShootingKey.js";
-import BoxCoil from "./BoxCoil.js";
-import AnimatableIsometricCuboid from "./AnimatableIsometricCuboid.js";
+// Import types from organized structure
+import type {
+  AppSettings,
+  BlockDimensions,
+  CanvasProps,
+  SketchSettings,
+} from "./types/index.js";
 
-import keyMappings from "./keyMappings.json";
-import colorPalettes from "./colorPalletes.json";
+import AnimatableIsometricCuboid from "./animatable/AnimatableIsometricCuboid.js";
+import BarcodeStripe from "./animatable/BarcodeStripe.js";
+import BoxCoil from "./animatable/BoxCoil.js";
+import ShootingKey from "./animatable/ShootingKey.js";
+import AnimatableObjectManager from "./managers/AnimatableObjectManager.js";
+import KeyEventManager from "./managers/KeyEventManager.js";
+import ModeManager from "./managers/ModeManager.js";
+import Mode from "./util/Mode.js";
+import IsometricView from "./views/IsometricView.js";
 
-interface BlockDimensions {
-  isoX: number;
-  isoY: number;
-  isoZ: number;
-  lengthX: number;
-  lengthY: number;
-  lengthZ: number;
-}
+import keyMappings from "./data/keyMappings.json";
+import { getPaletteByName, PALETTE_NAMES } from "./util/colorPalette.js";
 
-interface CanvasProps {
-  context: CanvasRenderingContext2D;
-  width: number;
-  height: number;
-}
-
-const settings = {
-  dimensions: [1080, 1920],
+const settings: SketchSettings = {
+  dimensions: [1080, 1920] as [number, number],
   animate: true,
   fps: 25,
 };
 
-const appProperties = {
+const appProperties: AppSettings = {
   computerKeyboardDebugEnabled: true,
 };
 
@@ -98,8 +89,7 @@ const sketch = () => {
           : 30000;
 
       const backgroundTransitionIndex = clamp01(
-        modeManager.getTimeSinceTransitionMode() / backgroundTransitionTime,
-        0
+        modeManager.getTimeSinceTransitionMode() / backgroundTransitionTime
       );
 
       const backgroundTransitionOpacityBasedOnMode =
@@ -115,11 +105,8 @@ const sketch = () => {
       context.fillRect(0, 0, width, height);
     }
 
-    // Run a Few Drawing Experiments
-
     // Initialise Isometric View
-
-    const isometricView = new IsometricView(context, width, height, 80, 40);
+    const isometricView = new IsometricView(context, width, height, 80);
 
     // Compute and Derive Events
 
@@ -129,9 +116,6 @@ const sketch = () => {
 
     const arpeggioDirection =
       keyEventManager.getPlayedArpeggioDirectionForFrame(7);
-
-    const recentlyPhrasedKeyEvents =
-      keyEventManager.getRecentlyPhrasedKeyEvents(2000, "noteon");
 
     const newPhraseDetected = keyEventManager.getNewPhraseDetectionForFrame();
 
@@ -186,7 +170,7 @@ const sketch = () => {
         })
           .show(attack)
           .hide(2000)
-          .render(isometricView);
+          .renderIn(isometricView);
 
         animatableObjectManager.registerAnimatableObject(shootingKey);
 
@@ -204,7 +188,7 @@ const sketch = () => {
           })
             .show(attack)
             .hide(5000)
-            .render(isometricView);
+            .renderIn(isometricView);
 
           animatableObjectManager.registerAnimatableObject(boxCoil);
 
@@ -223,7 +207,7 @@ const sketch = () => {
             })
               .show(attack)
               .hide(2000)
-              .render(context);
+              .renderIn(context);
 
             animatableObjectManager.registerAnimatableObject(barcodeStripe);
           }
@@ -290,7 +274,6 @@ const sketch = () => {
             lengthY: previousBlockDimensions.lengthY,
             lengthZ:
               arpeggioDirection === 1 ? 1 : previousBlockDimensions.lengthZ,
-            lengthZ: 1,
           };
         } else {
           blockDimensions = {
@@ -309,25 +292,19 @@ const sketch = () => {
           };
         }
 
-        let currentPalette = [];
+        let currentPalette: string[] = [];
 
         switch (mode) {
           case Mode.BLOCK: {
-            currentPalette = colorPalettes.find(
-              ({ name }) => name === "sunrise"
-            ).colors;
+            currentPalette = getPaletteByName(PALETTE_NAMES.SUNRISE);
             break;
           }
           case Mode.TRANSITION_BACK_TO_DARKNESS: {
-            currentPalette = colorPalettes.find(
-              ({ name }) => name === "grey-skies"
-            ).colors;
+            currentPalette = getPaletteByName(PALETTE_NAMES.GREY_SKIES);
             break;
           }
           case Mode.FINAL_BLOCK: {
-            currentPalette = colorPalettes.find(
-              ({ name }) => name === "brightness"
-            ).colors;
+            currentPalette = getPaletteByName(PALETTE_NAMES.BRIGHTNESS);
             break;
           }
           default:
@@ -358,7 +335,7 @@ const sketch = () => {
         })
           .show(attack)
           .hide(6000)
-          .render(isometricView);
+          .renderIn(isometricView);
 
         previousBlockDimensions = blockDimensions;
 
@@ -431,7 +408,7 @@ const setUpEventListeners = () => {
       );
     });
 
-  const handleNoteOn = (note, number, attack = 1) => {
+  const handleNoteOn = (note: string, number?: number, attack = 1) => {
     if (modeManager.modeTransitionNotes.includes(note)) {
       modeManager.transitionToNextMode();
     }
@@ -439,71 +416,10 @@ const setUpEventListeners = () => {
     keyEventManager.registerNoteOnEvent(note, number, attack);
   };
 
-  const handleNoteOff = (note, number) => {
+  const handleNoteOff = (note: string, number?: number) => {
     keyEventManager.registerNoteOffEvent(note, number);
   };
 };
 
-const setUpControlPanel = () => {
-  // Might consider doing this later
-  // const tweakPane = new TweakPane.Pane();
-  // const performanceFolder = tweakPane.addFolder({ title: 'Performance '});
-  // performanceFolder.addInput(controlPanelParameters, 'numObjectsRendered', {
-  //   readonly: true,
-  // });
-};
-
-const runSomeDrawingExperiments = (context, width, height) => {
-  const isometricView = new IsometricView(context, width, height, 80, 40);
-  const { easeInQuad } = easing;
-  const { shuffle, rangeFloor } = random;
-
-  context.save();
-
-  // isometricView.showIsometricGrid();
-
-  let numTiles;
-
-  // Render graphic concept for 'tunnel' effect
-
-  numTiles = 9;
-
-  for (let i = 0; i < numTiles; i++) {
-    isometricView.addTileAt({
-      isoX: 0 + i,
-      isoY: 0,
-      isoZ: -8,
-      type: IsometricViewTileFaceType.SIDE_LEFT,
-      width: 8,
-      height: 8,
-      stroke: "white",
-      fill: "transparent",
-    });
-  }
-
-  // Render graphic concept for keyboard effect
-
-  // numTiles = 22;
-
-  // for (let i = 0; i < numTiles; i++) {
-  //   isometricView.addTileAt({
-  //     isoX: -8,
-  //     isoY: 4 + Math.floor((numTiles - 1) / 2) - i,
-  //     isoZ: -4,
-  //     type: IsometricViewTileFaceType.BASE,
-  //     width: 4,
-  //     height: 1,
-  //     stroke: 'white',
-  //     fill: 'transparent',
-  //   });
-  // }
-
-  // Render the isometric view (once per frame!)
-  isometricView.render();
-
-  context.restore();
-};
-
 setUpEventListeners();
-setUpControlPanel();
 canvasSketch(sketch, settings);

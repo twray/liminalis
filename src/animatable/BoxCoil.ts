@@ -1,8 +1,7 @@
-import { math, color } from "canvas-sketch-util";
-import * as easing from "easing-utils";
+import { color } from "canvas-sketch-util";
+import IsometricView from "../views/IsometricView.js";
+import IsometricViewTileFaceType from "../views/IsometricViewTileFaceType.js";
 import AnimatableIsometricObject from "./AnimatableIsometricObject.js";
-import IsometricViewTileFaceType from "./IsometricViewTileFaceType.js";
-import IsometricView from "./IsometricView.js";
 
 interface BoxCoilParams {
   isoX: number;
@@ -29,7 +28,7 @@ class BoxCoil extends AnimatableIsometricObject {
     this.stroke = stroke;
   }
 
-  render(isometricView: IsometricView): void {
+  renderIn(isometricView: IsometricView): this {
     const {
       isoX,
       isoY,
@@ -48,7 +47,6 @@ class BoxCoil extends AnimatableIsometricObject {
     const timeSinceFirstShown: number = this.getMsSince(timeFirstShown);
 
     const fadeOutStrokeAnimationDuration: number = decayPeriod;
-    const scaleAnimationDuration: number = decayPeriod;
 
     const strokeFadeOutAnimationTrajectory: number =
       this.getAnimationTrajectory(fadeOutStrokeAnimationDuration, 0, true);
@@ -62,12 +60,6 @@ class BoxCoil extends AnimatableIsometricObject {
     computedStrokeColor = `rgba(${r}, ${g}, ${b}, ${strokeOpacity})`;
 
     const translateXAnimationFactor: number = timeSinceFirstShown / 3;
-
-    const scaleAnimationTrajectory: number = this.getAnimationTrajectory(
-      scaleAnimationDuration,
-      0,
-      true
-    );
 
     if (isVisible || decayFactor) {
       isometricView.addTileAt({
@@ -85,6 +77,8 @@ class BoxCoil extends AnimatableIsometricObject {
     } else {
       this.hasDecayed = true;
     }
+
+    return this;
   }
 }
 

@@ -1,8 +1,8 @@
 import { math } from "canvas-sketch-util";
 import * as easing from "easing-utils";
+import IsometricView from "../views/IsometricView.js";
+import IsometricViewTileFaceType from "../views/IsometricViewTileFaceType.js";
 import AnimatableIsometricObject from "./AnimatableIsometricObject.js";
-import IsometricViewTileFaceType from "./IsometricViewTileFaceType.js";
-import IsometricView from "./IsometricView.js";
 
 interface ShootingKeyParams {
   isoX: number;
@@ -29,7 +29,7 @@ class ShootingKey extends AnimatableIsometricObject {
     this.stroke = stroke;
   }
 
-  render(isometricView: IsometricView): void {
+  renderIn(isometricView: IsometricView): this {
     const {
       isoX,
       isoY,
@@ -42,7 +42,7 @@ class ShootingKey extends AnimatableIsometricObject {
     } = this;
 
     const { lerp } = math;
-    const { easeOutBack, easeInOutBack } = easing;
+    const { easeOutBack } = easing;
 
     const decayFactor: number | null = this.getDecayFactor();
     const timeSinceFirstShown: number = this.getMsSince(timeFirstShown);
@@ -77,6 +77,8 @@ class ShootingKey extends AnimatableIsometricObject {
     } else {
       this.hasDecayed = true;
     }
+
+    return this;
   }
 }
 

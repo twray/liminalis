@@ -15,9 +15,9 @@ export default class KeyEventManager {
   private timeStampSinceLastChordEventDetected: number | null = null;
   private timeStampSinceLastHarmonicQualityChangeEventDetected: number | null =
     null;
-  private currentHarmonicScheme: string;
+  public currentHarmonicScheme: "major" | "non-major";
 
-  constructor(openingHarmonicScheme: string = "major") {
+  constructor(openingHarmonicScheme: "major" | "non-major" = "major") {
     this.timeStampSinceLastFetchOfNewKeyEventsForFrame = new Date().getTime();
     this.currentHarmonicScheme = openingHarmonicScheme;
   }
@@ -84,7 +84,7 @@ export default class KeyEventManager {
     return null;
   }
 
-  getNewPhraseDetectionForFrame(pauseBetweenPhrases = 1000) {
+  getNewPhraseDetectionForFrame(pauseBetweenPhrases = 1000): boolean {
     const { keyEvents } = this;
 
     const timeStampOfCurrentEventFetch = new Date().getTime();
@@ -93,40 +93,37 @@ export default class KeyEventManager {
       (keyEvent) => keyEvent.event === "noteon"
     );
 
-    if (keyEventsNoteOn.length >= 2) {
-      if (
-        timeStampOfCurrentEventFetch -
-          keyEventsNoteOn[keyEventsNoteOn.length - 1].time >
-        pauseBetweenPhrases
-      ) {
-        return false;
-      }
+    if (keyEventsNoteOn.length < 2) {
+      return false;
+    }
 
-      if (
-        this.timeStampSinceLastPhraseEventDetected === null ||
-        timeStampOfCurrentEventFetch -
-          this.timeStampSinceLastPhraseEventDetected >
-          1000
-      ) {
-        const hasPhrasePauseBetweenLastTwoKeyEvents =
-          keyEventsNoteOn[keyEventsNoteOn.length - 1].time -
-            keyEventsNoteOn[keyEventsNoteOn.length - 2].time >=
-          pauseBetweenPhrases;
+    const lastEvent = keyEventsNoteOn[keyEventsNoteOn.length - 1]!;
+    const secondToLastEvent = keyEventsNoteOn[keyEventsNoteOn.length - 2]!;
 
-        if (hasPhrasePauseBetweenLastTwoKeyEvents) {
-          this.timeStampSinceLastPhraseEventDetected =
-            timeStampOfCurrentEventFetch;
+    if (timeStampOfCurrentEventFetch - lastEvent.time > pauseBetweenPhrases) {
+      return false;
+    }
 
-          return true;
-        } else {
-          return false;
-        }
+    if (
+      this.timeStampSinceLastPhraseEventDetected === null ||
+      timeStampOfCurrentEventFetch -
+        this.timeStampSinceLastPhraseEventDetected >
+        1000
+    ) {
+      const hasPhrasePauseBetweenLastTwoKeyEvents =
+        lastEvent.time - secondToLastEvent.time >= pauseBetweenPhrases;
+
+      if (hasPhrasePauseBetweenLastTwoKeyEvents) {
+        this.timeStampSinceLastPhraseEventDetected =
+          timeStampOfCurrentEventFetch;
+        return true;
       } else {
         return false;
       }
-    } else {
-      return false;
     }
+
+    // Default return for any remaining code paths
+    return false;
   }
 
   getNewHarmonicQualityChangeEventForFrame(
@@ -161,20 +158,21 @@ export default class KeyEventManager {
 
       if (detectedChord.length > 0) {
         const isMajorLike =
-          detectedChord[0].includes("M") ||
-          (detectedChord[0].includes("5") && !detectedChord[0].includes("m")) ||
-          detectedChord[0].includes("maj7");
+          detectedChord[0]?.includes("M") ||
+          (detectedChord[0]?.includes("5") &&
+            !detectedChord[0]?.includes("m")) ||
+          detectedChord[0]?.includes("maj7");
 
         const harmonicScheme = isMajorLike ? "major" : "non-major";
 
         this.currentHarmonicScheme = harmonicScheme;
 
         return harmonicScheme;
-      } else {
-        return false;
       }
+
+      return null;
     } else {
-      return false;
+      return null;
     }
   }
 
@@ -199,14 +197,14 @@ export default class KeyEventManager {
         currentTimestamp - lastThreeNotesPlayed[0].time >
         timeWindowBetweenChordTones * 2
       ) {
-        return false;
+        return null;
       }
 
       if (
         noteNumbersOfLastThreeNotesPlayed.length !==
         [...new Set(lastThreeNotesPlayed)].length
       ) {
-        return false;
+        return null;
       }
 
       if (
@@ -217,7 +215,7 @@ export default class KeyEventManager {
             noteNumbersOfLastThreeNotesPlayed.toSorted().toReversed().toString()
         )
       ) {
-        return false;
+        return null;
       }
 
       if (
@@ -235,8 +233,9 @@ export default class KeyEventManager {
           ? 1
           : -1;
       }
+      return null;
     } else {
-      return false;
+      return null;
     }
   }
 
@@ -253,7 +252,7 @@ export default class KeyEventManager {
     );
   }
 
-  registerNoteOnEvent(note: string, number: number, attack: number = 1): void {
+  registerNoteOnEvent(note: string, number?: number, attack: number = 1): void {
     this.pressedKeys.set(note, { note, noteNumber: number, attack });
 
     this.keyEvents.push({
@@ -265,7 +264,7 @@ export default class KeyEventManager {
     });
   }
 
-  registerNoteOffEvent(note: string, number: number): void {
+  registerNoteOffEvent(note: string, number?: number): void {
     this.pressedKeys.delete(note);
 
     this.keyEvents.push({

@@ -1,14 +1,10 @@
-import { math, color } from "canvas-sketch-util";
+import { color, math } from "canvas-sketch-util";
+import type { IsometricPosition, Point2D } from "../types/index.js";
 import IsometricViewTileFaceType from "./IsometricViewTileFaceType.js";
-
-interface Point {
-  x: number;
-  y: number;
-}
 
 interface TileData {
   type: IsometricViewTileFaceType;
-  points: Point[];
+  points: Point2D[];
   fill: string;
   stroke: string;
   opacity: number;
@@ -16,29 +12,21 @@ interface TileData {
 }
 
 interface TileWithPosition extends TileData {
-  position: {
-    isoX: number;
-    isoY: number;
-    isoZ: number;
-  };
+  position: IsometricPosition;
 }
 
 interface TileCoordinates {
-  center: Point;
-  top: Point;
-  right: Point;
-  bottom: Point;
-  left: Point;
+  center: Point2D;
+  top: Point2D;
+  right: Point2D;
+  bottom: Point2D;
+  left: Point2D;
   tiles: TileWithPosition[];
 }
 
 class IsometricView {
-  private static readonly DEFAULT_GRID_PADDING = 2;
   private static readonly DEFAULT_FILL_COLOR = "#333333";
   private static readonly DEFAULT_STROKE_COLOR = "transparent";
-  private static readonly DEFAULT_OPACITY = 1;
-  private static readonly DEFAULT_SCALE = 1;
-  private static readonly DEFAULT_DIMENSION = 1;
 
   public readonly context: CanvasRenderingContext2D;
   public readonly contextWidth: number;
@@ -181,6 +169,8 @@ class IsometricView {
     // Horrible, brute force method that just attempts to render as many tiles
     // as possible within the screen space based on an estimation. Will fix.
 
+    if (!isometricGrid[0]) return;
+
     let maxValuePerAxis = Math.max(
       isometricGrid.length,
       isometricGrid[0].length
@@ -205,11 +195,11 @@ class IsometricView {
     }
   }
 
-  getMidPoint(x1: number, y1: number, x2: number, y2: number): Point {
+  getMidPoint(x1: number, y1: number, x2: number, y2: number): Point2D {
     return { x: (x1 + x2) / 2, y: (y1 + y2) / 2 };
   }
 
-  getOriginCellIndices(): Point {
+  getOriginCellIndices(): Point2D {
     const { numGridRows, numGridColumns } = this;
     return {
       x: Math.floor(numGridColumns / 2) - 1,
@@ -226,20 +216,24 @@ class IsometricView {
 
     const originCellIndices = this.getOriginCellIndices();
 
-    return (
-      isometricGrid[originCellIndices.x + (isoX + isoZ) - (isoY + isoZ)] &&
-      isometricGrid[originCellIndices.x + (isoX + isoZ) - (isoY + isoZ)][
-        originCellIndices.y - (isoX + isoZ) - (isoY + isoZ)
-      ]
-    );
+    const xIndex = originCellIndices.x + (isoX + isoZ) - (isoY + isoZ);
+    const yIndex = originCellIndices.y - (isoX + isoZ) - (isoY + isoZ);
+
+    const row = isometricGrid[xIndex];
+
+    return row && row[yIndex];
   }
 
   addTileForRendering(isoX: number, isoY: number, isoZ: number, tileData: any) {
     const originCellIndices = this.getOriginCellIndices();
 
-    this.isometricGrid[originCellIndices.x + (isoX + isoZ) - (isoY + isoZ)][
-      originCellIndices.y - (isoX + isoZ) - (isoY + isoZ)
-    ].tiles.push({ ...tileData, position: { isoX, isoY, isoZ } });
+    const xIndex = originCellIndices.x + (isoX + isoZ) - (isoY + isoZ);
+    const yIndex = originCellIndices.y - (isoX + isoZ) - (isoY + isoZ);
+
+    const row = this.isometricGrid[xIndex];
+    if (row && row[yIndex]) {
+      row[yIndex].tiles.push({ ...tileData, position: { isoX, isoY, isoZ } });
+    }
   }
 
   addTileAt({
@@ -268,7 +262,7 @@ class IsometricView {
     );
 
     if (tileSpatialCoordinates) {
-      const { center, top, right, bottom, left } = tileSpatialCoordinates;
+      const { top, right, bottom, left } = tileSpatialCoordinates;
 
       let points;
 
@@ -353,6 +347,8 @@ class IsometricView {
           break;
         }
       }
+
+      if (!points || !points[0] || !points[2]) return;
 
       const midPoint = this.getMidPoint(
         points[0].x,
@@ -516,7 +512,7 @@ class IsometricView {
       context.strokeStyle = stroke;
     }
 
-    points.forEach((point: Point, i: number) => {
+    points.forEach((point: Point2D, i: number) => {
       const { x, y } = point;
 
       if (i === 0) {

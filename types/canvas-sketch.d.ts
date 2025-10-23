@@ -35,7 +35,7 @@ declare module "canvas-sketch" {
     settings: SketchSettings;
   }
 
-  type SketchFunction = (props: SketchProps) => void | (() => void);
+  type SketchFunction = () => (props: SketchProps) => void | (() => void);
 
   function canvasSketch(
     sketch: SketchFunction,

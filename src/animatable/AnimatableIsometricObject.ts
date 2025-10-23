@@ -1,12 +1,12 @@
+import IsometricView from "../views/IsometricView";
 import AnimatableObject from "./AnimatableObject";
-import IsometricView from "./IsometricView";
 
 abstract class AnimatableIsometricObject extends AnimatableObject<IsometricView> {
   constructor() {
     super();
   }
 
-  abstract render(target: IsometricView): void;
+  abstract renderIn(target: IsometricView): this;
 }
 
 export default AnimatableIsometricObject;

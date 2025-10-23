@@ -1,14 +1,16 @@
-import AnimatableIsometricObject from "./AnimatableIsometricObject";
-import AnimatableObject from "./AnimatableObject";
-import IsometricView from "./IsometricView";
+import AnimatableIsometricObject from "../animatable/AnimatableIsometricObject";
+import AnimatableObject from "../animatable/AnimatableObject";
+import IsometricView from "../views/IsometricView";
+
+type AnyAnimatableObject = AnimatableObject<any>;
 
 class AnimatableObjectManager {
   constructor(
-    public animatableObjects: AnimatableObject[] = [],
+    public animatableObjects: AnyAnimatableObject[] = [],
     public maxAnimatableObjects: number = 1000
   ) {}
 
-  registerAnimatableObject(animatableObject: AnimatableObject) {
+  registerAnimatableObject(animatableObject: AnyAnimatableObject) {
     const { maxAnimatableObjects } = this;
 
     this.animatableObjects.push(animatableObject);
@@ -28,9 +30,9 @@ class AnimatableObjectManager {
   ) {
     this.animatableObjects.forEach((animatableObject) => {
       if (animatableObject instanceof AnimatableIsometricObject) {
-        animatableObject.render(isometricView);
+        animatableObject.renderIn(isometricView);
       } else {
-        animatableObject.render(context);
+        animatableObject.renderIn(context);
       }
     });
   }

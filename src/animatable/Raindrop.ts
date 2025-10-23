@@ -23,7 +23,7 @@ class Raindrop extends AnimatableObject {
     this.height = height;
   }
 
-  render(context: CanvasRenderingContext2D): void {
+  renderIn(context: CanvasRenderingContext2D): this {
     const { cx, cy, width, height, attackValue, isVisible, timeFirstShown } =
       this;
 
@@ -58,6 +58,8 @@ class Raindrop extends AnimatableObject {
     } else {
       this.hasDecayed = true;
     }
+
+    return this;
   }
 }
 

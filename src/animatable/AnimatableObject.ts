@@ -9,7 +9,7 @@ abstract class AnimatableObject<TRenderTarget = CanvasRenderingContext2D> {
 
   constructor() {}
 
-  abstract render(target: TRenderTarget): void;
+  abstract renderIn(target: TRenderTarget): this;
 
   show(attackValue: number): this {
     this.attackValue = attackValue;

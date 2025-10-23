@@ -32,9 +32,8 @@ class BarcodeStripe extends AnimatableObject<CanvasRenderingContext2D> {
     this.widthVarianceFactor = widthVarianceFactor;
   }
 
-  render(context: CanvasRenderingContext2D): void {
-    const { x, width, height, widthVarianceFactor, attackValue, isVisible } =
-      this;
+  renderIn(context: CanvasRenderingContext2D): this {
+    const { x, width, height, attackValue, isVisible } = this;
 
     const decayFactor: number = this.getDecayFactor();
 
@@ -58,6 +57,8 @@ class BarcodeStripe extends AnimatableObject<CanvasRenderingContext2D> {
     } else {
       this.hasDecayed = true;
     }
+
+    return this;
   }
 }
 

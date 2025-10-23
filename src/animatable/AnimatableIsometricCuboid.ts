@@ -1,8 +1,8 @@
 import { color } from "canvas-sketch-util";
 import * as easing from "easing-utils";
 
+import IsometricView from "../views/IsometricView.js";
 import AnimatableIsometricObject from "./AnimatableIsometricObject.js";
-import IsometricView from "./IsometricView.js";
 
 interface AnimatableIsometricCuboidParams {
   isoX: number;
@@ -51,7 +51,7 @@ class AnimatableIsometricCuboid extends AnimatableIsometricObject {
     return this;
   }
 
-  render(isometricView: IsometricView) {
+  renderIn(isometricView: IsometricView) {
     const {
       isoX,
       isoY,

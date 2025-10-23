@@ -1,4 +1,4 @@
-import Mode from "./Mode.js";
+import Mode from "../util/Mode.js";
 
 export default class ModeManager {
   public modeTransitionNotes: string[];
