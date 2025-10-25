@@ -1,8 +1,11 @@
 import { Chord } from "tonal";
+import { createNormalizedFloat, NormalizedFloat } from "../types";
+
+type KeyEventType = "noteon" | "noteoff";
 
 interface KeyEvent {
   time: number;
-  event: string;
+  event: KeyEventType;
   note: string;
   [key: string]: any;
 }
@@ -22,7 +25,7 @@ export default class KeyEventManager {
     this.currentHarmonicScheme = openingHarmonicScheme;
   }
 
-  getNewKeyEventsForFrame(eventFilter?: string): KeyEvent[] {
+  getNewKeyEventsForFrame(eventFilter?: KeyEventType): KeyEvent[] {
     const timeStampOfCurrentEventFetch = new Date().getTime();
 
     const newKeyEventsForFrame = this.keyEvents.filter((keyEvent) => {
@@ -252,7 +255,11 @@ export default class KeyEventManager {
     );
   }
 
-  registerNoteOnEvent(note: string, number?: number, attack: number = 1): void {
+  registerNoteOnEvent(
+    note: string,
+    number?: number,
+    attack: NormalizedFloat = createNormalizedFloat(1)
+  ): void {
     this.pressedKeys.set(note, { note, noteNumber: number, attack });
 
     this.keyEvents.push({

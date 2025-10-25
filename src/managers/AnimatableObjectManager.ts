@@ -26,10 +26,13 @@ class AnimatableObjectManager {
 
   renderAnimatableObjects(
     context: CanvasRenderingContext2D,
-    isometricView: IsometricView
+    isometricView?: IsometricView
   ) {
     this.animatableObjects.forEach((animatableObject) => {
-      if (animatableObject instanceof AnimatableIsometricObject) {
+      if (
+        isometricView &&
+        animatableObject instanceof AnimatableIsometricObject
+      ) {
         animatableObject.renderIn(isometricView);
       } else {
         animatableObject.renderIn(context);

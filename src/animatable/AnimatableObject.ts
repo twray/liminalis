@@ -1,3 +1,5 @@
+import { NormalizedFloat } from "../types";
+
 abstract class AnimatableObject<TRenderTarget = CanvasRenderingContext2D> {
   public attackValue: number = 0;
   public decayPeriod: number = 0;
@@ -11,7 +13,7 @@ abstract class AnimatableObject<TRenderTarget = CanvasRenderingContext2D> {
 
   abstract renderIn(target: TRenderTarget): this;
 
-  show(attackValue: number): this {
+  attack(attackValue: NormalizedFloat): this {
     this.attackValue = attackValue;
     this.isVisible = true;
     this.timeShown = new Date();
@@ -23,7 +25,7 @@ abstract class AnimatableObject<TRenderTarget = CanvasRenderingContext2D> {
     return this;
   }
 
-  hide(decayPeriod: number = 1000): this {
+  decay(decayPeriod: number = 1000): this {
     if (this.isVisible) {
       this.decayPeriod = decayPeriod;
       this.isVisible = false;
