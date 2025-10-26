@@ -1,4 +1,4 @@
-import { NormalizedFloat } from "../types";
+import { createNormalizedFloat, NormalizedFloat } from "../types";
 
 abstract class AnimatableObject<TRenderTarget = CanvasRenderingContext2D> {
   public attackValue: number = 0;
@@ -41,13 +41,17 @@ abstract class AnimatableObject<TRenderTarget = CanvasRenderingContext2D> {
       : 0;
   }
 
-  getDecayFactor(): number {
-    const { decayPeriod, timeHidden } = this;
+  get decayFactor(): NormalizedFloat {
+    const { decayPeriod, timeHidden, isVisible } = this;
     const msSinceHidden = this.getMsSince(timeHidden);
 
-    return msSinceHidden !== null && msSinceHidden < decayPeriod
-      ? 1 - msSinceHidden / decayPeriod
-      : 0;
+    if (isVisible) {
+      return createNormalizedFloat(1);
+    } else {
+      return msSinceHidden < decayPeriod
+        ? createNormalizedFloat(1 - msSinceHidden / decayPeriod)
+        : createNormalizedFloat(0);
+    }
   }
 
   getAnimationTrajectory(

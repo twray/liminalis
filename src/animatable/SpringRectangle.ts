@@ -28,25 +28,20 @@ class SpringRectangle extends AnimatableObject<CanvasRenderingContext2D> {
   }
 
   renderIn(context: CanvasRenderingContext2D): this {
-    const { x, y, width, height, fill, isVisible, attackValue } = this;
+    const { x, y, width, height, fill, attackValue, decayFactor } = this;
 
-    const decayFactor: number = this.getDecayFactor();
     const easedDecayFactor = easeInCubic(decayFactor);
 
-    if (isVisible || decayFactor) {
-      const [r, g, b] = color.parse(fill).rgb;
+    const [r, g, b] = color.parse(fill).rgb;
 
-      const fillWithAlpha = `rgba(${r}, ${g}, ${b}, ${easedDecayFactor})`;
-      const renderedHeight = attackValue * height * easedDecayFactor;
-      const yOffset = height - renderedHeight;
+    const fillWithAlpha = `rgba(${r}, ${g}, ${b}, ${easedDecayFactor})`;
+    const renderedHeight = attackValue * height * easedDecayFactor;
+    const yOffset = height - renderedHeight;
 
-      context.save();
-      context.fillStyle = fillWithAlpha;
-      context.fillRect(x, y + yOffset, width, renderedHeight);
-      context.restore();
-    } else {
-      this.hasDecayed = true;
-    }
+    context.save();
+    context.fillStyle = fillWithAlpha;
+    context.fillRect(x, y + yOffset, width, renderedHeight);
+    context.restore();
 
     return this;
   }

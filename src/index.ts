@@ -55,42 +55,56 @@ const sketch = () => {
     context.fillRect(0, 0, width, height);
 
     // Get recent key information as sent from MIDI controller / keyboard debugger
-    const recentKeys = keyEventManager.getNewKeyEventsForFrame("noteon");
+    const recentKeysPressedDown =
+      keyEventManager.getNewKeyEventsForFrame("noteon");
+    const recentKeysPressedUp =
+      keyEventManager.getNewKeyEventsForFrame("noteoff");
 
     // Derive some basic dimensions
     const innerBoxDimensions = Math.round(0.8 * width);
     const numRectangles = 10;
     const rectangleAndGapWidth = innerBoxDimensions / (numRectangles * 2 - 1);
 
+    const springRectangles: SpringRectangle[] = [];
+
+    // Construct the animatable objects and add them to the layout
+    for (let i = 0; i < numRectangles; i++) {
+      const springRectangle = new SpringRectangle({
+        x: width / 2 - innerBoxDimensions / 2 + i * (rectangleAndGapWidth * 2),
+        y: height / 2 - innerBoxDimensions / 2,
+        width: rectangleAndGapWidth,
+        height: innerBoxDimensions,
+        fill: "#333333",
+      });
+
+      animatableObjectManager.registerAnimatableObject(springRectangle);
+      springRectangles.push(springRectangle);
+    }
+
     // React based on key presses within frame
-    if (recentKeys.length > 0) {
-      recentKeys.forEach(({ note, attack }) => {
-        const derivedNote = Utilities.buildNote(note);
-        const baseNote = `${derivedNote.name}${derivedNote.octave}`;
-        const rectangleIdToRender = mappableBaseNotes.indexOf(baseNote);
-
-        if (rectangleIdToRender === -1) return;
-
-        const springRectangle = new SpringRectangle({
-          x:
-            width / 2 -
-            innerBoxDimensions / 2 +
-            rectangleIdToRender * (rectangleAndGapWidth * 2),
-          y: height / 2 - innerBoxDimensions / 2,
-          width: rectangleAndGapWidth,
-          height: innerBoxDimensions,
-          fill: "#333333",
-        })
-          .attack(attack)
-          .decay(1000)
-          .renderIn(context);
-
-        animatableObjectManager.registerAnimatableObject(springRectangle);
+    if (recentKeysPressedDown.length > 0) {
+      console.log("Keys pressed:", recentKeysPressedDown.length);
+      recentKeysPressedDown.forEach(({ attack }) => {
+        springRectangles.forEach((springRectangle) => {
+          springRectangle.attack(attack);
+        });
       });
     }
 
-    animatableObjectManager.renderAnimatableObjects(context);
+    if (recentKeysPressedUp.length > 0) {
+      console.log("Keys released:", recentKeysPressedUp.length);
+      recentKeysPressedUp.forEach(() => {
+        springRectangles.forEach((springRectangle) => {
+          springRectangle.decay(1000);
+        });
+      });
+    }
+
+    // Remove objects that are either decayed or not visible
     animatableObjectManager.cleanupDecayedObjects();
+
+    // Render all animatable objects
+    animatableObjectManager.renderAnimatableObjects(context);
   };
 };
 

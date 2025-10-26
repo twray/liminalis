@@ -29,13 +29,17 @@ class AnimatableObjectManager {
     isometricView?: IsometricView
   ) {
     this.animatableObjects.forEach((animatableObject) => {
-      if (
-        isometricView &&
-        animatableObject instanceof AnimatableIsometricObject
-      ) {
-        animatableObject.renderIn(isometricView);
+      if (animatableObject.isVisible || animatableObject.decayFactor > 0) {
+        if (
+          isometricView &&
+          animatableObject instanceof AnimatableIsometricObject
+        ) {
+          animatableObject.renderIn(isometricView);
+        } else {
+          animatableObject.renderIn(context);
+        }
       } else {
-        animatableObject.renderIn(context);
+        animatableObject.hasDecayed = true;
       }
     });
   }
