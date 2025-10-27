@@ -32,7 +32,7 @@ const keyEventManager = new KeyEventManager("major");
 const animatableObjectManager = new AnimatableObjectManager();
 const modeManager = new ModeManager([], []);
 
-const sketch = () => {
+const sketch = ({ width, height }: CanvasProps) => {
   // General data and properties for the visualisation.
 
   // In this example, we would use these specific notes (or their natural
@@ -49,54 +49,59 @@ const sketch = () => {
     "D5",
   ];
 
-  return ({ context, width, height }: CanvasProps) => {
-    // Clear the canvas
-    context.fillStyle = "#FFFFFF";
-    context.fillRect(0, 0, width, height);
+  // Derive some basic dimensions
+  const innerBoxDimensions = Math.round(0.8 * width);
+  const numRectangles = 10;
+  const rectangleAndGapWidth = innerBoxDimensions / (numRectangles * 2 - 1);
 
-    // Get recent key information as sent from MIDI controller / keyboard debugger
-    const recentKeysPressedDown =
-      keyEventManager.getNewKeyEventsForFrame("noteon");
-    const recentKeysPressedUp =
-      keyEventManager.getNewKeyEventsForFrame("noteoff");
-
-    // Derive some basic dimensions
-    const innerBoxDimensions = Math.round(0.8 * width);
-    const numRectangles = 10;
-    const rectangleAndGapWidth = innerBoxDimensions / (numRectangles * 2 - 1);
-
-    const springRectangles: SpringRectangle[] = [];
-
-    // Construct the animatable objects and add them to the layout
-    for (let i = 0; i < numRectangles; i++) {
-      const springRectangle = new SpringRectangle({
+  // Create and register the animatable elements
+  mappableBaseNotes.forEach((note, i) => {
+    animatableObjectManager.registerAnimatableObject(
+      note,
+      new SpringRectangle({
         x: width / 2 - innerBoxDimensions / 2 + i * (rectangleAndGapWidth * 2),
         y: height / 2 - innerBoxDimensions / 2,
         width: rectangleAndGapWidth,
         height: innerBoxDimensions,
         fill: "#333333",
-      });
+      }).setIsPermanent(true)
+    );
+  });
 
-      animatableObjectManager.registerAnimatableObject(springRectangle);
-      springRectangles.push(springRectangle);
-    }
+  return ({ context, width, height, frame }: CanvasProps) => {
+    // Clear the canvas
+    context.fillStyle = "#FFFFFF";
+    context.fillRect(0, 0, width, height);
+
+    // Rendering only works if animated and if there are workable frames
+    if (!frame) return;
+
+    // Get recent key information as sent from MIDI controller / keyboard debugger
+    const recentKeysPressedUp = keyEventManager.getNewKeyEventsForFrame(
+      frame,
+      "noteoff"
+    );
+    const recentKeysPressedDown = keyEventManager.getNewKeyEventsForFrame(
+      frame,
+      "noteon"
+    );
 
     // React based on key presses within frame
     if (recentKeysPressedDown.length > 0) {
       console.log("Keys pressed:", recentKeysPressedDown.length);
-      recentKeysPressedDown.forEach(({ attack }) => {
-        springRectangles.forEach((springRectangle) => {
-          springRectangle.attack(attack);
-        });
+
+      recentKeysPressedDown.forEach(({ note, attack }) => {
+        animatableObjectManager
+          .getObject(note)
+          ?.attack(attack ?? createNormalizedFloat(1));
       });
     }
 
     if (recentKeysPressedUp.length > 0) {
       console.log("Keys released:", recentKeysPressedUp.length);
-      recentKeysPressedUp.forEach(() => {
-        springRectangles.forEach((springRectangle) => {
-          springRectangle.decay(1000);
-        });
+
+      recentKeysPressedUp.forEach(({ note }) => {
+        animatableObjectManager.getObject(note)?.decay(2000);
       });
     }
 
@@ -168,7 +173,7 @@ const setUpEventListeners = () => {
 
   const handleNoteOn = (
     note: string,
-    number?: number,
+    number: number,
     attack: NormalizedFloat = createNormalizedFloat(1)
   ) => {
     if (modeManager.modeTransitionNotes.includes(note)) {
@@ -178,7 +183,7 @@ const setUpEventListeners = () => {
     keyEventManager.registerNoteOnEvent(note, number, attack);
   };
 
-  const handleNoteOff = (note: string, number?: number) => {
+  const handleNoteOff = (note: string, number: number) => {
     keyEventManager.registerNoteOffEvent(note, number);
   };
 };

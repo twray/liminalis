@@ -5,17 +5,34 @@ import IsometricView from "../views/IsometricView";
 type AnyAnimatableObject = AnimatableObject<any>;
 
 class AnimatableObjectManager {
-  constructor(
-    public animatableObjects: AnyAnimatableObject[] = [],
-    public maxAnimatableObjects: number = 1000
-  ) {}
+  public idsOfAllAnimatableObjectsCreated: string[] = [];
+  public animatableObjects: Map<string, AnyAnimatableObject> = new Map();
 
-  registerAnimatableObject(animatableObject: AnyAnimatableObject) {
+  constructor(public maxAnimatableObjects: number = 1000) {}
+
+  getObject(id: string): AnyAnimatableObject | undefined {
+    if (
+      !this.animatableObjects.has(id) &&
+      this.idsOfAllAnimatableObjectsCreated.includes(id)
+    ) {
+      console.warn(
+        `AnimatableObject with id "${id}" was requested but is not currently registered.` +
+          ` It may have been removed from the visualisation already because objects are` +
+          ` removed automatically when they decay. If you wish to access this object again,` +
+          ` after it decays, call its setIsPermanent(true) method when creating it.`
+      );
+    }
+
+    return this.animatableObjects.get(id);
+  }
+
+  registerAnimatableObject(id: string, animatableObject: AnyAnimatableObject) {
     const { maxAnimatableObjects } = this;
 
-    this.animatableObjects.push(animatableObject);
+    this.animatableObjects.set(id, animatableObject);
+    this.idsOfAllAnimatableObjectsCreated.push(id);
 
-    if (this.animatableObjects.length > maxAnimatableObjects) {
+    if (this.animatableObjects.size > maxAnimatableObjects) {
       console.warn(
         `Warning: Over ${maxAnimatableObjects} are registered. ` +
           `Check that your objects are decaying and being cleaned up correctly ` +
@@ -38,16 +55,18 @@ class AnimatableObjectManager {
         } else {
           animatableObject.renderIn(context);
         }
-      } else {
+      } else if (animatableObject.wasVisible) {
         animatableObject.hasDecayed = true;
       }
     });
   }
 
   cleanupDecayedObjects() {
-    this.animatableObjects = this.animatableObjects.filter(
-      (animatableObject) => !animatableObject.hasDecayed
-    );
+    this.animatableObjects.forEach((animatableObject, id) => {
+      if (!animatableObject.isPermanent && animatableObject.hasDecayed) {
+        this.animatableObjects.delete(id);
+      }
+    });
   }
 }
 

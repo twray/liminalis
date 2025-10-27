@@ -4,18 +4,27 @@ abstract class AnimatableObject<TRenderTarget = CanvasRenderingContext2D> {
   public attackValue: number = 0;
   public decayPeriod: number = 0;
   public isVisible: boolean = false;
+  public wasVisible: boolean = false;
   public hasDecayed: boolean = false;
   public timeFirstShown: Date | null = null;
   public timeShown: Date | null = null;
   public timeHidden: Date | null = null;
+  public isPermanent: boolean = false;
 
   constructor() {}
 
   abstract renderIn(target: TRenderTarget): this;
 
+  setIsPermanent(isPermanent: boolean = false): this {
+    this.isPermanent = isPermanent;
+    return this;
+  }
+
   attack(attackValue: NormalizedFloat): this {
     this.attackValue = attackValue;
     this.isVisible = true;
+    this.wasVisible = true;
+    this.hasDecayed = false;
     this.timeShown = new Date();
 
     if (this.timeFirstShown === null) {

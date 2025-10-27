@@ -21,21 +21,35 @@ declare module "canvas-sketch" {
   }
 
   interface SketchProps {
-    context: CanvasRenderingContext2D;
+    units: string;
     width: number;
     height: number;
+    canvasWidth: number;
+    canvasHeight: number;
+    styleWidth: number;
+    styleHeight: number;
+    scaleX: number;
+    scaleY: number;
+    pixelRatio: number;
+    pixelsPerInch: number;
     canvas: HTMLCanvasElement;
+    context: CanvasRenderingContext2D;
     time: number;
     frame: number;
-    fps: number;
-    playbackRate: number;
+    playhead: number;
+    deltaTime: number;
+    playing: boolean;
     duration: number;
     totalFrames: number;
+    fps: number;
+    exporting: boolean;
     recording: boolean;
     settings: SketchSettings;
   }
 
-  type SketchFunction = () => (props: SketchProps) => void | (() => void);
+  type SketchFunction = (
+    props: SketchProps
+  ) => (props: SketchProps) => void | (() => void);
 
   function canvasSketch(
     sketch: SketchFunction,

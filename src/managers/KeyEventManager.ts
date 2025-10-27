@@ -7,12 +7,15 @@ interface KeyEvent {
   time: number;
   event: KeyEventType;
   note: string;
+  noteNumber: number;
+  attack?: NormalizedFloat;
   [key: string]: any;
 }
 
 export default class KeyEventManager {
   private keyEvents: KeyEvent[] = [];
   private pressedKeys: Map<string, any> = new Map();
+  private keyEventsForFrames: Map<number, KeyEvent[]> = new Map();
   private timeStampSinceLastFetchOfNewKeyEventsForFrame: number;
   private timeStampSinceLastPhraseEventDetected: number | null = null;
   private timeStampSinceLastChordEventDetected: number | null = null;
@@ -25,24 +28,33 @@ export default class KeyEventManager {
     this.currentHarmonicScheme = openingHarmonicScheme;
   }
 
-  getNewKeyEventsForFrame(eventFilter?: KeyEventType): KeyEvent[] {
+  getNewKeyEventsForFrame(
+    frameIndex: number,
+    eventFilter?: KeyEventType
+  ): KeyEvent[] {
     const timeStampOfCurrentEventFetch = new Date().getTime();
 
-    const newKeyEventsForFrame = this.keyEvents.filter((keyEvent) => {
-      const keyEventIsNew =
-        this.timeStampSinceLastFetchOfNewKeyEventsForFrame < keyEvent.time;
+    let newKeyEventsForFrame: KeyEvent[] = [];
 
-      if (eventFilter) {
-        return keyEventIsNew && keyEvent.event === eventFilter;
-      } else {
-        return keyEventIsNew;
-      }
-    });
+    if (!this.keyEventsForFrames.has(frameIndex)) {
+      newKeyEventsForFrame = this.keyEvents.filter(
+        (keyEvent) =>
+          this.timeStampSinceLastFetchOfNewKeyEventsForFrame < keyEvent.time
+      );
+
+      this.keyEventsForFrames.set(frameIndex, newKeyEventsForFrame);
+    } else {
+      newKeyEventsForFrame = this.keyEventsForFrames.get(frameIndex)!;
+    }
 
     this.timeStampSinceLastFetchOfNewKeyEventsForFrame =
       timeStampOfCurrentEventFetch;
 
-    return newKeyEventsForFrame;
+    return eventFilter
+      ? newKeyEventsForFrame.filter(
+          (keyEvent) => keyEvent.event === eventFilter
+        )
+      : newKeyEventsForFrame;
   }
 
   getRecentlyPhrasedKeyEvents(
@@ -248,7 +260,7 @@ export default class KeyEventManager {
         .map((recentlyPhrasedKeyEvent) => recentlyPhrasedKeyEvent.attack)
         .reduce(
           (totalIntensity, currentIntensity) =>
-            totalIntensity + currentIntensity,
+            totalIntensity + (currentIntensity ?? 0),
           0
         ) / intensityFactor,
       1
@@ -257,7 +269,7 @@ export default class KeyEventManager {
 
   registerNoteOnEvent(
     note: string,
-    number?: number,
+    number: number,
     attack: NormalizedFloat = createNormalizedFloat(1)
   ): void {
     this.pressedKeys.set(note, { note, noteNumber: number, attack });
@@ -271,7 +283,7 @@ export default class KeyEventManager {
     });
   }
 
-  registerNoteOffEvent(note: string, number?: number): void {
+  registerNoteOffEvent(note: string, number: number): void {
     this.pressedKeys.delete(note);
 
     this.keyEvents.push({
