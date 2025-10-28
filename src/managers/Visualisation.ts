@@ -2,21 +2,21 @@ import AnimatableIsometricObject from "../animatable/AnimatableIsometricObject";
 import AnimatableObject from "../animatable/AnimatableObject";
 import IsometricView from "../views/IsometricView";
 
-type AnyAnimatableObject = AnimatableObject<any>;
+type AnyAnimatableObject = AnimatableObject<any, any>;
 
-class AnimatableObjectManager {
+class Visualisation {
   public idsOfAllAnimatableObjectsCreated: string[] = [];
   public animatableObjects: Map<string, AnyAnimatableObject> = new Map();
 
   constructor(public maxAnimatableObjects: number = 1000) {}
 
-  getObject(id: string): AnyAnimatableObject | undefined {
+  get(id: string): AnyAnimatableObject | undefined {
     if (
       !this.animatableObjects.has(id) &&
       this.idsOfAllAnimatableObjectsCreated.includes(id)
     ) {
       console.warn(
-        `AnimatableObject with id "${id}" was requested but is not currently registered.` +
+        `object with id "${id}" was requested but is not currently registered.` +
           ` It may have been removed from the visualisation already because objects are` +
           ` removed automatically when they decay. If you wish to access this object again,` +
           ` after it decays, call its setIsPermanent(true) method when creating it.`
@@ -26,7 +26,7 @@ class AnimatableObjectManager {
     return this.animatableObjects.get(id);
   }
 
-  registerAnimatableObject(id: string, animatableObject: AnyAnimatableObject) {
+  add(id: string, animatableObject: AnyAnimatableObject) {
     const { maxAnimatableObjects } = this;
 
     this.animatableObjects.set(id, animatableObject);
@@ -41,10 +41,29 @@ class AnimatableObjectManager {
     }
   }
 
-  renderAnimatableObjects(
-    context: CanvasRenderingContext2D,
-    isometricView?: IsometricView
-  ) {
+  renderObjects(context: CanvasRenderingContext2D) {
+    if (!context) {
+      throw new Error(
+        "A CanvasRenderingContext2D instance must be provided to render AnimatableObjects." +
+          "When calling the renderObjects() method on a visualisation instance, please ensure" +
+          "that you pass in a valid canvas context as an argument."
+      );
+    }
+
+    const hasIsometricObjects = Array.from(
+      this.animatableObjects.values()
+    ).some((obj) => obj instanceof AnimatableIsometricObject);
+
+    let isometricView: IsometricView | null = null;
+
+    if (hasIsometricObjects) {
+      isometricView = new IsometricView(
+        context,
+        context.canvas.width,
+        context.canvas.height
+      );
+    }
+
     this.animatableObjects.forEach((animatableObject) => {
       if (animatableObject.isVisible || animatableObject.decayFactor > 0) {
         if (
@@ -59,9 +78,13 @@ class AnimatableObjectManager {
         animatableObject.hasDecayed = true;
       }
     });
+
+    if (isometricView) {
+      isometricView.render();
+    }
   }
 
-  cleanupDecayedObjects() {
+  cleanUp() {
     this.animatableObjects.forEach((animatableObject, id) => {
       if (!animatableObject.isPermanent && animatableObject.hasDecayed) {
         this.animatableObjects.delete(id);
@@ -70,4 +93,4 @@ class AnimatableObjectManager {
   }
 }
 
-export default AnimatableObjectManager;
+export default Visualisation;

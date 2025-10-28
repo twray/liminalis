@@ -1,7 +1,29 @@
 import { createNormalizedFloat, NormalizedFloat } from "../types";
 
-abstract class AnimatableObject<TRenderTarget = CanvasRenderingContext2D> {
-  public attackValue: number = 0;
+export interface AnimatableObjectOptions<
+  TProps,
+  TRenderContext = CanvasRenderingContext2D
+> {
+  props: TProps;
+  render: (params: RenderParams<TProps, TRenderContext>) => void;
+  isPermanent?: boolean;
+}
+
+interface RenderParams<TProps, TRenderContext = CanvasRenderingContext2D> {
+  props: TProps;
+  context: TRenderContext;
+  attackValue: NormalizedFloat;
+  decayFactor: NormalizedFloat;
+  getAnimationTrajectory: (
+    duration: number,
+    delay: number,
+    fromEnd: boolean,
+    easingFunction: ((t: number) => number) | null
+  ) => number;
+}
+
+class AnimatableObject<TProps, TRenderContext = CanvasRenderingContext2D> {
+  public attackValue: NormalizedFloat = createNormalizedFloat(0);
   public decayPeriod: number = 0;
   public isVisible: boolean = false;
   public wasVisible: boolean = false;
@@ -9,14 +31,29 @@ abstract class AnimatableObject<TRenderTarget = CanvasRenderingContext2D> {
   public timeFirstShown: Date | null = null;
   public timeShown: Date | null = null;
   public timeHidden: Date | null = null;
-  public isPermanent: boolean = false;
+  public readonly isPermanent: boolean = false;
 
-  constructor() {}
+  public render: (params: RenderParams<TProps, TRenderContext>) => void =
+    () => {};
+  public props: TProps;
 
-  abstract renderIn(target: TRenderTarget): this;
+  constructor(options: AnimatableObjectOptions<TProps, TRenderContext>) {
+    const { props, render, isPermanent = false } = options;
 
-  setIsPermanent(isPermanent: boolean = false): this {
+    this.props = props;
+    this.render = render;
     this.isPermanent = isPermanent;
+  }
+
+  renderIn(context: TRenderContext): this {
+    const { props, attackValue, decayFactor } = this;
+    this.render({
+      props,
+      context,
+      attackValue,
+      decayFactor,
+      getAnimationTrajectory: this.getAnimationTrajectory.bind(this),
+    });
     return this;
   }
 

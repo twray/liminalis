@@ -529,7 +529,11 @@ class IsometricView {
   }
 
   render(withZCorrection: boolean = true): void {
-    const { isometricGrid } = this;
+    const { isometricGrid, context, contextWidth, contextHeight } = this;
+
+    // Clear the canvas
+    context.fillStyle = "#ffffff";
+    context.fillRect(0, 0, contextWidth, contextHeight);
 
     const isometricGridPointsThatHaveRenderableTiles = isometricGrid
       .flat(1)

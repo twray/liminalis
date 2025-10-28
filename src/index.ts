@@ -3,19 +3,22 @@ import { Utilities, WebMidi } from "webmidi";
 
 // Import types from organized structure
 import {
+  CanvasProps,
   createNormalizedFloat,
   NormalizedFloat,
   type AppSettings,
-  type CanvasProps,
   type SketchSettings,
 } from "./types/index.js";
 
 import keyMappings from "./data/keyMappings.json";
 
-import AnimatableObjectManager from "./managers/AnimatableObjectManager.js";
 import KeyEventManager from "./managers/KeyEventManager.js";
+import Visualisation from "./managers/Visualisation.js";
 
-import SpringRectangle from "./animatable/SpringRectangle.js";
+import { color } from "canvas-sketch-util";
+import { easeInCubic, easeInQuad, easeOutBack } from "easing-utils";
+import AnimatableIsometricObject from "./animatable/AnimatableIsometricObject.js";
+import AnimatableObject from "./animatable/AnimatableObject.js";
 import ModeManager from "./managers/ModeManager.js";
 
 const settings: SketchSettings = {
@@ -29,42 +32,59 @@ const appProperties: AppSettings = {
 };
 
 const keyEventManager = new KeyEventManager("major");
-const animatableObjectManager = new AnimatableObjectManager();
+const visualisation = new Visualisation();
 const modeManager = new ModeManager([], []);
 
-const sketch = ({ width, height }: CanvasProps) => {
+// SCENE 1 - Simple rectangles that respond to MIDI input rendered within Canvas
+const sketch1 = ({ width, height }: CanvasProps) => {
   // General data and properties for the visualisation.
 
   // In this example, we would use these specific notes (or their natural
   // 'white key' equivalents) to trigger visual changes.
-  const mappableBaseNotes = [
-    "C4",
-    "D4",
-    "E4",
-    "F4",
-    "G4",
-    "A4",
-    "B4",
-    "C5",
-    "D5",
-  ];
+  const mappableBaseNotes = ["C", "D", "E", "F", "G", "A", "B"];
 
   // Derive some basic dimensions
   const innerBoxDimensions = Math.round(0.8 * width);
-  const numRectangles = 10;
+  const numRectangles = 7;
   const rectangleAndGapWidth = innerBoxDimensions / (numRectangles * 2 - 1);
 
   // Create and register the animatable elements
   mappableBaseNotes.forEach((note, i) => {
-    animatableObjectManager.registerAnimatableObject(
+    visualisation.add(
       note,
-      new SpringRectangle({
-        x: width / 2 - innerBoxDimensions / 2 + i * (rectangleAndGapWidth * 2),
-        y: height / 2 - innerBoxDimensions / 2,
-        width: rectangleAndGapWidth,
-        height: innerBoxDimensions,
-        fill: "#333333",
-      }).setIsPermanent(true)
+      new AnimatableObject<{
+        x: number;
+        y: number;
+        width: number;
+        height: number;
+        fill: string;
+      }>({
+        props: {
+          x:
+            width / 2 - innerBoxDimensions / 2 + i * (rectangleAndGapWidth * 2),
+          y: height / 2 - innerBoxDimensions / 2,
+          width: rectangleAndGapWidth,
+          height: innerBoxDimensions,
+          fill: "#333333",
+        },
+        render: ({ props, context, attackValue, decayFactor }) => {
+          const { x, y, width, height, fill } = props;
+
+          const easedDecayFactor = easeInCubic(decayFactor);
+
+          const [r, g, b] = color.parse(fill).rgb;
+
+          const fillWithAlpha = `rgba(${r}, ${g}, ${b}, ${easedDecayFactor})`;
+          const renderedHeight = attackValue * height * easedDecayFactor;
+          const yOffset = height - renderedHeight;
+
+          context.save();
+          context.fillStyle = fillWithAlpha;
+          context.fillRect(x, y + yOffset, width, renderedHeight);
+          context.restore();
+        },
+        isPermanent: true,
+      })
     );
   });
 
@@ -91,8 +111,8 @@ const sketch = ({ width, height }: CanvasProps) => {
       console.log("Keys pressed:", recentKeysPressedDown.length);
 
       recentKeysPressedDown.forEach(({ note, attack }) => {
-        animatableObjectManager
-          .getObject(note)
+        visualisation
+          .get(Utilities.buildNote(note).name)
           ?.attack(attack ?? createNormalizedFloat(1));
       });
     }
@@ -101,15 +121,96 @@ const sketch = ({ width, height }: CanvasProps) => {
       console.log("Keys released:", recentKeysPressedUp.length);
 
       recentKeysPressedUp.forEach(({ note }) => {
-        animatableObjectManager.getObject(note)?.decay(2000);
+        visualisation.get(Utilities.buildNote(note).name)?.decay(2000);
       });
     }
 
     // Remove objects that are either decayed or not visible
-    animatableObjectManager.cleanupDecayedObjects();
+    visualisation.cleanUp();
 
     // Render all animatable objects
-    animatableObjectManager.renderAnimatableObjects(context);
+    visualisation.renderObjects(context);
+  };
+};
+
+// SCENE 2 - Cubes that respond to MIDI input rendered within an Isometric View
+const sketch2 = ({ context, width, height }: CanvasProps) => {
+  const mappableBaseNotes = ["C", "D", "E", "F", "G", "A", "B"];
+
+  return ({ frame }: CanvasProps) => {
+    // Clear the canvas
+    context.fillStyle = "#ffffff";
+    context.fillRect(0, 0, width, height);
+
+    // Rendering only works if animated and if there are workable frames
+    if (!frame) return;
+
+    // Get recent key information as sent from MIDI controller / keyboard debugger
+    const recentKeysPressedUp = keyEventManager.getNewKeyEventsForFrame(
+      frame,
+      "noteoff"
+    );
+    const recentKeysPressedDown = keyEventManager.getNewKeyEventsForFrame(
+      frame,
+      "noteon"
+    );
+
+    // React based on key presses within frame
+    if (recentKeysPressedDown.length > 0) {
+      console.log("Keys pressed:", recentKeysPressedDown.length);
+      recentKeysPressedDown.forEach((note) => {
+        const baseNote = Utilities.buildNote(note.note).name;
+        const positionIndex = mappableBaseNotes.indexOf(baseNote);
+        visualisation.add(
+          baseNote,
+          new AnimatableIsometricObject<{}>({
+            props: {},
+            render({
+              context,
+              attackValue,
+              decayFactor,
+              getAnimationTrajectory,
+            }) {
+              const bounceInAnimationTrajectory = getAnimationTrajectory(
+                1000,
+                0,
+                false,
+                easeOutBack
+              );
+
+              const adjustedAttackValue = easeInQuad(attackValue);
+
+              context.addCuboidAt({
+                isoX: -3 + positionIndex,
+                isoY: 0,
+                isoZ: -6 + positionIndex,
+                lengthX: 1,
+                lengthY: 3,
+                lengthZ: 1,
+                fill: "#333",
+                opacity: decayFactor,
+                translateZ:
+                  750 * adjustedAttackValue * (1 - bounceInAnimationTrajectory),
+              });
+            },
+          }).attack(createNormalizedFloat(note.attack ?? 1))
+        );
+      });
+    }
+
+    if (recentKeysPressedUp.length > 0) {
+      console.log("Keys released:", recentKeysPressedUp.length);
+      recentKeysPressedUp.forEach((note) => {
+        const baseNote = Utilities.buildNote(note.note).name;
+        visualisation.get(baseNote)?.decay(2000);
+      });
+    }
+
+    // Remove objects that are either decayed or not visible
+    visualisation.cleanUp();
+
+    // Render all animatable objects
+    visualisation.renderObjects(context);
   };
 };
 
@@ -189,4 +290,4 @@ const setUpEventListeners = () => {
 };
 
 setUpEventListeners();
-canvasSketch(sketch, settings);
+canvasSketch(sketch1, settings);
