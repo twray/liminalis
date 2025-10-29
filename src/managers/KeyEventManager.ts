@@ -1,5 +1,5 @@
 import { Chord } from "tonal";
-import { createNormalizedFloat, NormalizedFloat } from "../types";
+import { NormalizedFloat, toNormalizedFloat } from "../types";
 
 type KeyEventType = "noteon" | "noteoff";
 
@@ -270,7 +270,7 @@ export default class KeyEventManager {
   registerNoteOnEvent(
     note: string,
     number: number,
-    attack: NormalizedFloat = createNormalizedFloat(1)
+    attack: NormalizedFloat = toNormalizedFloat(1)
   ): void {
     this.pressedKeys.set(note, { note, noteNumber: number, attack });
 

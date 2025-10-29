@@ -4,8 +4,8 @@ import { Utilities, WebMidi } from "webmidi";
 // Import types from organized structure
 import {
   CanvasProps,
-  createNormalizedFloat,
   NormalizedFloat,
+  toNormalizedFloat,
   type AppSettings,
   type SketchSettings,
 } from "./types/index.js";
@@ -113,7 +113,7 @@ const sketch1 = ({ width, height }: CanvasProps) => {
       recentKeysPressedDown.forEach(({ note, attack }) => {
         visualisation
           .get(Utilities.buildNote(note).name)
-          ?.attack(attack ?? createNormalizedFloat(1));
+          ?.attack(attack ?? toNormalizedFloat(1));
       });
     }
 
@@ -193,7 +193,7 @@ const sketch2 = ({ context, width, height }: CanvasProps) => {
                   750 * adjustedAttackValue * (1 - bounceInAnimationTrajectory),
               });
             },
-          }).attack(createNormalizedFloat(note.attack ?? 1))
+          }).attack(toNormalizedFloat(note.attack ?? 1))
         );
       });
     }
@@ -253,7 +253,7 @@ const setUpEventListeners = () => {
 
         midiInput.addListener("noteon", (event) => {
           const { identifier, attack, number } = event.note;
-          handleNoteOn(identifier, number, createNormalizedFloat(attack));
+          handleNoteOn(identifier, number, toNormalizedFloat(attack));
         });
 
         midiInput.addListener("noteoff", (event) => {
@@ -275,7 +275,7 @@ const setUpEventListeners = () => {
   const handleNoteOn = (
     note: string,
     number: number,
-    attack: NormalizedFloat = createNormalizedFloat(1)
+    attack: NormalizedFloat = toNormalizedFloat(1)
   ) => {
     if (modeManager.modeTransitionNotes.includes(note)) {
       modeManager.transitionToNextMode();

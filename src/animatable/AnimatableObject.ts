@@ -1,4 +1,4 @@
-import { createNormalizedFloat, NormalizedFloat } from "../types";
+import { NormalizedFloat, toNormalizedFloat } from "../types";
 
 export interface AnimatableObjectOptions<
   TProps,
@@ -23,7 +23,7 @@ interface RenderParams<TProps, TRenderContext = CanvasRenderingContext2D> {
 }
 
 class AnimatableObject<TProps, TRenderContext = CanvasRenderingContext2D> {
-  public attackValue: NormalizedFloat = createNormalizedFloat(0);
+  public attackValue: NormalizedFloat = toNormalizedFloat(0);
   public decayPeriod: number = 0;
   public isVisible: boolean = false;
   public wasVisible: boolean = false;
@@ -92,11 +92,11 @@ class AnimatableObject<TProps, TRenderContext = CanvasRenderingContext2D> {
     const msSinceHidden = this.getMsSince(timeHidden);
 
     if (isVisible) {
-      return createNormalizedFloat(1);
+      return toNormalizedFloat(1);
     } else {
       return msSinceHidden < decayPeriod
-        ? createNormalizedFloat(1 - msSinceHidden / decayPeriod)
-        : createNormalizedFloat(0);
+        ? toNormalizedFloat(1 - msSinceHidden / decayPeriod)
+        : toNormalizedFloat(0);
     }
   }
 
