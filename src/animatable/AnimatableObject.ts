@@ -24,8 +24,9 @@ interface RenderParams<TProps, TRenderContext = CanvasRenderingContext2D> {
 
 class AnimatableObject<TProps, TRenderContext = CanvasRenderingContext2D> {
   public attackValue: NormalizedFloat = toNormalizedFloat(0);
+  public sustainPeriod: number = 0;
   public decayPeriod: number = 0;
-  public isVisible: boolean = false;
+  public isPersisting: boolean = false;
   public wasVisible: boolean = false;
   public hasDecayed: boolean = false;
   public timeFirstShown: Date | null = null;
@@ -59,7 +60,7 @@ class AnimatableObject<TProps, TRenderContext = CanvasRenderingContext2D> {
 
   attack(attackValue: NormalizedFloat): this {
     this.attackValue = attackValue;
-    this.isVisible = true;
+    this.isPersisting = true;
     this.wasVisible = true;
     this.hasDecayed = false;
     this.timeShown = new Date();
@@ -71,10 +72,16 @@ class AnimatableObject<TProps, TRenderContext = CanvasRenderingContext2D> {
     return this;
   }
 
+  sustain(duration: number) {
+    this.sustainPeriod += duration;
+
+    return this;
+  }
+
   decay(decayPeriod: number = 1000): this {
-    if (this.isVisible) {
+    if (this.isPersisting) {
       this.decayPeriod = decayPeriod;
-      this.isVisible = false;
+      this.isPersisting = false;
       this.timeHidden = new Date();
     }
 
@@ -88,14 +95,16 @@ class AnimatableObject<TProps, TRenderContext = CanvasRenderingContext2D> {
   }
 
   get decayFactor(): NormalizedFloat {
-    const { decayPeriod, timeHidden, isVisible } = this;
+    const { decayPeriod, timeHidden, isPersisting, sustainPeriod } = this;
     const msSinceHidden = this.getMsSince(timeHidden);
 
-    if (isVisible) {
+    if (isPersisting || msSinceHidden < sustainPeriod) {
       return toNormalizedFloat(1);
     } else {
-      return msSinceHidden < decayPeriod
-        ? toNormalizedFloat(1 - msSinceHidden / decayPeriod)
+      return msSinceHidden < decayPeriod + sustainPeriod
+        ? toNormalizedFloat(
+            1 - msSinceHidden / decayPeriod + sustainPeriod / decayPeriod
+          )
         : toNormalizedFloat(0);
     }
   }

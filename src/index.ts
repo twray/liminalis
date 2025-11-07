@@ -193,7 +193,9 @@ const sketch2 = ({ context, width, height }: CanvasProps) => {
                   750 * adjustedAttackValue * (1 - bounceInAnimationTrajectory),
               });
             },
-          }).attack(toNormalizedFloat(note.attack ?? 1))
+          })
+            .attack(toNormalizedFloat(note.attack ?? 1))
+            .sustain(10000)
         );
       });
     }

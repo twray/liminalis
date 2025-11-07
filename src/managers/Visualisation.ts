@@ -65,7 +65,9 @@ class Visualisation {
     }
 
     this.animatableObjects.forEach((animatableObject) => {
-      if (animatableObject.isVisible || animatableObject.decayFactor > 0) {
+      const { isPersisting, decayFactor, wasVisible } = animatableObject;
+
+      if (isPersisting || decayFactor > 0) {
         if (
           isometricView &&
           animatableObject instanceof AnimatableIsometricObject
@@ -74,7 +76,7 @@ class Visualisation {
         } else {
           animatableObject.renderIn(context);
         }
-      } else if (animatableObject.wasVisible) {
+      } else if (wasVisible) {
         animatableObject.hasDecayed = true;
       }
     });
