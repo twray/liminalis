@@ -1,16 +1,13 @@
 import canvasSketch from "canvas-sketch";
-import { Utilities, WebMidi } from "webmidi";
+import { Utilities } from "webmidi";
 
 // Import types from organized structure
 import {
   CanvasProps,
-  NormalizedFloat,
   toNormalizedFloat,
   type AppSettings,
   type SketchSettings,
 } from "./types/index.js";
-
-import keyMappings from "./data/keyMappings.json";
 
 import KeyEventManager from "./managers/KeyEventManager.js";
 import Visualisation from "./managers/Visualisation.js";
@@ -19,6 +16,7 @@ import { color } from "canvas-sketch-util";
 import { easeInCubic, easeInQuad, easeOutBack } from "easing-utils";
 import AnimatableIsometricObject from "./animatable/AnimatableIsometricObject.js";
 import AnimatableObject from "./animatable/AnimatableObject.js";
+import { setUpEventListeners } from "./core/index.js";
 import ModeManager from "./managers/ModeManager.js";
 
 const settings: SketchSettings = {
@@ -216,80 +214,5 @@ const sketch2 = ({ context, width, height }: CanvasProps) => {
   };
 };
 
-const setUpEventListeners = () => {
-  const { computerKeyboardDebugEnabled } = appProperties;
-
-  if (computerKeyboardDebugEnabled) {
-    window.addEventListener("keydown", (event) => {
-      if (event.repeat) return;
-
-      const note = keyMappings.find(
-        (keyMapping) => event.code === keyMapping.keyCode
-      )?.note;
-
-      if (note) {
-        event.preventDefault();
-        handleNoteOn(note, Utilities.buildNote(note).number);
-      }
-    });
-
-    window.addEventListener("keyup", (event) => {
-      const note = keyMappings.find(
-        (keyMapping) => event.code === keyMapping.keyCode
-      )?.note;
-
-      if (note) {
-        handleNoteOff(note, Utilities.buildNote(note).number);
-      }
-    });
-  }
-
-  WebMidi.enable()
-    .then(() => {
-      const firstAvailableMidiInput = WebMidi.inputs[0];
-
-      if (firstAvailableMidiInput) {
-        const midiInput = WebMidi.getInputById(firstAvailableMidiInput.id);
-
-        console.log(`Connected to MIDI device ${firstAvailableMidiInput.name}`);
-
-        midiInput.addListener("noteon", (event) => {
-          const { identifier, attack, number } = event.note;
-          handleNoteOn(identifier, number, toNormalizedFloat(attack));
-        });
-
-        midiInput.addListener("noteoff", (event) => {
-          const { identifier, number } = event.note;
-          handleNoteOff(identifier, number);
-        });
-      } else {
-        console.log("No MIDI devices available");
-      }
-    })
-    .catch(() => {
-      console.error(
-        "Unable to connect to any MIDI devices. " +
-          "Ensure that your browser is supported, and is " +
-          "running from localhost or a secure domain."
-      );
-    });
-
-  const handleNoteOn = (
-    note: string,
-    number: number,
-    attack: NormalizedFloat = toNormalizedFloat(1)
-  ) => {
-    if (modeManager.modeTransitionNotes.includes(note)) {
-      modeManager.transitionToNextMode();
-    }
-
-    keyEventManager.registerNoteOnEvent(note, number, attack);
-  };
-
-  const handleNoteOff = (note: string, number: number) => {
-    keyEventManager.registerNoteOffEvent(note, number);
-  };
-};
-
-setUpEventListeners();
+setUpEventListeners({ appProperties, modeManager, keyEventManager });
 canvasSketch(sketch1, settings);
