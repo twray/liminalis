@@ -1,5 +1,5 @@
-import AnimatableIsometricObject from "../animatable/AnimatableIsometricObject";
-import AnimatableObject from "../animatable/AnimatableObject";
+import AnimatableIsometricObject from "../core/AnimatableIsometricObject";
+import AnimatableObject from "../core/AnimatableObject";
 import IsometricView from "../views/IsometricView";
 
 type AnyAnimatableObject = AnimatableObject<any, any>;

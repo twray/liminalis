@@ -1,14 +1,5 @@
 import { NormalizedFloat, toNormalizedFloat } from "../types";
 
-export interface AnimatableObjectOptions<
-  TProps,
-  TRenderContext = CanvasRenderingContext2D
-> {
-  props: TProps;
-  render: (params: RenderParams<TProps, TRenderContext>) => void;
-  isPermanent?: boolean;
-}
-
 interface RenderParams<TProps, TRenderContext = CanvasRenderingContext2D> {
   props: TProps;
   context: TRenderContext;
@@ -22,7 +13,7 @@ interface RenderParams<TProps, TRenderContext = CanvasRenderingContext2D> {
   ) => number;
 }
 
-class AnimatableObject<TProps, TRenderContext = CanvasRenderingContext2D> {
+class AnimatableObject<TProps = {}, TRenderContext = CanvasRenderingContext2D> {
   public attackValue: NormalizedFloat = toNormalizedFloat(0);
   public sustainPeriod: number = 0;
   public decayPeriod: number = 0;
@@ -32,29 +23,42 @@ class AnimatableObject<TProps, TRenderContext = CanvasRenderingContext2D> {
   public timeFirstShown: Date | null = null;
   public timeShown: Date | null = null;
   public timeHidden: Date | null = null;
-  public readonly isPermanent: boolean = false;
 
-  public render: (params: RenderParams<TProps, TRenderContext>) => void =
+  public renderer: (params: RenderParams<TProps, TRenderContext>) => void =
     () => {};
-  public props: TProps;
+  public props: TProps = {} as TProps;
+  public isPermanent: boolean = false;
 
-  constructor(options: AnimatableObjectOptions<TProps, TRenderContext>) {
-    const { props, render, isPermanent = false } = options;
+  constructor() {}
 
+  withRenderer(
+    renderer: (params: RenderParams<TProps, TRenderContext>) => void
+  ) {
+    this.renderer = renderer;
+    return this;
+  }
+
+  withProps(props: TProps) {
     this.props = props;
-    this.render = render;
+    return this;
+  }
+
+  setIsPermanent(isPermanent: boolean) {
     this.isPermanent = isPermanent;
+    return this;
   }
 
   renderIn(context: TRenderContext): this {
     const { props, attackValue, decayFactor } = this;
-    this.render({
+
+    this.renderer({
       props,
       context,
       attackValue,
       decayFactor,
       getAnimationTrajectory: this.getAnimationTrajectory.bind(this),
     });
+
     return this;
   }
 

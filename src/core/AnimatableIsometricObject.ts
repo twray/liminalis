@@ -1,12 +1,12 @@
 import IsometricView from "../views/IsometricView";
-import AnimatableObject, { AnimatableObjectOptions } from "./AnimatableObject";
+import AnimatableObject from "./AnimatableObject";
 
 class AnimatableIsometricObject<TProps> extends AnimatableObject<
   TProps,
   IsometricView
 > {
-  constructor(options: AnimatableObjectOptions<TProps, IsometricView>) {
-    super(options);
+  constructor() {
+    super();
   }
 }
 

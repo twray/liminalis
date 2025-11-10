@@ -1,4 +1,6 @@
 import canvasSketch from "canvas-sketch";
+import { setUpEventListeners } from "./core/index.js";
+
 import { Utilities } from "webmidi";
 
 // Import types from organized structure
@@ -9,15 +11,14 @@ import {
   type SketchSettings,
 } from "./types/index.js";
 
+// Managers and utility classes
 import KeyEventManager from "./managers/KeyEventManager.js";
+import ModeManager from "./managers/ModeManager.js";
 import Visualisation from "./managers/Visualisation.js";
 
-import { color } from "canvas-sketch-util";
-import { easeInCubic, easeInQuad, easeOutBack } from "easing-utils";
-import AnimatableIsometricObject from "./animatable/AnimatableIsometricObject.js";
-import AnimatableObject from "./animatable/AnimatableObject.js";
-import { setUpEventListeners } from "./core/index.js";
-import ModeManager from "./managers/ModeManager.js";
+// Import animatable objects
+import { bouncyCuboid } from "./animatable/bouncyCuboid.js";
+import { springRectangle } from "./animatable/springRectangle.js";
 
 const settings: SketchSettings = {
   dimensions: [1080, 1920] as [number, number],
@@ -50,39 +51,16 @@ const sketch1 = ({ width, height }: CanvasProps) => {
   mappableBaseNotes.forEach((note, i) => {
     visualisation.add(
       note,
-      new AnimatableObject<{
-        x: number;
-        y: number;
-        width: number;
-        height: number;
-        fill: string;
-      }>({
-        props: {
+      springRectangle()
+        .withProps({
           x:
             width / 2 - innerBoxDimensions / 2 + i * (rectangleAndGapWidth * 2),
           y: height / 2 - innerBoxDimensions / 2,
           width: rectangleAndGapWidth,
           height: innerBoxDimensions,
           fill: "#333333",
-        },
-        render: ({ props, context, attackValue, decayFactor }) => {
-          const { x, y, width, height, fill } = props;
-
-          const easedDecayFactor = easeInCubic(decayFactor);
-
-          const [r, g, b] = color.parse(fill).rgb;
-
-          const fillWithAlpha = `rgba(${r}, ${g}, ${b}, ${easedDecayFactor})`;
-          const renderedHeight = attackValue * height * easedDecayFactor;
-          const yOffset = height - renderedHeight;
-
-          context.save();
-          context.fillStyle = fillWithAlpha;
-          context.fillRect(x, y + yOffset, width, renderedHeight);
-          context.restore();
-        },
-        isPermanent: true,
-      })
+        })
+        .setIsPermanent(true)
     );
   });
 
@@ -161,37 +139,8 @@ const sketch2 = ({ context, width, height }: CanvasProps) => {
         const positionIndex = mappableBaseNotes.indexOf(baseNote);
         visualisation.add(
           baseNote,
-          new AnimatableIsometricObject<{}>({
-            props: {},
-            render({
-              context,
-              attackValue,
-              decayFactor,
-              getAnimationTrajectory,
-            }) {
-              const bounceInAnimationTrajectory = getAnimationTrajectory(
-                1000,
-                0,
-                false,
-                easeOutBack
-              );
-
-              const adjustedAttackValue = easeInQuad(attackValue);
-
-              context.addCuboidAt({
-                isoX: -3 + positionIndex,
-                isoY: 0,
-                isoZ: -6 + positionIndex,
-                lengthX: 1,
-                lengthY: 3,
-                lengthZ: 1,
-                fill: "#333",
-                opacity: decayFactor,
-                translateZ:
-                  750 * adjustedAttackValue * (1 - bounceInAnimationTrajectory),
-              });
-            },
-          })
+          bouncyCuboid()
+            .withProps({ positionIndex })
             .attack(toNormalizedFloat(note.attack ?? 1))
             .sustain(10000)
         );
