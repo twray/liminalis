@@ -1,8 +1,8 @@
 import { easeInQuad, easeOutBack } from "easing-utils";
-import AnimatableIsometricObject from "../core/AnimatableIsometricObject";
+import { animatableIsometric } from "../core";
 
 export const bouncyCuboid = () => {
-  return new AnimatableIsometricObject<{
+  return animatableIsometric<{
     positionIndex: number;
   }>().withRenderer(
     ({ props, context, attackValue, decayFactor, getAnimationTrajectory }) => {

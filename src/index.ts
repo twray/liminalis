@@ -1,5 +1,5 @@
 import canvasSketch from "canvas-sketch";
-import { setUpEventListeners } from "./core/index.js";
+import { setUpEventListeners } from "./core";
 
 import { Utilities } from "webmidi";
 

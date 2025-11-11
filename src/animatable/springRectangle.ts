@@ -1,9 +1,9 @@
+import { animatable } from "../core";
 import { color } from "canvas-sketch-util";
 import { easeInCubic } from "easing-utils";
-import AnimatableObject from "../core/AnimatableObject";
 
 export const springRectangle = () => {
-  return new AnimatableObject<{
+  return animatable<{
     x: number;
     y: number;
     width: number;

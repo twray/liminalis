@@ -5,6 +5,9 @@ import {
   toNormalizedFloat,
 } from "../types";
 
+import AnimatableIsometricObject from "./AnimatableIsometricObject";
+import AnimatableObject from "./AnimatableObject";
+
 import keyMappings from "../data/keyMappings.json";
 import KeyEventManager from "../managers/KeyEventManager";
 import ModeManager from "../managers/ModeManager";
@@ -91,3 +94,8 @@ export const setUpEventListeners = ({
     keyEventManager.registerNoteOffEvent(note, number);
   };
 };
+
+export const animatable = <TProps>() => new AnimatableObject<TProps>();
+
+export const animatableIsometric = <TProps>() =>
+  new AnimatableIsometricObject<TProps>();
