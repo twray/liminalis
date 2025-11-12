@@ -5,7 +5,7 @@ export interface NoteEvent {
 }
 
 export interface TimeEvent {
-  time: number;
+  time: number | string;
 }
 
 export interface ChordEvent {
