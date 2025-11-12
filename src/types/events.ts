@@ -1,8 +1,11 @@
-export interface KeyEvent {
+export interface NoteEvent {
   note: string;
-  attack: number;
+  attack?: number;
   number?: number;
-  timestamp?: Date;
+}
+
+export interface TimeEvent {
+  time: number;
 }
 
 export interface ChordEvent {

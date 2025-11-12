@@ -1,22 +1,22 @@
 import { Chord } from "tonal";
 import { NormalizedFloat, toNormalizedFloat } from "../types";
 
-type KeyEventType = "noteon" | "noteoff";
+type NoteEventType = "noteon" | "noteoff";
 
-interface KeyEvent {
+interface NoteEvent {
   time: number;
-  event: KeyEventType;
+  event: NoteEventType;
   note: string;
   noteNumber: number;
   attack?: NormalizedFloat;
   [key: string]: any;
 }
 
-export default class KeyEventManager {
-  private keyEvents: KeyEvent[] = [];
-  private pressedKeys: Map<string, any> = new Map();
-  private keyEventsForFrames: Map<number, KeyEvent[]> = new Map();
-  private timeStampSinceLastFetchOfNewKeyEventsForFrame: number;
+export default class NoteEventManager {
+  private noteEvents: NoteEvent[] = [];
+  private pressedNotes: Map<string, any> = new Map();
+  private noteEventsForFrames: Map<number, NoteEvent[]> = new Map();
+  private timeStampSinceLastFetchOfNewNoteEventsForFrame: number;
   private timeStampSinceLastPhraseEventDetected: number | null = null;
   private timeStampSinceLastChordEventDetected: number | null = null;
   private timeStampSinceLastHarmonicQualityChangeEventDetected: number | null =
@@ -24,68 +24,68 @@ export default class KeyEventManager {
   public currentHarmonicScheme: "major" | "non-major";
 
   constructor(openingHarmonicScheme: "major" | "non-major" = "major") {
-    this.timeStampSinceLastFetchOfNewKeyEventsForFrame = new Date().getTime();
+    this.timeStampSinceLastFetchOfNewNoteEventsForFrame = new Date().getTime();
     this.currentHarmonicScheme = openingHarmonicScheme;
   }
 
-  getNewKeyEventsForFrame(
+  getNewNoteEventsForFrame(
     frameIndex: number,
-    eventFilter?: KeyEventType
-  ): KeyEvent[] {
+    eventFilter?: NoteEventType
+  ): NoteEvent[] {
     const timeStampOfCurrentEventFetch = new Date().getTime();
 
-    let newKeyEventsForFrame: KeyEvent[] = [];
+    let newNoteEventsForFrame: NoteEvent[] = [];
 
-    if (!this.keyEventsForFrames.has(frameIndex)) {
-      newKeyEventsForFrame = this.keyEvents.filter(
-        (keyEvent) =>
-          this.timeStampSinceLastFetchOfNewKeyEventsForFrame < keyEvent.time
+    if (!this.noteEventsForFrames.has(frameIndex)) {
+      newNoteEventsForFrame = this.noteEvents.filter(
+        (noteEvent) =>
+          this.timeStampSinceLastFetchOfNewNoteEventsForFrame < noteEvent.time
       );
 
-      this.keyEventsForFrames.set(frameIndex, newKeyEventsForFrame);
+      this.noteEventsForFrames.set(frameIndex, newNoteEventsForFrame);
     } else {
-      newKeyEventsForFrame = this.keyEventsForFrames.get(frameIndex)!;
+      newNoteEventsForFrame = this.noteEventsForFrames.get(frameIndex)!;
     }
 
-    this.timeStampSinceLastFetchOfNewKeyEventsForFrame =
+    this.timeStampSinceLastFetchOfNewNoteEventsForFrame =
       timeStampOfCurrentEventFetch;
 
     return eventFilter
-      ? newKeyEventsForFrame.filter(
-          (keyEvent) => keyEvent.event === eventFilter
+      ? newNoteEventsForFrame.filter(
+          (noteEvent) => noteEvent.event === eventFilter
         )
-      : newKeyEventsForFrame;
+      : newNoteEventsForFrame;
   }
 
-  getRecentlyPhrasedKeyEvents(
+  getRecentlyPhrasedNoteEvents(
     timeWindow: number = 2000,
     eventFilter?: string
-  ): KeyEvent[] {
-    const recentlyPhrasedKeyEvents = this.keyEvents.filter((keyEvent) => {
-      const keyEventIsNew =
-        this.timeStampSinceLastFetchOfNewKeyEventsForFrame <
-        keyEvent.time + timeWindow;
+  ): NoteEvent[] {
+    const recentlyPhrasedNoteEvents = this.noteEvents.filter((noteEvent) => {
+      const noteEventIsNew =
+        this.timeStampSinceLastFetchOfNewNoteEventsForFrame <
+        noteEvent.time + timeWindow;
 
       if (eventFilter) {
-        return keyEventIsNew && keyEvent.event === eventFilter;
+        return noteEventIsNew && noteEvent.event === eventFilter;
       } else {
-        return keyEventIsNew;
+        return noteEventIsNew;
       }
     });
 
-    return recentlyPhrasedKeyEvents;
+    return recentlyPhrasedNoteEvents;
   }
 
   getNewChordEventForFrame(timeWindowBetweenChordTones = 100) {
     const timeStampOfCurrentEventFetch = new Date().getTime();
 
-    const chordToneKeyEvents = this.getRecentlyPhrasedKeyEvents(
+    const chordToneNoteEvents = this.getRecentlyPhrasedNoteEvents(
       timeWindowBetweenChordTones,
       "noteon"
     );
 
     if (
-      chordToneKeyEvents.length >= 3 &&
+      chordToneNoteEvents.length >= 3 &&
       (this.timeStampSinceLastChordEventDetected === null ||
         timeStampOfCurrentEventFetch -
           this.timeStampSinceLastChordEventDetected >
@@ -93,27 +93,27 @@ export default class KeyEventManager {
     ) {
       this.timeStampSinceLastChordEventDetected = timeStampOfCurrentEventFetch;
 
-      return chordToneKeyEvents;
+      return chordToneNoteEvents;
     }
 
     return null;
   }
 
   getNewPhraseDetectionForFrame(pauseBetweenPhrases = 1000): boolean {
-    const { keyEvents } = this;
+    const { noteEvents } = this;
 
     const timeStampOfCurrentEventFetch = new Date().getTime();
 
-    const keyEventsNoteOn = keyEvents.filter(
-      (keyEvent) => keyEvent.event === "noteon"
+    const noteEventsNoteOn = noteEvents.filter(
+      (noteEvent) => noteEvent.event === "noteon"
     );
 
-    if (keyEventsNoteOn.length < 2) {
+    if (noteEventsNoteOn.length < 2) {
       return false;
     }
 
-    const lastEvent = keyEventsNoteOn[keyEventsNoteOn.length - 1]!;
-    const secondToLastEvent = keyEventsNoteOn[keyEventsNoteOn.length - 2]!;
+    const lastEvent = noteEventsNoteOn[noteEventsNoteOn.length - 1]!;
+    const secondToLastEvent = noteEventsNoteOn[noteEventsNoteOn.length - 2]!;
 
     if (timeStampOfCurrentEventFetch - lastEvent.time > pauseBetweenPhrases) {
       return false;
@@ -125,10 +125,10 @@ export default class KeyEventManager {
         this.timeStampSinceLastPhraseEventDetected >
         1000
     ) {
-      const hasPhrasePauseBetweenLastTwoKeyEvents =
+      const hasPhrasePauseBetweenLastTwoNoteEvents =
         lastEvent.time - secondToLastEvent.time >= pauseBetweenPhrases;
 
-      if (hasPhrasePauseBetweenLastTwoKeyEvents) {
+      if (hasPhrasePauseBetweenLastTwoNoteEvents) {
         this.timeStampSinceLastPhraseEventDetected =
           timeStampOfCurrentEventFetch;
         return true;
@@ -147,12 +147,12 @@ export default class KeyEventManager {
   ) {
     const timeStampOfCurrentEventFetch = new Date().getTime();
 
-    const chordToneKeyEvents = this.getNewChordEventForFrame(
+    const chordToneNoteEvents = this.getNewChordEventForFrame(
       timeWindowBetweenChordTones
     );
 
     if (
-      chordToneKeyEvents &&
+      chordToneNoteEvents &&
       (this.timeStampSinceLastHarmonicQualityChangeEventDetected === null ||
         timeStampOfCurrentEventFetch -
           this.timeStampSinceLastHarmonicQualityChangeEventDetected >
@@ -161,9 +161,9 @@ export default class KeyEventManager {
       this.timeStampSinceLastHarmonicQualityChangeEventDetected =
         timeStampOfCurrentEventFetch;
 
-      const chordTonesWithoutOctaveSuffixes = chordToneKeyEvents.map(
-        (chordToneKeyEvent) =>
-          chordToneKeyEvent.note
+      const chordTonesWithoutOctaveSuffixes = chordToneNoteEvents.map(
+        (chordToneNoteEvent) =>
+          chordToneNoteEvent.note
             .split("")
             .filter((character) => !/^[0-9]*$/.test(character))
             .join("")
@@ -195,10 +195,10 @@ export default class KeyEventManager {
     maxSemitoneDistance = 5,
     timeWindowBetweenChordTones = 600
   ) {
-    const { keyEvents } = this;
+    const { noteEvents } = this;
 
-    const lastThreeNotesPlayed = keyEvents
-      .filter((keyEvent) => keyEvent.event === "noteon")
+    const lastThreeNotesPlayed = noteEvents
+      .filter((noteEvent) => noteEvent.event === "noteon")
       .slice(-3);
 
     if (lastThreeNotesPlayed.length >= 3) {
@@ -256,8 +256,8 @@ export default class KeyEventManager {
 
   getIntensityIndex(timeWindow = 2000, intensityFactor = 5) {
     return Math.min(
-      this.getRecentlyPhrasedKeyEvents(timeWindow, "noteon")
-        .map((recentlyPhrasedKeyEvent) => recentlyPhrasedKeyEvent.attack)
+      this.getRecentlyPhrasedNoteEvents(timeWindow, "noteon")
+        .map((recentlyPhrasedNoteEvent) => recentlyPhrasedNoteEvent.attack)
         .reduce(
           (totalIntensity, currentIntensity) =>
             totalIntensity + (currentIntensity ?? 0),
@@ -272,9 +272,9 @@ export default class KeyEventManager {
     number: number,
     attack: NormalizedFloat = toNormalizedFloat(1)
   ): void {
-    this.pressedKeys.set(note, { note, noteNumber: number, attack });
+    this.pressedNotes.set(note, { note, noteNumber: number, attack });
 
-    this.keyEvents.push({
+    this.noteEvents.push({
       event: "noteon",
       time: new Date().getTime(),
       note,
@@ -284,9 +284,9 @@ export default class KeyEventManager {
   }
 
   registerNoteOffEvent(note: string, number: number): void {
-    this.pressedKeys.delete(note);
+    this.pressedNotes.delete(note);
 
-    this.keyEvents.push({
+    this.noteEvents.push({
       event: "noteoff",
       time: new Date().getTime(),
       note,

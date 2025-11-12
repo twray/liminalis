@@ -20,7 +20,7 @@ declare module "canvas-sketch" {
     suffix?: string;
   }
 
-  interface SketchProps {
+  export interface SketchProps {
     units: string;
     width: number;
     height: number;
@@ -47,7 +47,7 @@ declare module "canvas-sketch" {
     settings: SketchSettings;
   }
 
-  type SketchFunction = (
+  export type SketchFunction = (
     props: SketchProps
   ) => (props: SketchProps) => void | (() => void);
 
