@@ -1,3 +1,4 @@
+import canvasSketch, { SketchProps } from "canvas-sketch";
 import { Utilities, WebMidi } from "webmidi";
 import { toNormalizedFloat } from "../types";
 
@@ -13,11 +14,23 @@ import type {
 import AnimatableIsometricObject from "./AnimatableIsometricObject";
 import AnimatableObject from "./AnimatableObject";
 
-import canvasSketch, { SketchProps } from "canvas-sketch";
 import keyMappings from "../data/keyMappings.json";
 import ModeManager from "../managers/ModeManager";
 import NoteEventManager from "../managers/NoteEventManager";
 import Visualisation from "../managers/Visualisation";
+
+// Internal type definitions
+type NoteEventCallback = (
+  params: NoteEvent & {
+    visualisation: Visualisation;
+  }
+) => void;
+
+type TimeEventCallback = (
+  params: TimeEvent & {
+    visualisation: Visualisation;
+  }
+) => void;
 
 const setUpEventListeners = ({
   appProperties,
@@ -102,32 +115,67 @@ const setUpEventListeners = ({
   };
 };
 
+// Module-level state for callback management
+// let currentVisualisation: Visualisation | null = null;
+const visualisationState = {
+  currentFrame: 0,
+};
+
+const noteDownCallbacks: NoteEventCallback[] = [];
+const noteUpCallbacks: NoteEventCallback[] = [];
+const timeCallbacks: Array<{
+  time: number;
+  callback: TimeEventCallback;
+  frame: number | null;
+  expired: boolean;
+}> = [];
+
+// Export animatable and isometricAnimatableObjects
 export const animatable = <TProps>() => new AnimatableObject<TProps>();
 
 export const animatableIsometric = <TProps>() =>
   new AnimatableIsometricObject<TProps>();
 
-// TODO: Move this somewhere
-type NoteEventCallback = (
-  params: NoteEvent & {
-    visualisation: Visualisation;
-  }
-) => void;
+// Exported callback registration functions
+export const onNoteDown = (callback: NoteEventCallback) => {
+  noteDownCallbacks.push(callback);
+};
 
-type TimeEventCallback = (
-  params: TimeEvent & {
-    visualisation: Visualisation;
-  }
-) => void;
+export const onNoteUp = (callback: NoteEventCallback) => {
+  noteUpCallbacks.push(callback);
+};
 
-interface VisualisationProps extends SketchProps {
-  onNoteUp: (callback: NoteEventCallback) => void;
-  onNoteDown: (callback: NoteEventCallback) => void;
-  atTime: (time: number, callback: TimeEventCallback) => void;
-}
+export const atTime = (eventTime: number, callback: TimeEventCallback) => {
+  const { currentFrame } = visualisationState;
+
+  const eventsWithSameTime = timeCallbacks.filter(
+    (timeCallback) => timeCallback.time === eventTime
+  );
+
+  if (
+    eventsWithSameTime.length > 0 &&
+    eventsWithSameTime.some(
+      (eventWithSameTime) => eventWithSameTime.frame !== currentFrame
+    )
+  )
+    return;
+
+  timeCallbacks.push({
+    time: eventTime,
+    callback,
+    frame: currentFrame,
+    expired: false,
+  });
+};
+
+// Utility function to clear all callbacks (useful for hot reloading)
+const clearReactiveEventBasedCallbacks = () => {
+  noteDownCallbacks.length = 0;
+  noteUpCallbacks.length = 0;
+};
 
 export const createVisualisation = (
-  animationLoop: (props: VisualisationProps) => void
+  animationLoop: (props: SketchProps) => void
 ) => {
   const settings: SketchSettings = {
     dimensions: [1080, 1920] as [number, number],
@@ -144,13 +192,6 @@ export const createVisualisation = (
 
   const visualisation = new Visualisation();
 
-  const queuedTimeEventHandlers: {
-    time: number;
-    callback: TimeEventCallback;
-    frame: number;
-    expired: boolean;
-  }[] = [];
-
   const sketchFunction = (sketchProps: SketchProps) => {
     return (canvasProps: CanvasProps) => {
       const { context, width, height, frame, time } = canvasProps;
@@ -161,6 +202,7 @@ export const createVisualisation = (
 
       // Rendering only works if animated and if there are workable frames
       if (!frame) return;
+      visualisationState.currentFrame = frame;
 
       // Get recent key information as sent from MIDI controller / keyboard debugger
       const recentNotesPressedUp = noteEventManager.getNewNoteEventsForFrame(
@@ -172,60 +214,26 @@ export const createVisualisation = (
         "noteon"
       );
 
-      const queuedNoteDownEventHandlers: NoteEventCallback[] = [];
-      const queuedNoteUpEventHandlers: NoteEventCallback[] = [];
+      // Run main animation loop
+      animationLoop(sketchProps);
 
-      const onNoteDown = (callback: NoteEventCallback) => {
-        queuedNoteDownEventHandlers.push(callback);
-      };
-
-      const onNoteUp = (callback: NoteEventCallback) => {
-        queuedNoteUpEventHandlers.push(callback);
-      };
-
-      const atTime = (eventTime: number, callback: TimeEventCallback) => {
-        const eventsWithSameTime = queuedTimeEventHandlers.filter(
-          (queuedTimeEventHandler) => queuedTimeEventHandler.time === eventTime
-        );
-
-        if (
-          eventsWithSameTime.length > 0 &&
-          eventsWithSameTime.some(
-            (eventWithSameTime) => eventWithSameTime.frame !== frame
-          )
-        )
-          return;
-
-        queuedTimeEventHandlers.push({
-          time: eventTime,
-          callback,
-          frame,
-          expired: false,
-        });
-      };
-
-      animationLoop({
-        ...sketchProps,
-        atTime,
-        onNoteUp,
-        onNoteDown,
-      });
-
-      // React to event handlers from frame
+      // Handle module-level note down events
       recentNotesPressedDown.forEach((recentNotePressedDown) => {
-        queuedNoteDownEventHandlers.forEach((noteDownHandler) => {
-          noteDownHandler({ ...recentNotePressedDown, visualisation });
+        noteDownCallbacks.forEach((callback) => {
+          callback({ ...recentNotePressedDown, visualisation });
         });
       });
 
+      // Handle module-level note up events
       recentNotesPressedUp.forEach((recentNotePressedUp) => {
-        queuedNoteUpEventHandlers.forEach((noteUpHandler) => {
-          noteUpHandler({ ...recentNotePressedUp, visualisation });
+        noteUpCallbacks.forEach((callback) => {
+          callback({ ...recentNotePressedUp, visualisation });
         });
       });
 
       if (typeof time !== "undefined") {
-        queuedTimeEventHandlers
+        // Handle module-level time events
+        timeCallbacks
           .filter((queuedTimeEventHandler) => !queuedTimeEventHandler.expired)
           .forEach((queuedTimeEventHandler) => {
             if (time > queuedTimeEventHandler.time) {
@@ -234,6 +242,9 @@ export const createVisualisation = (
             }
           });
       }
+
+      // Clear callbacks for this frame
+      clearReactiveEventBasedCallbacks();
 
       // Remove objects that are either decayed or not visible
       visualisation.cleanUp();

@@ -1,5 +1,3 @@
-import Mode from "../util/Mode.js";
-
 export default class ModeManager {
   public modeTransitionNotes: string[];
   private currentModeIndex: number = 0;
@@ -46,19 +44,5 @@ export default class ModeManager {
     }
 
     this.currentModeIndex++;
-
-    const newlyTransitionedMode = this.getCurrentMode();
-
-    if (
-      [
-        Mode.TRANSITION_TO_BLOCK,
-        Mode.TRANSITION_BACK_TO_DARKNESS,
-        Mode.FINAL_BLOCK,
-      ].includes(newlyTransitionedMode as any)
-    ) {
-      this.timestampSinceTransitionToNewMode = new Date().getTime();
-    }
-
-    console.log(`Transitioning to mode: ${newlyTransitionedMode}`);
   }
 }

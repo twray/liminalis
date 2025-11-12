@@ -1,8 +1,8 @@
 import { bouncyCuboid } from "./animatable/bouncyCuboid";
-import { createVisualisation } from "./core";
+import { createVisualisation, onNoteDown, onNoteUp } from "./core";
 import { toNormalizedFloat } from "./types";
 
-createVisualisation(({ onNoteUp, onNoteDown }) => {
+createVisualisation(() => {
   const mappableBaseNotes = ["C", "D", "E", "F", "G", "A", "B"];
 
   onNoteDown(({ note, attack, visualisation }) => {
