@@ -1,16 +1,11 @@
 import { Chord } from "tonal";
-import { NormalizedFloat, toNormalizedFloat } from "../types";
-
-type NoteEventType = "noteon" | "noteoff";
-
-interface NoteEvent {
-  time: number;
-  event: NoteEventType;
-  note: string;
-  noteNumber: number;
-  attack?: NormalizedFloat;
-  [key: string]: any;
-}
+import {
+  NormalizedFloat,
+  NoteDownEvent,
+  NoteEvent,
+  NoteEventType,
+} from "../types";
+import { toNormalizedFloat } from "../util";
 
 export default class NoteEventManager {
   private noteEvents: NoteEvent[] = [];
@@ -50,6 +45,10 @@ export default class NoteEventManager {
     this.timeStampSinceLastFetchOfNewNoteEventsForFrame =
       timeStampOfCurrentEventFetch;
 
+    if (!eventFilter) {
+      return newNoteEventsForFrame;
+    }
+
     return eventFilter
       ? newNoteEventsForFrame.filter(
           (noteEvent) => noteEvent.event === eventFilter
@@ -81,7 +80,7 @@ export default class NoteEventManager {
 
     const chordToneNoteEvents = this.getRecentlyPhrasedNoteEvents(
       timeWindowBetweenChordTones,
-      "noteon"
+      "notedown"
     );
 
     if (
@@ -105,7 +104,7 @@ export default class NoteEventManager {
     const timeStampOfCurrentEventFetch = new Date().getTime();
 
     const noteEventsNoteOn = noteEvents.filter(
-      (noteEvent) => noteEvent.event === "noteon"
+      (noteEvent) => noteEvent.event === "notedown"
     );
 
     if (noteEventsNoteOn.length < 2) {
@@ -198,7 +197,7 @@ export default class NoteEventManager {
     const { noteEvents } = this;
 
     const lastThreeNotesPlayed = noteEvents
-      .filter((noteEvent) => noteEvent.event === "noteon")
+      .filter((noteEvent) => noteEvent.event === "notedown")
       .slice(-3);
 
     if (lastThreeNotesPlayed.length >= 3) {
@@ -256,8 +255,11 @@ export default class NoteEventManager {
 
   getIntensityIndex(timeWindow = 2000, intensityFactor = 5) {
     return Math.min(
-      this.getRecentlyPhrasedNoteEvents(timeWindow, "noteon")
-        .map((recentlyPhrasedNoteEvent) => recentlyPhrasedNoteEvent.attack)
+      this.getRecentlyPhrasedNoteEvents(timeWindow, "notedown")
+        .map(
+          (recentlyPhrasedNoteEvent) =>
+            (recentlyPhrasedNoteEvent as NoteDownEvent).attack
+        )
         .reduce(
           (totalIntensity, currentIntensity) =>
             totalIntensity + (currentIntensity ?? 0),
@@ -275,7 +277,7 @@ export default class NoteEventManager {
     this.pressedNotes.set(note, { note, noteNumber: number, attack });
 
     this.noteEvents.push({
-      event: "noteon",
+      event: "notedown",
       time: new Date().getTime(),
       note,
       noteNumber: number,
@@ -287,7 +289,7 @@ export default class NoteEventManager {
     this.pressedNotes.delete(note);
 
     this.noteEvents.push({
-      event: "noteoff",
+      event: "noteup",
       time: new Date().getTime(),
       note,
       noteNumber: number,

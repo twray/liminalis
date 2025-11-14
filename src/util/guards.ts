@@ -1,4 +1,4 @@
-import type { NormalizedFloat, TimeExpression } from "./common";
+import type { NormalizedFloat, TimeExpression } from "../types/common";
 
 export function isTimeExpression(value: string): value is TimeExpression {
   const timestampRegex = /^(?:(\d+):)?([0-5]?\d):([0-5]\d)$/;

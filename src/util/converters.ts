@@ -1,4 +1,4 @@
-import type { NormalizedFloat, TimeExpression } from "./common";
+import type { NormalizedFloat, TimeExpression } from "../types/common";
 import { isNormalizedFloat, isTimeExpression } from "./guards";
 
 export function toNormalizedFloat(value: number): NormalizedFloat {

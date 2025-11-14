@@ -1,8 +1,23 @@
-export interface NoteEvent {
+import { NormalizedFloat } from "./common";
+
+interface BaseNoteEvent {
+  time: number;
   note: string;
-  attack?: number;
-  number?: number;
+  noteNumber: number;
 }
+
+export type NoteEventType = "notedown" | "noteup";
+
+export interface NoteDownEvent extends BaseNoteEvent {
+  event: "notedown";
+  attack: NormalizedFloat;
+}
+
+export interface NoteUpEvent extends BaseNoteEvent {
+  event: "noteup";
+}
+
+export type NoteEvent = NoteDownEvent | NoteUpEvent;
 
 export interface TimeEvent {
   time: number | string;

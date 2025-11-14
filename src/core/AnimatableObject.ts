@@ -1,4 +1,5 @@
-import { NormalizedFloat, toNormalizedFloat } from "../types";
+import { NormalizedFloat } from "../types";
+import { toNormalizedFloat } from "../util";
 
 interface RenderParams<TProps, TRenderContext = CanvasRenderingContext2D> {
   props: TProps;

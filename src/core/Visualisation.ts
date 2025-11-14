@@ -39,6 +39,8 @@ class Visualisation {
           `or increase the maximum number of allowed animatable objects.`
       );
     }
+
+    return animatableObject;
   }
 
   renderObjects(context: CanvasRenderingContext2D) {

@@ -4,13 +4,14 @@ import {
   isTimeExpression,
   timeExpressionToMs,
   toNormalizedFloat,
-} from "../types";
+} from "../util";
 
 import type {
   AppSettings,
   CanvasProps,
   NormalizedFloat,
-  NoteEvent,
+  NoteDownEvent,
+  NoteUpEvent,
   SketchSettings,
   TimeEvent,
 } from "../types";
@@ -19,13 +20,36 @@ import AnimatableIsometricObject from "./AnimatableIsometricObject";
 import AnimatableObject from "./AnimatableObject";
 
 import keyMappings from "../data/keyMappings.json";
-import ModeManager from "../managers/ModeManager";
-import NoteEventManager from "../managers/NoteEventManager";
-import Visualisation from "../managers/Visualisation";
+import ModeManager from "./ModeManager";
+import NoteEventManager from "./NoteEventManager";
+import Visualisation from "./Visualisation";
 
 // Internal type definitions
-type NoteEventCallback = (
-  params: NoteEvent & {
+type MidiNoteEvent = {
+  note: {
+    identifier: string;
+    number: number;
+    attack: number;
+  };
+};
+
+type MidiEventCallback = (event: MidiNoteEvent) => void;
+
+const addMidiListener = (
+  input: any,
+  eventType: "noteon" | "noteoff",
+  callback: MidiEventCallback
+): void => {
+  input.addListener(eventType, callback);
+};
+type NoteDownEventCallback = (
+  params: NoteDownEvent & {
+    visualisation: Visualisation;
+  }
+) => void;
+
+type NoteUpEventCallback = (
+  params: NoteUpEvent & {
     visualisation: Visualisation;
   }
 ) => void;
@@ -44,8 +68,8 @@ type TimeCallbackEntry = {
 };
 
 interface VisualisationProps extends SketchProps {
-  onNoteDown: (callback: NoteEventCallback) => void;
-  onNoteUp: (callback: NoteEventCallback) => void;
+  onNoteDown: (callback: NoteDownEventCallback) => void;
+  onNoteUp: (callback: NoteUpEventCallback) => void;
   atTime: (time: number | string, callback: TimeEventCallback) => void;
 }
 
@@ -94,12 +118,12 @@ const setUpEventListeners = ({
 
         console.log(`Connected to MIDI device ${firstAvailableMidiInput.name}`);
 
-        midiInput.addListener("noteon", (event) => {
+        addMidiListener(midiInput, "noteon", (event) => {
           const { identifier, attack, number } = event.note;
           handleNoteOn(identifier, number, toNormalizedFloat(attack));
         });
 
-        midiInput.addListener("noteoff", (event) => {
+        addMidiListener(midiInput, "noteoff", (event) => {
           const { identifier, number } = event.note;
           handleNoteOff(identifier, number);
         });
@@ -174,22 +198,23 @@ export const createVisualisation = (
       // Get recent key information as sent from MIDI controller / keyboard debugger
       const recentNotesPressedUp = noteEventManager.getNewNoteEventsForFrame(
         frame,
-        "noteoff"
-      );
+        "noteup"
+      ) as NoteUpEvent[];
+
       const recentNotesPressedDown = noteEventManager.getNewNoteEventsForFrame(
         frame,
-        "noteon"
-      );
+        "notedown"
+      ) as NoteDownEvent[];
 
       // Store event-based callbacks to be executed as part of current frame
-      const noteDownCallbacks: NoteEventCallback[] = [];
-      const noteUpCallbacks: NoteEventCallback[] = [];
+      const noteDownCallbacks: NoteDownEventCallback[] = [];
+      const noteUpCallbacks: NoteUpEventCallback[] = [];
 
-      const onNoteDown = (callback: NoteEventCallback) => {
+      const onNoteDown = (callback: NoteDownEventCallback) => {
         noteDownCallbacks.push(callback);
       };
 
-      const onNoteUp = (callback: NoteEventCallback) => {
+      const onNoteUp = (callback: NoteUpEventCallback) => {
         noteUpCallbacks.push(callback);
       };
 

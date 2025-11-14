@@ -1,6 +1,5 @@
 import { bouncyCuboid } from "./animatable/bouncyCuboid";
 import { createVisualisation } from "./core";
-import { toNormalizedFloat } from "./types";
 
 createVisualisation(({ onNoteDown, onNoteUp }) => {
   const mappableBaseNotes = ["C", "D", "E", "F", "G", "A", "B"];
@@ -10,10 +9,7 @@ createVisualisation(({ onNoteDown, onNoteUp }) => {
 
     visualisation.add(
       note[0],
-      bouncyCuboid()
-        .withProps({ positionIndex })
-        .attack(toNormalizedFloat(attack ?? 1))
-        .sustain(10000)
+      bouncyCuboid().withProps({ positionIndex }).attack(attack).sustain(10000)
     );
   });
 
