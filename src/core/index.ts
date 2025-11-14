@@ -42,35 +42,40 @@ const addMidiListener = (
 ): void => {
   input.addListener(eventType, callback);
 };
-type NoteDownEventCallback = (
-  params: NoteDownEvent & {
-    visualisation: Visualisation;
-  }
+
+type VisualisationAndData<TData = any> = {
+  visualisation: Visualisation;
+  data: TData;
+};
+
+type NoteDownEventCallback<TData = any> = (
+  params: NoteDownEvent & VisualisationAndData<TData>
 ) => void;
 
-type NoteUpEventCallback = (
-  params: NoteUpEvent & {
-    visualisation: Visualisation;
-  }
+type NoteUpEventCallback<TData = any> = (
+  params: NoteUpEvent & VisualisationAndData<TData>
 ) => void;
 
-type TimeEventCallback = (
-  params: TimeEvent & {
-    visualisation: Visualisation;
-  }
+type SetupCallback<TData = any> = (params: {
+  visualisation: Visualisation;
+}) => TData;
+
+type TimeEventCallback<TData = any> = (
+  params: TimeEvent & VisualisationAndData<TData>
 ) => void;
 
-type TimeCallbackEntry = {
+type TimeCallbackEntry<TData = any> = {
   time: number;
-  callback: TimeEventCallback;
+  callback: TimeEventCallback<TData>;
   frame: number;
   expired: boolean;
 };
 
-interface VisualisationProps extends SketchProps {
-  onNoteDown: (callback: NoteDownEventCallback) => void;
-  onNoteUp: (callback: NoteUpEventCallback) => void;
-  atTime: (time: number | string, callback: TimeEventCallback) => void;
+interface VisualisationProps<TData = any> extends SketchProps {
+  onNoteDown: (callback: NoteDownEventCallback<TData>) => void;
+  onNoteUp: (callback: NoteUpEventCallback<TData>) => void;
+  atTime: (time: number | string, callback: TimeEventCallback<TData>) => void;
+  setup: (callback: SetupCallback<TData>) => void;
 }
 
 const setUpEventListeners = ({
@@ -165,8 +170,8 @@ export const animatableIsometric = <TProps>() =>
 
 // Export visualisation factory function
 
-export const createVisualisation = (
-  animationLoop: (props: VisualisationProps) => void
+export const createVisualisation = <TData>(
+  animationLoop: (props: VisualisationProps<TData>) => void
 ) => {
   const settings: SketchSettings = {
     dimensions: [1080, 1920] as [number, number],
@@ -182,18 +187,22 @@ export const createVisualisation = (
   const modeManager = new ModeManager([], []);
 
   const visualisation = new Visualisation();
-  const timeCallbacks: TimeCallbackEntry[] = [];
+
+  const timeCallbacks: TimeCallbackEntry<TData>[] = [];
+
+  let setupCallback: SetupCallback<TData> | undefined;
+  let visualisationData: TData = {} as TData;
 
   const sketchFunction = (sketchProps: SketchProps) => {
     return (canvasProps: CanvasProps) => {
       const { context, width, height, frame, time } = canvasProps;
 
+      // Rendering only works if animated and if there are workable frames
+      if (!frame) return;
+
       // Clear the canvas
       context.fillStyle = "white";
       context.fillRect(0, 0, width, height);
-
-      // Rendering only works if animated and if there are workable frames
-      if (!frame) return;
 
       // Get recent key information as sent from MIDI controller / keyboard debugger
       const recentNotesPressedUp = noteEventManager.getNewNoteEventsForFrame(
@@ -207,20 +216,20 @@ export const createVisualisation = (
       ) as NoteDownEvent[];
 
       // Store event-based callbacks to be executed as part of current frame
-      const noteDownCallbacks: NoteDownEventCallback[] = [];
-      const noteUpCallbacks: NoteUpEventCallback[] = [];
+      const noteDownCallbacks: NoteDownEventCallback<TData>[] = [];
+      const noteUpCallbacks: NoteUpEventCallback<TData>[] = [];
 
-      const onNoteDown = (callback: NoteDownEventCallback) => {
+      const onNoteDown = (callback: NoteDownEventCallback<TData>) => {
         noteDownCallbacks.push(callback);
       };
 
-      const onNoteUp = (callback: NoteUpEventCallback) => {
+      const onNoteUp = (callback: NoteUpEventCallback<TData>) => {
         noteUpCallbacks.push(callback);
       };
 
       const atTime = (
         eventTime: number | string,
-        callback: TimeEventCallback
+        callback: TimeEventCallback<TData>
       ) => {
         let eventTimeInMs = 0;
 
@@ -252,27 +261,53 @@ export const createVisualisation = (
         });
       };
 
+      const setup = (callback: SetupCallback) => {
+        setupCallback = callback;
+      };
+
       // Run main animation loop
-      animationLoop({ ...sketchProps, onNoteDown, onNoteUp, atTime });
+      animationLoop({
+        ...sketchProps,
+        time: sketchProps.time * 1000,
+        onNoteDown,
+        onNoteUp,
+        atTime,
+        setup,
+      });
 
       // Handle module-level note down events
       recentNotesPressedDown.forEach((recentNotePressedDown) => {
         noteDownCallbacks.forEach((callback) => {
-          callback({ ...recentNotePressedDown, visualisation });
+          callback({
+            ...recentNotePressedDown,
+            visualisation,
+            data: visualisationData,
+          });
         });
       });
 
       // Handle module-level note up events
       recentNotesPressedUp.forEach((recentNotePressedUp) => {
         noteUpCallbacks.forEach((callback) => {
-          callback({ ...recentNotePressedUp, visualisation });
+          callback({
+            ...recentNotePressedUp,
+            visualisation,
+            data: visualisationData,
+          });
         });
       });
+
+      // Handle events that happen at the start of the animation
+      if (setupCallback && frame === 1) {
+        const dataContextFromCallback = setupCallback({ visualisation });
+        if (dataContextFromCallback)
+          visualisationData = dataContextFromCallback;
+      }
 
       if (typeof time !== "undefined") {
         const timeInMs = time * 1000;
 
-        // Handle module-level time events
+        // Handle timed-based events
         timeCallbacks
           .filter((queuedTimeEventHandler) => !queuedTimeEventHandler.expired)
           .forEach((queuedTimeEventHandler) => {
@@ -280,6 +315,7 @@ export const createVisualisation = (
               queuedTimeEventHandler.callback({
                 time: timeInMs,
                 visualisation,
+                data: visualisationData,
               });
               queuedTimeEventHandler.expired = true;
             }
