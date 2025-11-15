@@ -2,13 +2,16 @@ import { bouncyCuboid } from "./animatable/bouncyCuboid";
 import { createVisualisation } from "./core";
 
 createVisualisation<{ mappableBaseNotes: string[]; index: number }>(
-  ({ onNoteDown, onNoteUp, setup }) => {
+  ({ onNoteDown, onNoteUp, setup, context, width, height }) => {
     setup(() => {
       return {
         mappableBaseNotes: ["C", "D", "E", "F", "G", "A", "B"],
         index: 5,
       };
     });
+
+    context.fillStyle = "beige";
+    context.fillRect(0, 0, width, height);
 
     onNoteDown(({ note, attack, visualisation, data }) => {
       const positionIndex = data.mappableBaseNotes.indexOf(note[0]) ?? 0;

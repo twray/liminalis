@@ -45,17 +45,18 @@ const addMidiListener = (
   input.addListener(eventType, callback);
 };
 
-type VisualisationAndData<TData = any> = {
+type CallbackBase<TData = any> = {
+  context: CanvasRenderingContext2D;
   visualisation: Visualisation;
   data: TData;
 };
 
 type NoteDownEventCallback<TData = any> = (
-  params: NoteDownEvent & VisualisationAndData<TData>
+  params: NoteDownEvent & CallbackBase<TData>
 ) => void;
 
 type NoteUpEventCallback<TData = any> = (
-  params: NoteUpEvent & VisualisationAndData<TData>
+  params: NoteUpEvent & CallbackBase<TData>
 ) => void;
 
 type SetupCallback<TData = any> = (params: {
@@ -63,7 +64,7 @@ type SetupCallback<TData = any> = (params: {
 }) => TData;
 
 type TimeEventCallback<TData = any> = (
-  params: TimeEvent & VisualisationAndData<TData>
+  params: TimeEvent & CallbackBase<TData>
 ) => void;
 
 type TimeCallbackEntry<TData = any> = {
@@ -210,6 +211,7 @@ export const createVisualisation = <TData>(
   let visualisationData: TData = {} as TData;
 
   const queuedContextActions: ContextAction[] = [];
+  let contextIsCalledWithinAnimationLoop = false;
 
   const sketchFunction = (sketchProps: SketchProps) => {
     return (canvasProps: CanvasProps) => {
@@ -292,10 +294,25 @@ export const createVisualisation = <TData>(
         },
       });
 
+      const watchedContextInAnimationLoop = watch(context, {
+        onAccess() {
+          if (!contextIsCalledWithinAnimationLoop) {
+            throw new Error(
+              "You are attempting to access the canvas context inside an event handler. " +
+                "To do so, please destructure the 'context' property within the callback " +
+                "function of the handler itself, rather than use the context object provided " +
+                "by the main animation loop."
+            );
+          }
+        },
+      });
+
+      contextIsCalledWithinAnimationLoop = true;
+
       // Run main animation loop
       animationLoop({
         ...sketchProps,
-        context: watchedContext,
+        context: watchedContextInAnimationLoop,
         time: sketchProps.time * 1000,
         onNoteDown,
         onNoteUp,
@@ -303,11 +320,14 @@ export const createVisualisation = <TData>(
         setup,
       });
 
+      contextIsCalledWithinAnimationLoop = false;
+
       // Handle module-level note down events
       recentNotesPressedDown.forEach((recentNotePressedDown) => {
         noteDownCallbacks.forEach((callback) => {
           callback({
             ...recentNotePressedDown,
+            context: watchedContext,
             visualisation,
             data: visualisationData,
           });
@@ -319,6 +339,7 @@ export const createVisualisation = <TData>(
         noteUpCallbacks.forEach((callback) => {
           callback({
             ...recentNotePressedUp,
+            context: watchedContext,
             visualisation,
             data: visualisationData,
           });
@@ -342,6 +363,7 @@ export const createVisualisation = <TData>(
             if (timeInMs > queuedTimeEventHandler.time) {
               queuedTimeEventHandler.callback({
                 time: timeInMs,
+                context: watchedContext,
                 visualisation,
                 data: visualisationData,
               });

@@ -3,6 +3,7 @@ export function watch<T extends object>(
   callbacks: {
     onPropertyChange?: (prop: string, newValue: any, oldValue: any) => void;
     onMethodCall?: (method: string, args: any[], result: any) => void;
+    onAccess?: () => void;
   }
 ): T {
   return new Proxy(obj, {
@@ -18,6 +19,8 @@ export function watch<T extends object>(
             callbacks.onMethodCall(property as string, args, result);
           }
 
+          callbacks.onAccess?.();
+
           return result;
         };
       }
@@ -31,6 +34,8 @@ export function watch<T extends object>(
       if (oldValue !== newValue && callbacks.onPropertyChange) {
         callbacks.onPropertyChange(property as string, newValue, oldValue);
       }
+
+      callbacks.onAccess?.();
 
       target[property as keyof T] = newValue;
       return true;
