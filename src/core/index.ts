@@ -2,8 +2,10 @@ import canvasSketch, { SketchProps } from "canvas-sketch";
 import { Utilities, WebMidi } from "webmidi";
 import {
   isTimeExpression,
+  propertyIsWritable,
   timeExpressionToMs,
   toNormalizedFloat,
+  watch,
 } from "../util";
 
 import type {
@@ -77,6 +79,20 @@ interface VisualisationProps<TData = any> extends SketchProps {
   atTime: (time: number | string, callback: TimeEventCallback<TData>) => void;
   setup: (callback: SetupCallback<TData>) => void;
 }
+
+interface PropertyContextAction {
+  type: "property";
+  property: string;
+  value: any;
+}
+
+interface MethodContextAction {
+  type: "method";
+  method: string;
+  args: any[];
+}
+
+type ContextAction = PropertyContextAction | MethodContextAction;
 
 const setUpEventListeners = ({
   appProperties,
@@ -193,6 +209,8 @@ export const createVisualisation = <TData>(
   let setupCallback: SetupCallback<TData> | undefined;
   let visualisationData: TData = {} as TData;
 
+  const queuedContextActions: ContextAction[] = [];
+
   const sketchFunction = (sketchProps: SketchProps) => {
     return (canvasProps: CanvasProps) => {
       const { context, width, height, frame, time } = canvasProps;
@@ -265,9 +283,19 @@ export const createVisualisation = <TData>(
         setupCallback = callback;
       };
 
+      const watchedContext = watch(context, {
+        onPropertyChange(property, value) {
+          queuedContextActions.push({ type: "property", property, value });
+        },
+        onMethodCall(method, args) {
+          queuedContextActions.push({ type: "method", method, args });
+        },
+      });
+
       // Run main animation loop
       animationLoop({
         ...sketchProps,
+        context: watchedContext,
         time: sketchProps.time * 1000,
         onNoteDown,
         onNoteUp,
@@ -321,6 +349,32 @@ export const createVisualisation = <TData>(
             }
           });
       }
+
+      // Apply queued context prop changes
+      queuedContextActions.forEach((queuedAction) => {
+        switch (queuedAction.type) {
+          case "property": {
+            const { property, value } = queuedAction;
+
+            if (propertyIsWritable(context, property)) {
+              const key = property as keyof CanvasRenderingContext2D;
+              (context[key] as typeof value) = value;
+            }
+            break;
+          }
+          case "method": {
+            const { method, args } = queuedAction;
+            const key = method as keyof CanvasRenderingContext2D;
+            const fn = context[key];
+
+            if (typeof fn === "function") {
+              (fn as Function).apply(context, args);
+            }
+            break;
+          }
+          default:
+        }
+      });
 
       // Remove objects that are either decayed or not visible
       visualisation.cleanUp();
