@@ -51,15 +51,21 @@ type CallbackBase<TData = Record<string, any>> = {
   data: TData;
 };
 
-type NoteDownEventCallback<TData = Record<string, any>> = (params: NoteDownEvent & CallbackBase<TData>) => void;
+type NoteDownEventCallback<TData = Record<string, any>> = (
+  params: NoteDownEvent & CallbackBase<TData>
+) => void;
 
-type NoteUpEventCallback<TData = Record<string, any>> = (params: NoteUpEvent & CallbackBase<TData>) => void;
+type NoteUpEventCallback<TData = Record<string, any>> = (
+  params: NoteUpEvent & CallbackBase<TData>
+) => void;
 
 type SetupCallback<TData = Record<string, any>> = (params: {
   visualisation: Visualisation;
 }) => TData;
 
-type TimeEventCallback<TData = Record<string, any>> = (params: TimeEvent & CallbackBase<TData>) => void;
+type TimeEventCallback<TData = Record<string, any>> = (
+  params: TimeEvent & CallbackBase<TData>
+) => void;
 
 type TimeCallbackEntry<TData = Record<string, any>> = {
   time: number;
@@ -126,7 +132,9 @@ export class VisualisationAnimationLoopHandler<TData = Record<string, any>> {
 
   constructor() {}
 
-  setup<T extends Record<string, any>>(setupCallback: SetupCallback<T>): VisualisationAnimationLoopHandler<T> {
+  setup<T extends Record<string, any>>(
+    setupCallback: SetupCallback<T>
+  ): VisualisationAnimationLoopHandler<T> {
     const instance = this as any as VisualisationAnimationLoopHandler<T>;
     instance.#setupCallback = setupCallback;
     return instance;
