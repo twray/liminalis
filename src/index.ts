@@ -21,13 +21,16 @@ createVisualisation
           .attack(attack)
           .sustain(10000)
       );
+
       context.fillStyle = "red";
       context.fillRect(0, 0, width, height);
+
       data.index += 1;
     });
 
     onNoteUp(({ note, visualisation }) => {
       visualisation.get(note[0])?.decay(2000);
+
       context.fillStyle = "yellow";
       context.fillRect(0, 0, width, height);
     });

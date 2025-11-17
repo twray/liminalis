@@ -63,6 +63,10 @@ type TimeEventCallback<TData = Record<string, any>> = (
   params: TimeEvent & CallbackBase<TData>
 ) => void;
 
+type AtStartEventCallback<TData = Record<string, any>> = (
+  params: CallbackBase<TData>
+) => void;
+
 type TimeCallbackEntry<TData = Record<string, any>> = {
   time: number;
   callback: TimeEventCallback<TData>;
@@ -81,6 +85,7 @@ interface VisualisationProps<TData = Record<string, any>> extends SketchProps {
   onNoteDown: (callback: NoteDownEventCallback<TData>) => void;
   onNoteUp: (callback: NoteUpEventCallback<TData>) => void;
   atTime: (time: number | string, callback: TimeEventCallback<TData>) => void;
+  atStart: (callback: AtStartEventCallback<TData>) => void;
 }
 
 interface PropertyContextAction {
@@ -206,6 +211,10 @@ export class VisualisationAnimationLoopHandler<TData = Record<string, any>> {
           });
         };
 
+        const atStart = (callback: AtStartEventCallback<TData>) => {
+          atTime(0, callback);
+        };
+
         const watchedContext = watch(context, {
           onPropertyChange: (property, value) => {
             if (this.#canvasContextIsAccessedWithinContextOfEventHandler) {
@@ -232,6 +241,7 @@ export class VisualisationAnimationLoopHandler<TData = Record<string, any>> {
           onNoteDown,
           onNoteUp,
           atTime,
+          atStart,
         });
 
         this.#canvasContextIsAccessedWithinContextOfEventHandler = true;
