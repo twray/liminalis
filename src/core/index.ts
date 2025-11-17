@@ -46,7 +46,6 @@ const addMidiListener = (
 };
 
 type CallbackBase<TData = any> = {
-  context: CanvasRenderingContext2D;
   visualisation: Visualisation;
   data: TData;
 };
@@ -75,10 +74,11 @@ type TimeCallbackEntry<TData = any> = {
 };
 
 interface VisualisationProps<TData = any> extends SketchProps {
+  setup: (callback: SetupCallback<TData>) => void;
+  data: TData;
   onNoteDown: (callback: NoteDownEventCallback<TData>) => void;
   onNoteUp: (callback: NoteUpEventCallback<TData>) => void;
   atTime: (time: number | string, callback: TimeEventCallback<TData>) => void;
-  setup: (callback: SetupCallback<TData>) => void;
 }
 
 interface PropertyContextAction {
@@ -208,10 +208,16 @@ export const createVisualisation = <TData>(
   const timeCallbacks: TimeCallbackEntry<TData>[] = [];
 
   let setupCallback: SetupCallback<TData> | undefined;
+
   let visualisationData: TData = {} as TData;
 
+  // Changes and methods to context that are called within event handlers
+  // need to be queued so that they are stateful across frames. The following
+  // values track these actions, and track whether context is called within
+  // an event handler or not.
+
   const queuedContextActions: ContextAction[] = [];
-  let contextIsCalledWithinAnimationLoop = false;
+  let canvasContextIsAccessedWithinContextOfEventHandler = false;
 
   const sketchFunction = (sketchProps: SketchProps) => {
     return (canvasProps: CanvasProps) => {
@@ -287,47 +293,36 @@ export const createVisualisation = <TData>(
 
       const watchedContext = watch(context, {
         onPropertyChange(property, value) {
-          queuedContextActions.push({ type: "property", property, value });
+          if (canvasContextIsAccessedWithinContextOfEventHandler) {
+            queuedContextActions.push({ type: "property", property, value });
+          }
         },
         onMethodCall(method, args) {
-          queuedContextActions.push({ type: "method", method, args });
-        },
-      });
-
-      const watchedContextInAnimationLoop = watch(context, {
-        onAccess() {
-          if (!contextIsCalledWithinAnimationLoop) {
-            throw new Error(
-              "You are attempting to access the canvas context inside an event handler. " +
-                "To do so, please destructure the 'context' property within the callback " +
-                "function of the handler itself, rather than use the context object provided " +
-                "by the main animation loop."
-            );
+          if (canvasContextIsAccessedWithinContextOfEventHandler) {
+            queuedContextActions.push({ type: "method", method, args });
           }
         },
       });
 
-      contextIsCalledWithinAnimationLoop = true;
-
       // Run main animation loop
       animationLoop({
         ...sketchProps,
-        context: watchedContextInAnimationLoop,
+        context: watchedContext,
         time: sketchProps.time * 1000,
+        setup,
+        data: visualisationData,
         onNoteDown,
         onNoteUp,
         atTime,
-        setup,
       });
 
-      contextIsCalledWithinAnimationLoop = false;
+      canvasContextIsAccessedWithinContextOfEventHandler = true;
 
       // Handle module-level note down events
       recentNotesPressedDown.forEach((recentNotePressedDown) => {
         noteDownCallbacks.forEach((callback) => {
           callback({
             ...recentNotePressedDown,
-            context: watchedContext,
             visualisation,
             data: visualisationData,
           });
@@ -339,7 +334,6 @@ export const createVisualisation = <TData>(
         noteUpCallbacks.forEach((callback) => {
           callback({
             ...recentNotePressedUp,
-            context: watchedContext,
             visualisation,
             data: visualisationData,
           });
@@ -363,7 +357,6 @@ export const createVisualisation = <TData>(
             if (timeInMs > queuedTimeEventHandler.time) {
               queuedTimeEventHandler.callback({
                 time: timeInMs,
-                context: watchedContext,
                 visualisation,
                 data: visualisationData,
               });
@@ -371,6 +364,8 @@ export const createVisualisation = <TData>(
             }
           });
       }
+
+      canvasContextIsAccessedWithinContextOfEventHandler = false;
 
       // Apply queued context prop changes
       queuedContextActions.forEach((queuedAction) => {
