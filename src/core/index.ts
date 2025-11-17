@@ -46,24 +46,24 @@ const addMidiListener = (
   input.addListener(eventType, callback);
 };
 
-type CallbackBase = {
+type CallbackBase<TData = Record<string, any>> = {
   visualisation: Visualisation;
-  data: Record<string, any>;
+  data: TData;
 };
 
-type NoteDownEventCallback = (params: NoteDownEvent & CallbackBase) => void;
+type NoteDownEventCallback<TData = Record<string, any>> = (params: NoteDownEvent & CallbackBase<TData>) => void;
 
-type NoteUpEventCallback = (params: NoteUpEvent & CallbackBase) => void;
+type NoteUpEventCallback<TData = Record<string, any>> = (params: NoteUpEvent & CallbackBase<TData>) => void;
 
-type SetupCallback = (params: {
+type SetupCallback<TData = Record<string, any>> = (params: {
   visualisation: Visualisation;
-}) => Record<string, any>;
+}) => TData;
 
-type TimeEventCallback = (params: TimeEvent & CallbackBase) => void;
+type TimeEventCallback<TData = Record<string, any>> = (params: TimeEvent & CallbackBase<TData>) => void;
 
-type TimeCallbackEntry = {
+type TimeCallbackEntry<TData = Record<string, any>> = {
   time: number;
-  callback: TimeEventCallback;
+  callback: TimeEventCallback<TData>;
   frame: number;
   expired: boolean;
 };
@@ -74,11 +74,11 @@ interface SetUpEventListenersParams {
   noteEventManager: NoteEventManager;
 }
 
-interface VisualisationProps extends SketchProps {
-  data: Record<string, any>;
-  onNoteDown: (callback: NoteDownEventCallback) => void;
-  onNoteUp: (callback: NoteUpEventCallback) => void;
-  atTime: (time: number | string, callback: TimeEventCallback) => void;
+interface VisualisationProps<TData = Record<string, any>> extends SketchProps {
+  data: TData;
+  onNoteDown: (callback: NoteDownEventCallback<TData>) => void;
+  onNoteUp: (callback: NoteUpEventCallback<TData>) => void;
+  atTime: (time: number | string, callback: TimeEventCallback<TData>) => void;
 }
 
 interface PropertyContextAction {
@@ -95,7 +95,7 @@ interface MethodContextAction {
 
 type ContextAction = PropertyContextAction | MethodContextAction;
 
-export class VisualisationAnimationLoopHandler {
+export class VisualisationAnimationLoopHandler<TData = Record<string, any>> {
   #settings: SketchSettings = {
     dimensions: [1080, 1920] as [number, number],
     animate: true,
@@ -111,10 +111,10 @@ export class VisualisationAnimationLoopHandler {
 
   #visualisation = new Visualisation();
 
-  #timeCallbacks: TimeCallbackEntry[] = [];
-  #setupCallback: SetupCallback | undefined;
+  #timeCallbacks: TimeCallbackEntry<TData>[] = [];
+  #setupCallback: SetupCallback<TData> | undefined;
 
-  #visualisationData: Record<string, any> = {};
+  #visualisationData: TData = {} as TData;
 
   // Changes and methods to context that are called within event handlers
   // need to be queued so that they are stateful across frames. The following
@@ -126,12 +126,13 @@ export class VisualisationAnimationLoopHandler {
 
   constructor() {}
 
-  setup(setupCallback: SetupCallback) {
-    this.#setupCallback = setupCallback;
-    return this;
+  setup<T extends Record<string, any>>(setupCallback: SetupCallback<T>): VisualisationAnimationLoopHandler<T> {
+    const instance = this as any as VisualisationAnimationLoopHandler<T>;
+    instance.#setupCallback = setupCallback;
+    return instance;
   }
 
-  render(animationLoop: (props: VisualisationProps) => void) {
+  render(animationLoop: (props: VisualisationProps<TData>) => void) {
     const sketchFunction = (sketchProps: SketchProps) => {
       return (canvasProps: CanvasProps) => {
         const { context, width, height, frame, time } = canvasProps;
@@ -157,20 +158,20 @@ export class VisualisationAnimationLoopHandler {
           ) as NoteDownEvent[];
 
         // Store event-based callbacks to be executed as part of current frame
-        const noteDownCallbacks: NoteDownEventCallback[] = [];
-        const noteUpCallbacks: NoteUpEventCallback[] = [];
+        const noteDownCallbacks: NoteDownEventCallback<TData>[] = [];
+        const noteUpCallbacks: NoteUpEventCallback<TData>[] = [];
 
-        const onNoteDown = (callback: NoteDownEventCallback) => {
+        const onNoteDown = (callback: NoteDownEventCallback<TData>) => {
           noteDownCallbacks.push(callback);
         };
 
-        const onNoteUp = (callback: NoteUpEventCallback) => {
+        const onNoteUp = (callback: NoteUpEventCallback<TData>) => {
           noteUpCallbacks.push(callback);
         };
 
         const atTime = (
           eventTime: number | string,
-          callback: TimeEventCallback
+          callback: TimeEventCallback<TData>
         ) => {
           let eventTimeInMs = 0;
 

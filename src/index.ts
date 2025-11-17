@@ -2,15 +2,11 @@ import { bouncyCuboid } from "./animatable/bouncyCuboid";
 import { createVisualisation } from "./core";
 
 createVisualisation
-  .setup(() => {
-    console.log("hello world");
-
-    return {
-      mappableBaseNotes: ["C", "D", "E", "F", "G", "A", "B"],
-      index: 5,
-      colors: ["red", "orange", "yellow", "green", "bluee"],
-    };
-  })
+  .setup(() => ({
+    mappableBaseNotes: ["C", "D", "E", "F", "G", "A", "B"],
+    index: 5,
+    colors: ["red", "orange", "yellow", "green", "bluee"],
+  }))
   .render(({ onNoteDown, onNoteUp, context, width, height }) => {
     context.fillStyle = "beige";
     context.fillRect(0, 0, width, height);
