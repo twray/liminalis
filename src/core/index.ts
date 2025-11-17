@@ -59,10 +59,6 @@ type NoteUpEventCallback<TData = Record<string, any>> = (
   params: NoteUpEvent & CallbackBase<TData>
 ) => void;
 
-type SetupCallback<TData = Record<string, any>> = (params: {
-  visualisation: Visualisation;
-}) => TData;
-
 type TimeEventCallback<TData = Record<string, any>> = (
   params: TimeEvent & CallbackBase<TData>
 ) => void;
@@ -118,7 +114,6 @@ export class VisualisationAnimationLoopHandler<TData = Record<string, any>> {
   #visualisation = new Visualisation();
 
   #timeCallbacks: TimeCallbackEntry<TData>[] = [];
-  #setupCallback: SetupCallback<TData> | undefined;
 
   #visualisationData: TData = {} as TData;
 
@@ -132,11 +127,11 @@ export class VisualisationAnimationLoopHandler<TData = Record<string, any>> {
 
   constructor() {}
 
-  setup<T extends Record<string, any>>(
-    setupCallback: SetupCallback<T>
+  withData<T extends Record<string, any>>(
+    data: T
   ): VisualisationAnimationLoopHandler<T> {
     const instance = this as any as VisualisationAnimationLoopHandler<T>;
-    instance.#setupCallback = setupCallback;
+    instance.#visualisationData = data;
     return instance;
   }
 
@@ -263,15 +258,6 @@ export class VisualisationAnimationLoopHandler<TData = Record<string, any>> {
           });
         });
 
-        // Handle events that happen at the start of the animation
-        if (this.#setupCallback && frame === 1) {
-          const dataContextFromCallback = this.#setupCallback({
-            visualisation: this.#visualisation,
-          });
-          if (dataContextFromCallback)
-            this.#visualisationData = dataContextFromCallback;
-        }
-
         if (typeof time !== "undefined") {
           const timeInMs = time * 1000;
 
@@ -331,6 +317,7 @@ export class VisualisationAnimationLoopHandler<TData = Record<string, any>> {
       modeManager: this.#modeManager,
       noteEventManager: this.#noteEventManager,
     });
+
     canvasSketch(sketchFunction, this.#settings);
   }
 
