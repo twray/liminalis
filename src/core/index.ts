@@ -199,10 +199,6 @@ export class VisualisationAnimationLoopHandler<TData = Record<string, any>> {
             "notedown"
           ) as NoteDownEvent[];
 
-        if (recentNotesPressedDown.length || recentNotesPressedUp.length) {
-          console.log({ recentNotesPressedDown, recentNotesPressedUp });
-        }
-
         // Store event-based callbacks to be executed as part of current frame
         const noteDownCallbacks: NoteDownEventCallback<TData>[] = [];
         const noteUpCallbacks: NoteUpEventCallback<TData>[] = [];
