@@ -124,6 +124,7 @@ export class VisualisationAnimationLoopHandler<TData = Record<string, any>> {
     ],
     animate: true,
     fps: DEFAULTS.SETTINGS_FPS,
+    playbackRate: "throttle",
   };
 
   #appProperties: AppSettings = {

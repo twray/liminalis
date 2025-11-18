@@ -4,7 +4,7 @@ declare module "canvas-sketch" {
     animate?: boolean;
     fps?: number;
     duration?: number;
-    playbackRate?: number;
+    playbackRate?: "throttle" | "fixed";
     exportPixelRatio?: number;
     scaleToView?: boolean;
     resizeCanvas?: boolean;

@@ -9,7 +9,7 @@ export interface SketchSettings {
   animate: boolean;
   fps: number;
   duration?: number;
-  playbackRate?: number;
+  playbackRate?: "throttle" | "fixed";
 }
 
 export interface IsometricViewSettings {
