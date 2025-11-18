@@ -80,6 +80,13 @@ interface SetUpEventListenersParams {
   noteEventManager: NoteEventManager;
 }
 
+interface VisualisationSettings {
+  width?: number;
+  height?: number;
+  fps?: number;
+  computerKeyboardDebugEnabled?: boolean;
+}
+
 interface VisualisationProps<TData = Record<string, any>> extends SketchProps {
   data: TData;
   onNoteDown: (callback: NoteDownEventCallback<TData>) => void;
@@ -102,15 +109,26 @@ interface MethodContextAction {
 
 type ContextAction = PropertyContextAction | MethodContextAction;
 
+const DEFAULTS = {
+  SETTINGS_WIDTH: 1080,
+  SETTINGS_HEIGHT: 1920,
+  SETTINGS_FPS: 60,
+  SETTINGS_COMPUTER_KEYBOARD_DEBUG_ENABLED: true,
+};
+
 export class VisualisationAnimationLoopHandler<TData = Record<string, any>> {
   #settings: SketchSettings = {
-    dimensions: [1080, 1920] as [number, number],
+    dimensions: [DEFAULTS.SETTINGS_WIDTH, DEFAULTS.SETTINGS_HEIGHT] as [
+      number,
+      number
+    ],
     animate: true,
-    fps: 60,
+    fps: DEFAULTS.SETTINGS_FPS,
   };
 
   #appProperties: AppSettings = {
-    computerKeyboardDebugEnabled: true,
+    computerKeyboardDebugEnabled:
+      DEFAULTS.SETTINGS_COMPUTER_KEYBOARD_DEBUG_ENABLED,
   };
 
   #noteEventManager = new NoteEventManager("major");
@@ -131,6 +149,22 @@ export class VisualisationAnimationLoopHandler<TData = Record<string, any>> {
   #canvasContextIsAccessedWithinContextOfEventHandler = false;
 
   constructor() {}
+
+  withSettings({
+    width = DEFAULTS.SETTINGS_WIDTH,
+    height = DEFAULTS.SETTINGS_HEIGHT,
+    fps = 60,
+    computerKeyboardDebugEnabled = DEFAULTS.SETTINGS_COMPUTER_KEYBOARD_DEBUG_ENABLED,
+  }: VisualisationSettings) {
+    this.#settings = { ...this.#settings, dimensions: [width, height], fps };
+
+    this.#appProperties = {
+      ...this.#appProperties,
+      computerKeyboardDebugEnabled,
+    };
+
+    return this;
+  }
 
   withData<T extends Record<string, any>>(
     data: T
@@ -164,6 +198,10 @@ export class VisualisationAnimationLoopHandler<TData = Record<string, any>> {
             frame,
             "notedown"
           ) as NoteDownEvent[];
+
+        if (recentNotesPressedDown.length || recentNotesPressedUp.length) {
+          console.log({ recentNotesPressedDown, recentNotesPressedUp });
+        }
 
         // Store event-based callbacks to be executed as part of current frame
         const noteDownCallbacks: NoteDownEventCallback<TData>[] = [];
