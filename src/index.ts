@@ -2,7 +2,6 @@ import { bouncyCuboid } from "./animatable/bouncyCuboid";
 import { createVisualisation } from "./core";
 
 createVisualisation
-  .withSettings({ fps: 60 })
   .withData({
     mappableBaseNotes: ["C", "D", "E", "F", "G", "A", "B"],
     index: 5,
