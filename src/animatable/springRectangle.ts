@@ -1,6 +1,6 @@
-import { animatable } from "../core";
 import { color } from "canvas-sketch-util";
 import { easeInCubic } from "easing-utils";
+import { animatable } from "../core";
 
 export const springRectangle = () => {
   return animatable<{
@@ -9,7 +9,7 @@ export const springRectangle = () => {
     width: number;
     height: number;
     fill: string;
-  }>().withRenderer(({ props, context, attackValue, decayFactor }) => {
+  }>().withRenderer(({ props, attackValue, decayFactor, drawRectangle }) => {
     const { x, y, width, height, fill } = props;
 
     const easedDecayFactor = easeInCubic(decayFactor);
@@ -20,9 +20,12 @@ export const springRectangle = () => {
     const renderedHeight = attackValue * height * easedDecayFactor;
     const yOffset = height - renderedHeight;
 
-    context.save();
-    context.fillStyle = fillWithAlpha;
-    context.fillRect(x, y + yOffset, width, renderedHeight);
-    context.restore();
+    drawRectangle({
+      x,
+      y: y + yOffset,
+      width,
+      height: renderedHeight,
+      fillColor: fillWithAlpha,
+    });
   });
 };

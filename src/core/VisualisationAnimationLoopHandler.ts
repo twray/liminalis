@@ -24,6 +24,7 @@ import NoteEventManager from "./NoteEventManager";
 import Visualisation from "./Visualisation";
 
 import keyMappings from "../data/keyMappings.json";
+import { ContextPrimitives, getContextPrimitives } from "./contextPrimitives";
 
 type MidiNoteEvent = {
   note: {
@@ -75,7 +76,9 @@ interface VisualisationSettings {
   computerKeyboardDebugEnabled?: boolean;
 }
 
-interface VisualisationProps<TData = Record<string, any>> extends SketchProps {
+interface SetupFunctionProps<TData = Record<string, any>>
+  extends ContextPrimitives {
+  context: CanvasRenderingContext2D;
   data: TData;
   onNoteDown: (callback: NoteDownEventCallback<TData>) => void;
   onNoteUp: (callback: NoteUpEventCallback<TData>) => void;
@@ -137,7 +140,6 @@ class VisualisationAnimationLoopHandler<TData = Record<string, any>> {
   // an event handler or not.
 
   #queuedContextActions: ContextAction[] = [];
-  #inContextOfEventHandler = false;
 
   constructor() {}
 
@@ -165,7 +167,7 @@ class VisualisationAnimationLoopHandler<TData = Record<string, any>> {
     return instance;
   }
 
-  setup(setupFunction: (props: VisualisationProps<TData>) => void) {
+  setup(setupFunction: (props: SetupFunctionProps<TData>) => void) {
     const sketchFunction = (sketchProps: SketchProps) => {
       const { context } = sketchProps;
 
@@ -206,32 +208,27 @@ class VisualisationAnimationLoopHandler<TData = Record<string, any>> {
         atTime(0, callback);
       };
 
-      const watchedContext = watch(context, {
+      const persistentContext = watch(context, {
         onPropertyChange: (property, value) => {
-          if (this.#inContextOfEventHandler) {
-            this.#queuedContextActions.push({
-              type: "property",
-              property,
-              value,
-            });
-          }
+          this.#queuedContextActions.push({
+            type: "property",
+            property,
+            value,
+          });
         },
         onMethodCall: (method, args) => {
-          if (this.#inContextOfEventHandler) {
-            this.#queuedContextActions.push({ type: "method", method, args });
-          }
+          this.#queuedContextActions.push({ type: "method", method, args });
         },
       });
 
       setupFunction({
-        ...sketchProps,
-        context: watchedContext,
-        time: sketchProps.time * 1000,
+        context: persistentContext,
         data: this.#visualisationData,
         onNoteDown,
         onNoteUp,
         atTime,
         atStart,
+        ...getContextPrimitives(persistentContext),
       });
 
       return (canvasProps: CanvasProps) => {
@@ -256,8 +253,6 @@ class VisualisationAnimationLoopHandler<TData = Record<string, any>> {
             frame,
             "notedown"
           ) as NoteDownEvent[];
-
-        this.#inContextOfEventHandler = true;
 
         // Handle module-level note down events
         recentNotesPressedDown.forEach((recentNotePressedDown) => {
@@ -298,8 +293,6 @@ class VisualisationAnimationLoopHandler<TData = Record<string, any>> {
               }
             });
         }
-
-        this.#inContextOfEventHandler = false;
 
         // Apply queued context prop changes
         this.#queuedContextActions.forEach((queuedAction) => {

@@ -1,5 +1,6 @@
 import { NormalizedFloat } from "../types";
 import { toNormalizedFloat } from "../util";
+import { ContextPrimitives, getContextPrimitives } from "./contextPrimitives";
 
 interface RenderParams<TProps, TRenderContext = CanvasRenderingContext2D> {
   props: TProps;
@@ -14,6 +15,11 @@ interface RenderParams<TProps, TRenderContext = CanvasRenderingContext2D> {
   ) => number;
 }
 
+type RenderParamsWithPrimitives<TProps, TRenderContext> =
+  TRenderContext extends CanvasRenderingContext2D
+    ? RenderParams<TProps, TRenderContext> & ContextPrimitives
+    : RenderParams<TProps, TRenderContext>;
+
 class AnimatableObject<TProps = {}, TRenderContext = CanvasRenderingContext2D> {
   public attackValue: NormalizedFloat = toNormalizedFloat(0);
   public sustainPeriod: number = 0;
@@ -25,15 +31,18 @@ class AnimatableObject<TProps = {}, TRenderContext = CanvasRenderingContext2D> {
   public timeShown: Date | null = null;
   public timeHidden: Date | null = null;
 
-  public renderer: (params: RenderParams<TProps, TRenderContext>) => void =
-    () => {};
+  public renderer: (
+    params: RenderParamsWithPrimitives<TProps, TRenderContext>
+  ) => void = () => {};
   public props: TProps = {} as TProps;
   public isPermanent: boolean = false;
 
   constructor() {}
 
   withRenderer(
-    renderer: (params: RenderParams<TProps, TRenderContext>) => void
+    renderer: (
+      params: RenderParamsWithPrimitives<TProps, TRenderContext>
+    ) => void
   ) {
     this.renderer = renderer;
     return this;
@@ -52,13 +61,20 @@ class AnimatableObject<TProps = {}, TRenderContext = CanvasRenderingContext2D> {
   renderIn(context: TRenderContext): this {
     const { props, attackValue, decayFactor } = this;
 
-    this.renderer({
+    const baseParams = {
       props,
       context,
       attackValue,
       decayFactor,
       getAnimationTrajectory: this.getAnimationTrajectory.bind(this),
-    });
+    };
+
+    const params =
+      context instanceof CanvasRenderingContext2D
+        ? { ...baseParams, ...getContextPrimitives(context) }
+        : baseParams;
+
+    this.renderer(params as RenderParamsWithPrimitives<TProps, TRenderContext>);
 
     return this;
   }

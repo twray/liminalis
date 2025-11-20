@@ -7,38 +7,44 @@ createVisualisation
     index: 5,
     colors: ["red", "orange", "yellow", "green", "blue"],
   })
-  .setup(({ onNoteDown, onNoteUp, atTime, context, width, height }) => {
-    onNoteDown(({ note, attack, visualisation, data }) => {
-      const positionIndex = data.mappableBaseNotes.indexOf(note[0]) ?? 0;
+  .setup(
+    ({
+      onNoteDown,
+      onNoteUp,
+      setBackground,
+      drawCircle,
+      getCentre: getCenter,
+    }) => {
+      setBackground({ backgroundColor: "beige" });
 
-      visualisation.add(
-        note[0],
-        bouncyCuboid()
-          .withProps({ positionIndex })
-          .attack(attack)
-          .sustain(10000)
-      );
+      const { x: cx, y: cy } = getCenter();
 
-      context.fillStyle = "orange";
-      context.fillRect(0, 0, width, height);
+      for (let i = 0; i < 10; i++) {
+        drawCircle({
+          cx,
+          cy,
+          radius: 100 + i * 10,
+          fillColor: "transparent",
+          strokeColor: "#666",
+        });
+      }
 
-      data.index += 1;
-    });
+      onNoteDown(({ note, attack, visualisation, data }) => {
+        const positionIndex = data.mappableBaseNotes.indexOf(note[0]) ?? 0;
 
-    onNoteUp(({ note, visualisation }) => {
-      visualisation.get(note[0])?.decay(2000);
+        visualisation.add(
+          note[0],
+          bouncyCuboid()
+            .withProps({ positionIndex })
+            .attack(attack)
+            .sustain(10000)
+        );
 
-      context.fillStyle = "yellow";
-      context.fillRect(0, 0, width, height);
-    });
+        data.index += 1;
+      });
 
-    atTime("0:01", () => {
-      context.fillStyle = "red";
-      context.fillRect(0, 0, width, height);
-    });
-
-    atTime("0:02", () => {
-      context.fillStyle = "green";
-      context.fillRect(0, 0, width, height);
-    });
-  });
+      onNoteUp(({ note, visualisation }) => {
+        visualisation.get(note[0])?.decay(2000);
+      });
+    }
+  );
