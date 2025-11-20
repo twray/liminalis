@@ -78,6 +78,7 @@ interface VisualisationSettings {
 
 interface VisualisationProps<TData = Record<string, any>> extends SketchProps {
   data: TData;
+  setBackgroundColor: (color: string) => void;
   onNoteDown: (callback: NoteDownEventCallback<TData>) => void;
   onNoteUp: (callback: NoteUpEventCallback<TData>) => void;
   atTime: (time: number | string, callback: TimeEventCallback<TData>) => void;
@@ -125,10 +126,21 @@ class VisualisationAnimationLoopHandler<TData = Record<string, any>> {
   #modeManager = new ModeManager([], []);
 
   #visualisation = new Visualisation();
+  #visualisationData: TData = {} as TData;
+
+  // Although changes to the canvas context can be applied both inside and
+  // outside of the animation loop, given that for example it's possible
+  // to 'persist' changes to the canvas context throughout the course of the
+  // animation via the use of proxies, the background color is a special case
+  // as it's applied to the canvas context before the loop begins
+
+  #backgroundColor = "white";
+  #backgroundColorAsSetInContextOfEventHander: string | null = null;
+
+  // Time-based callbacks -- callbacks that begin with 'at' -- need to be
+  // tracked outside of the animation loop.
 
   #timeCallbacks: TimeCallbackEntry<TData>[] = [];
-
-  #visualisationData: TData = {} as TData;
 
   // Changes and methods to context that are called within event handlers
   // need to be queued so that they are stateful across frames. The following
@@ -136,7 +148,7 @@ class VisualisationAnimationLoopHandler<TData = Record<string, any>> {
   // an event handler or not.
 
   #queuedContextActions: ContextAction[] = [];
-  #canvasContextIsAccessedWithinContextOfEventHandler = false;
+  #inContextOfEventHandler = false;
 
   constructor() {}
 
@@ -170,10 +182,10 @@ class VisualisationAnimationLoopHandler<TData = Record<string, any>> {
         const { context, width, height, frame, time } = canvasProps;
 
         // Rendering only works if animated and if there are workable frames
-        if (!frame) return;
+        if (!frame || !time) return;
 
-        // Clear the canvas
-        context.fillStyle = "white";
+        // Set background color and clear the canvas for rendering
+        context.fillStyle = this.#getCurrentBackgroundColor();
         context.fillRect(0, 0, width, height);
 
         // Get recent key information as sent from MIDI controller / keyboard debugger
@@ -188,6 +200,14 @@ class VisualisationAnimationLoopHandler<TData = Record<string, any>> {
             frame,
             "notedown"
           ) as NoteDownEvent[];
+
+        const setBackgroundColor = (color: string) => {
+          if (!this.#inContextOfEventHandler) {
+            this.#backgroundColor = color;
+          } else {
+            this.#backgroundColorAsSetInContextOfEventHander = color;
+          }
+        };
 
         // Store event-based callbacks to be executed as part of current frame
         const noteDownCallbacks: NoteDownEventCallback<TData>[] = [];
@@ -241,7 +261,7 @@ class VisualisationAnimationLoopHandler<TData = Record<string, any>> {
 
         const watchedContext = watch(context, {
           onPropertyChange: (property, value) => {
-            if (this.#canvasContextIsAccessedWithinContextOfEventHandler) {
+            if (this.#inContextOfEventHandler) {
               this.#queuedContextActions.push({
                 type: "property",
                 property,
@@ -250,7 +270,7 @@ class VisualisationAnimationLoopHandler<TData = Record<string, any>> {
             }
           },
           onMethodCall: (method, args) => {
-            if (this.#canvasContextIsAccessedWithinContextOfEventHandler) {
+            if (this.#inContextOfEventHandler) {
               this.#queuedContextActions.push({ type: "method", method, args });
             }
           },
@@ -262,13 +282,14 @@ class VisualisationAnimationLoopHandler<TData = Record<string, any>> {
           context: watchedContext,
           time: sketchProps.time * 1000,
           data: this.#visualisationData,
+          setBackgroundColor,
           onNoteDown,
           onNoteUp,
           atTime,
           atStart,
         });
 
-        this.#canvasContextIsAccessedWithinContextOfEventHandler = true;
+        this.#inContextOfEventHandler = true;
 
         // Handle module-level note down events
         recentNotesPressedDown.forEach((recentNotePressedDown) => {
@@ -310,7 +331,7 @@ class VisualisationAnimationLoopHandler<TData = Record<string, any>> {
             });
         }
 
-        this.#canvasContextIsAccessedWithinContextOfEventHandler = false;
+        this.#inContextOfEventHandler = false;
 
         // Apply queued context prop changes
         this.#queuedContextActions.forEach((queuedAction) => {
@@ -353,6 +374,12 @@ class VisualisationAnimationLoopHandler<TData = Record<string, any>> {
     });
 
     canvasSketch(sketchFunction, this.#settings);
+  }
+
+  #getCurrentBackgroundColor() {
+    return (
+      this.#backgroundColorAsSetInContextOfEventHander ?? this.#backgroundColor
+    );
   }
 
   #setUpEventListeners({

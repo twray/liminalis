@@ -7,9 +7,8 @@ createVisualisation
     index: 5,
     colors: ["red", "orange", "yellow", "green", "blue"],
   })
-  .render(({ onNoteDown, onNoteUp, context, width, height }) => {
-    context.fillStyle = "beige";
-    context.fillRect(0, 0, width, height);
+  .render(({ setBackgroundColor, onNoteDown, onNoteUp }) => {
+    setBackgroundColor("beige");
 
     onNoteDown(({ note, attack, visualisation, data }) => {
       const positionIndex = data.mappableBaseNotes.indexOf(note[0]) ?? 0;
@@ -22,8 +21,7 @@ createVisualisation
           .sustain(10000)
       );
 
-      context.fillStyle = "red";
-      context.fillRect(0, 0, width, height);
+      setBackgroundColor("red");
 
       data.index += 1;
     });
@@ -31,7 +29,6 @@ createVisualisation
     onNoteUp(({ note, visualisation }) => {
       visualisation.get(note[0])?.decay(2000);
 
-      context.fillStyle = "yellow";
-      context.fillRect(0, 0, width, height);
+      setBackgroundColor("orange");
     });
   });

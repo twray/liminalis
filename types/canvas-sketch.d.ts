@@ -112,6 +112,7 @@ declare module "canvas-sketch-util" {
       saturation: number,
       luminance: number
     ): ParsedColor;
+    blend(background: string, foreground: string, opacity: number): ParsedColor;
   };
 }
 
