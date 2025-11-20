@@ -59,7 +59,6 @@ type AtStartEventCallback<TData = Record<string, any>> = (
 type TimeCallbackEntry<TData = Record<string, any>> = {
   time: number;
   callback: TimeEventCallback<TData>;
-  frame: number;
   expired: boolean;
 };
 
@@ -78,7 +77,6 @@ interface VisualisationSettings {
 
 interface VisualisationProps<TData = Record<string, any>> extends SketchProps {
   data: TData;
-  setBackgroundColor: (color: string) => void;
   onNoteDown: (callback: NoteDownEventCallback<TData>) => void;
   onNoteUp: (callback: NoteUpEventCallback<TData>) => void;
   atTime: (time: number | string, callback: TimeEventCallback<TData>) => void;
@@ -128,15 +126,6 @@ class VisualisationAnimationLoopHandler<TData = Record<string, any>> {
   #visualisation = new Visualisation();
   #visualisationData: TData = {} as TData;
 
-  // Although changes to the canvas context can be applied both inside and
-  // outside of the animation loop, given that for example it's possible
-  // to 'persist' changes to the canvas context throughout the course of the
-  // animation via the use of proxies, the background color is a special case
-  // as it's applied to the canvas context before the loop begins
-
-  #backgroundColor = "white";
-  #backgroundColorAsSetInContextOfEventHander: string | null = null;
-
   // Time-based callbacks -- callbacks that begin with 'at' -- need to be
   // tracked outside of the animation loop.
 
@@ -176,8 +165,75 @@ class VisualisationAnimationLoopHandler<TData = Record<string, any>> {
     return instance;
   }
 
-  render(animationLoop: (props: VisualisationProps<TData>) => void) {
+  setup(setupFunction: (props: VisualisationProps<TData>) => void) {
     const sketchFunction = (sketchProps: SketchProps) => {
+      const { context } = sketchProps;
+
+      // Store event-based callbacks to be executed as part of current frame
+      const noteDownCallbacks: NoteDownEventCallback<TData>[] = [];
+      const noteUpCallbacks: NoteUpEventCallback<TData>[] = [];
+
+      const onNoteDown = (callback: NoteDownEventCallback<TData>) => {
+        noteDownCallbacks.push(callback);
+      };
+
+      const onNoteUp = (callback: NoteUpEventCallback<TData>) => {
+        noteUpCallbacks.push(callback);
+      };
+
+      const atTime = (
+        eventTime: number | string,
+        callback: TimeEventCallback<TData>
+      ) => {
+        let eventTimeInMs = 0;
+
+        if (typeof eventTime === "string") {
+          eventTimeInMs = isTimeExpression(eventTime)
+            ? timeExpressionToMs(eventTime) ?? 0
+            : 0;
+        } else {
+          eventTimeInMs = eventTime;
+        }
+
+        this.#timeCallbacks.push({
+          time: eventTimeInMs,
+          callback,
+          expired: false,
+        });
+      };
+
+      const atStart = (callback: AtStartEventCallback<TData>) => {
+        atTime(0, callback);
+      };
+
+      const watchedContext = watch(context, {
+        onPropertyChange: (property, value) => {
+          if (this.#inContextOfEventHandler) {
+            this.#queuedContextActions.push({
+              type: "property",
+              property,
+              value,
+            });
+          }
+        },
+        onMethodCall: (method, args) => {
+          if (this.#inContextOfEventHandler) {
+            this.#queuedContextActions.push({ type: "method", method, args });
+          }
+        },
+      });
+
+      setupFunction({
+        ...sketchProps,
+        context: watchedContext,
+        time: sketchProps.time * 1000,
+        data: this.#visualisationData,
+        onNoteDown,
+        onNoteUp,
+        atTime,
+        atStart,
+      });
+
       return (canvasProps: CanvasProps) => {
         const { context, width, height, frame, time } = canvasProps;
 
@@ -185,7 +241,7 @@ class VisualisationAnimationLoopHandler<TData = Record<string, any>> {
         if (!frame || !time) return;
 
         // Set background color and clear the canvas for rendering
-        context.fillStyle = this.#getCurrentBackgroundColor();
+        context.fillStyle = "white";
         context.fillRect(0, 0, width, height);
 
         // Get recent key information as sent from MIDI controller / keyboard debugger
@@ -200,94 +256,6 @@ class VisualisationAnimationLoopHandler<TData = Record<string, any>> {
             frame,
             "notedown"
           ) as NoteDownEvent[];
-
-        const setBackgroundColor = (color: string) => {
-          if (!this.#inContextOfEventHandler) {
-            this.#backgroundColor = color;
-          } else {
-            this.#backgroundColorAsSetInContextOfEventHander = color;
-          }
-        };
-
-        // Store event-based callbacks to be executed as part of current frame
-        const noteDownCallbacks: NoteDownEventCallback<TData>[] = [];
-        const noteUpCallbacks: NoteUpEventCallback<TData>[] = [];
-
-        const onNoteDown = (callback: NoteDownEventCallback<TData>) => {
-          noteDownCallbacks.push(callback);
-        };
-
-        const onNoteUp = (callback: NoteUpEventCallback<TData>) => {
-          noteUpCallbacks.push(callback);
-        };
-
-        const atTime = (
-          eventTime: number | string,
-          callback: TimeEventCallback<TData>
-        ) => {
-          let eventTimeInMs = 0;
-
-          if (typeof eventTime === "string") {
-            eventTimeInMs = isTimeExpression(eventTime)
-              ? timeExpressionToMs(eventTime) ?? 0
-              : 0;
-          } else {
-            eventTimeInMs = eventTime;
-          }
-
-          const eventsWithSameTime = this.#timeCallbacks.filter(
-            (timeCallback) => timeCallback.time === eventTimeInMs
-          );
-
-          if (
-            eventsWithSameTime.length > 0 &&
-            eventsWithSameTime.some(
-              (eventWithSameTime) => eventWithSameTime.frame !== frame
-            )
-          )
-            return;
-
-          this.#timeCallbacks.push({
-            time: eventTimeInMs,
-            callback,
-            frame,
-            expired: false,
-          });
-        };
-
-        const atStart = (callback: AtStartEventCallback<TData>) => {
-          atTime(0, callback);
-        };
-
-        const watchedContext = watch(context, {
-          onPropertyChange: (property, value) => {
-            if (this.#inContextOfEventHandler) {
-              this.#queuedContextActions.push({
-                type: "property",
-                property,
-                value,
-              });
-            }
-          },
-          onMethodCall: (method, args) => {
-            if (this.#inContextOfEventHandler) {
-              this.#queuedContextActions.push({ type: "method", method, args });
-            }
-          },
-        });
-
-        // Run main animation loop
-        animationLoop({
-          ...sketchProps,
-          context: watchedContext,
-          time: sketchProps.time * 1000,
-          data: this.#visualisationData,
-          setBackgroundColor,
-          onNoteDown,
-          onNoteUp,
-          atTime,
-          atStart,
-        });
 
         this.#inContextOfEventHandler = true;
 
@@ -374,12 +342,6 @@ class VisualisationAnimationLoopHandler<TData = Record<string, any>> {
     });
 
     canvasSketch(sketchFunction, this.#settings);
-  }
-
-  #getCurrentBackgroundColor() {
-    return (
-      this.#backgroundColorAsSetInContextOfEventHander ?? this.#backgroundColor
-    );
   }
 
   #setUpEventListeners({
