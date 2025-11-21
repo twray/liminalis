@@ -135,7 +135,7 @@ const drawLine = (context: CanvasRenderingContext2D, props: LineProps) => {
   context.restore();
 };
 
-const getCentre = (context: CanvasRenderingContext2D) => ({
+const getCenter = (context: CanvasRenderingContext2D) => ({
   x: context.canvas.width / 2,
   y: context.canvas.height / 2,
 });
@@ -143,7 +143,7 @@ const getCentre = (context: CanvasRenderingContext2D) => ({
 export interface ContextPrimitives {}
 
 export const getContextPrimitives = (context: CanvasRenderingContext2D) => ({
-  getCentre: () => getCentre(context),
+  getCenter: () => getCenter(context),
   setBackground: (props: BackgroundProps) => setBackground(context, props),
   drawRectangle: (props: RectangleProps) => drawRectangle(context, props),
   drawCircle: (props: CircleProps) => drawCircle(context, props),
@@ -151,7 +151,7 @@ export const getContextPrimitives = (context: CanvasRenderingContext2D) => ({
 });
 
 export interface ContextPrimitives {
-  getCentre: () => Coordinates;
+  getCenter: () => Coordinates;
   setBackground: (props: BackgroundProps) => void;
   drawRectangle: (props: RectangleProps) => void;
   drawCircle: (props: CircleProps) => void;
