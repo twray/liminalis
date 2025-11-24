@@ -6,21 +6,18 @@ import {
 } from "./contextPrimitives";
 
 import type {
+  ActiveNotesEvent,
   AppSettings,
   CanvasProps,
+  EventTime,
   NormalizedFloat,
   NoteDownEvent,
   NoteUpEvent,
   Point2D,
   SketchSettings,
-  TimeEvent,
 } from "../types";
 
-import {
-  isTimeExpression,
-  timeExpressionToMs,
-  toNormalizedFloat,
-} from "../util";
+import { eventTimeToMs, toNormalizedFloat } from "../util";
 
 import ModeManager from "./ModeManager";
 import NoteEventManager from "./NoteEventManager";
@@ -42,15 +39,44 @@ type NoteDownEventCallback = (params: NoteDownEvent) => void;
 
 type NoteUpEventCallback = (params: NoteUpEvent) => void;
 
-type TimeEventCallback = (params: TimeEvent) => void;
+type NotesDownEventCallback = (params: ActiveNotesEvent) => void;
 
-type AtStartEventCallback = () => void;
+type TimeEventCallback = () => void;
 
-type TimeCallbackEntry = {
+interface TimeCallbackEntry {
   time: number;
   callback: TimeEventCallback;
+}
+
+interface ExpirableTimeCallbackEntry extends TimeCallbackEntry {
   expired: boolean;
-};
+}
+
+interface NotesDownCallbackEntry {
+  type: "notesdown";
+  callback: NotesDownEventCallback;
+}
+
+interface BeforeTimeCallbackEntry extends TimeCallbackEntry {
+  type: "beforetime";
+}
+
+interface AfterTimeCallbackEntry extends TimeCallbackEntry {
+  type: "aftertime";
+}
+
+interface TimeIntervalCallbackEntry {
+  type: "timeinterval";
+  startTime: number;
+  endTime: number;
+  callback: TimeEventCallback;
+}
+
+type RenderContextCallbackEntry =
+  | NotesDownCallbackEntry
+  | BeforeTimeCallbackEntry
+  | AfterTimeCallbackEntry
+  | TimeIntervalCallbackEntry;
 
 interface SetUpEventListenersParams {
   appProperties: AppSettings;
@@ -70,8 +96,8 @@ interface SetupFunctionProps<TData = Record<string, any>> {
   visualisation: Visualisation;
   onNoteDown: (callback: NoteDownEventCallback) => void;
   onNoteUp: (callback: NoteUpEventCallback) => void;
-  atTime: (time: number | string, callback: TimeEventCallback) => void;
-  atStart: (callback: AtStartEventCallback) => void;
+  atTime: (time: EventTime, callback: TimeEventCallback) => void;
+  atStart: (callback: TimeEventCallback) => void;
 }
 
 interface RenderFunctionProps<TData = Record<string, any>>
@@ -82,6 +108,14 @@ interface RenderFunctionProps<TData = Record<string, any>>
   height: number;
   center: Point2D;
   time: number;
+  whileNotesDown: (callback: NotesDownEventCallback) => void;
+  beforeTime: (time: EventTime, callback: TimeEventCallback) => void;
+  afterTime: (time: EventTime, callback: TimeEventCallback) => void;
+  duringTimeInterval: (
+    startTime: EventTime,
+    endTime: EventTime,
+    callback: TimeEventCallback
+  ) => void;
 }
 
 const DEFAULTS = {
@@ -117,7 +151,7 @@ class VisualisationAnimationLoopHandler<TData = Record<string, any>> {
   // Callbacks from event-based handlers that are registered in the 'setup'
   // function
 
-  #timeCallbacks: TimeCallbackEntry[] = [];
+  #timeCallbacks: ExpirableTimeCallbackEntry[] = [];
   #noteDownCallbacks: NoteDownEventCallback[] = [];
   #noteUpCallbacks: NoteUpEventCallback[] = [];
 
@@ -156,28 +190,15 @@ class VisualisationAnimationLoopHandler<TData = Record<string, any>> {
       this.#noteUpCallbacks.push(callback);
     };
 
-    const atTime = (
-      eventTime: number | string,
-      callback: TimeEventCallback
-    ) => {
-      let eventTimeInMs = 0;
-
-      if (typeof eventTime === "string") {
-        eventTimeInMs = isTimeExpression(eventTime)
-          ? timeExpressionToMs(eventTime) ?? 0
-          : 0;
-      } else {
-        eventTimeInMs = eventTime;
-      }
-
+    const atTime = (eventTime: EventTime, callback: TimeEventCallback) => {
       this.#timeCallbacks.push({
-        time: eventTimeInMs,
+        time: eventTimeToMs(eventTime),
         callback,
         expired: false,
       });
     };
 
-    const atStart = (callback: AtStartEventCallback) => {
+    const atStart = (callback: TimeEventCallback) => {
       atTime(0, callback);
     };
 
@@ -209,6 +230,42 @@ class VisualisationAnimationLoopHandler<TData = Record<string, any>> {
         context.fillStyle = "white";
         context.fillRect(0, 0, width, height);
 
+        // Set up event handlers that get rendered on frame-by-frame basis.
+        const renderContextCallbackEntries: RenderContextCallbackEntry[] = [];
+
+        const whileNotesDown = (callback: NotesDownEventCallback) => {
+          renderContextCallbackEntries.push({ type: "notesdown", callback });
+        };
+
+        const beforeTime = (time: EventTime, callback: TimeEventCallback) => {
+          renderContextCallbackEntries.push({
+            type: "beforetime",
+            time: eventTimeToMs(time),
+            callback,
+          });
+        };
+
+        const afterTime = (time: EventTime, callback: TimeEventCallback) => {
+          renderContextCallbackEntries.push({
+            type: "aftertime",
+            time: eventTimeToMs(time),
+            callback,
+          });
+        };
+
+        const duringTimeInterval = (
+          startTime: EventTime,
+          endTime: EventTime,
+          callback: TimeEventCallback
+        ) => {
+          renderContextCallbackEntries.push({
+            type: "timeinterval",
+            startTime: eventTimeToMs(startTime),
+            endTime: eventTimeToMs(endTime),
+            callback,
+          });
+        };
+
         // Call the custom render function if it is specified. This function
         // runs on every frame and allows the user to manipulate the context
         // in real time and/or use the convenience context primitive functions
@@ -220,24 +277,69 @@ class VisualisationAnimationLoopHandler<TData = Record<string, any>> {
           height,
           center,
           time: timeInMs,
+          whileNotesDown,
+          beforeTime,
+          afterTime,
+          duringTimeInterval,
           ...getContextPrimitives(context),
         });
 
-        // Get recent key information as sent from MIDI controller / keyboard debugger
-        const recentNotesPressedUp =
+        // Process all frame-based events in the order as they are written
+        // within the render function, allowing the user to determine (in order
+        // of appearance within the render function) which items within the
+        // frame should be rendered first if two frame-based events happen
+        // at the same time
+
+        const activeNotesForFrame = this.#noteEventManager.activeNotes;
+
+        renderContextCallbackEntries.forEach((callbackEntry) => {
+          const { type, callback } = callbackEntry;
+
+          switch (type) {
+            case "notesdown": {
+              if (activeNotesForFrame.length > 0) {
+                callback({ notes: activeNotesForFrame });
+              }
+              break;
+            }
+            case "beforetime": {
+              if (timeInMs < callbackEntry.time) callback();
+              break;
+            }
+            case "aftertime": {
+              if (timeInMs >= callbackEntry.time) callback();
+              break;
+            }
+            case "timeinterval": {
+              if (
+                timeInMs >= callbackEntry.startTime &&
+                timeInMs < callbackEntry.endTime
+              ) {
+                callback();
+              }
+              break;
+            }
+            default:
+              throw new Error("Invalid callback entry");
+          }
+        });
+
+        // Handle remaining event callbacks as registered within the setup()
+        // function
+
+        const notesPressedUpForFrame =
           this.#noteEventManager.getNewNoteEventsForFrame(
             frame,
             "noteup"
           ) as NoteUpEvent[];
 
-        const recentNotesPressedDown =
+        const notesPressedDownForFrame =
           this.#noteEventManager.getNewNoteEventsForFrame(
             frame,
             "notedown"
           ) as NoteDownEvent[];
 
-        // Handle module-level note down events
-        recentNotesPressedDown.forEach((recentNotePressedDown) => {
+        notesPressedDownForFrame.forEach((recentNotePressedDown) => {
           this.#noteDownCallbacks.forEach((callback) => {
             callback({
               ...recentNotePressedDown,
@@ -245,8 +347,7 @@ class VisualisationAnimationLoopHandler<TData = Record<string, any>> {
           });
         });
 
-        // Handle module-level note up events
-        recentNotesPressedUp.forEach((recentNotePressedUp) => {
+        notesPressedUpForFrame.forEach((recentNotePressedUp) => {
           this.#noteUpCallbacks.forEach((callback) => {
             callback({
               ...recentNotePressedUp,
@@ -254,26 +355,21 @@ class VisualisationAnimationLoopHandler<TData = Record<string, any>> {
           });
         });
 
-        if (typeof time !== "undefined") {
-          const timeInMs = time * 1000;
-
-          // Handle timed-based events
-          this.#timeCallbacks
-            .filter((queuedTimeEventHandler) => !queuedTimeEventHandler.expired)
-            .forEach((queuedTimeEventHandler) => {
-              if (timeInMs > queuedTimeEventHandler.time) {
-                queuedTimeEventHandler.callback({
-                  time: timeInMs,
-                });
-                queuedTimeEventHandler.expired = true;
-              }
-            });
-        }
+        this.#timeCallbacks
+          .filter((timeCallback) => !timeCallback.expired)
+          .forEach((timeCallback) => {
+            if (timeInMs > timeCallback.time) {
+              timeCallback.callback();
+              timeCallback.expired = true;
+            }
+          });
 
         // Remove objects that are either decayed or not visible
+
         this.#visualisation.cleanUp();
 
         // Render all animatable objects
+
         this.#visualisation.renderObjects(context);
       };
     };

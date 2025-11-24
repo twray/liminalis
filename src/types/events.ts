@@ -19,8 +19,14 @@ export interface NoteUpEvent extends BaseNoteEvent {
 
 export type NoteEvent = NoteDownEvent | NoteUpEvent;
 
+export type EventTime = number | string;
+
+export interface ActiveNotesEvent {
+  notes: NoteDownEvent[];
+}
+
 export interface TimeEvent {
-  time: number | string;
+  time: EventTime;
 }
 
 export interface ChordEvent {

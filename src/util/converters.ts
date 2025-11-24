@@ -1,4 +1,4 @@
-import type { NormalizedFloat, TimeExpression } from "../types/common";
+import type { EventTime, NormalizedFloat, TimeExpression } from "../types";
 import { isNormalizedFloat, isTimeExpression } from "./guards";
 
 export function toNormalizedFloat(value: number): NormalizedFloat {
@@ -17,10 +17,13 @@ export function toTimeExpression(value: string): TimeExpression {
   return value as TimeExpression;
 }
 
-export function timeExpressionToMs(timeExpression: TimeExpression) {
+export function eventTimeToMs(eventTime: EventTime) {
+  if (typeof eventTime === "number") return eventTime;
+  if (!isTimeExpression(eventTime)) return 0;
+
   let totalTimeInMs = 0;
 
-  const timeExpressionComponents = timeExpression.split(":");
+  const timeExpressionComponents = eventTime.split(":");
 
   const seconds = timeExpressionComponents.pop();
   if (!seconds) return totalTimeInMs;

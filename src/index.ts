@@ -26,16 +26,34 @@ createVisualisation
       visualisation.get(note[0])?.decay(2000);
     });
   })
-  .render(({ drawCircle, center }) => {
-    const { x: cx, y: cy } = center;
+  .render(
+    ({
+      drawCircle,
+      center,
+      setBackground,
+      whileNotesDown,
+      duringTimeInterval,
+    }) => {
+      const { x: cx, y: cy } = center;
 
-    for (let i = 0; i < 10; i++) {
-      drawCircle({
-        cx,
-        cy,
-        radius: 100 + i * 10,
-        fillColor: "transparent",
-        strokeColor: "#666",
+      setBackground({ backgroundColor: "beige" });
+
+      for (let i = 0; i < 10; i++) {
+        drawCircle({
+          cx,
+          cy,
+          radius: 50 + i * 5,
+          fillColor: "transparent",
+          strokeColor: "#999",
+        });
+      }
+
+      whileNotesDown(() => {
+        drawCircle({ cx, cy, radius: 25, fillColor: "pink" });
+      });
+
+      duringTimeInterval("0:01", "0:04", () => {
+        drawCircle({ cx, cy, radius: 20, fillColor: "orange" });
       });
     }
-  });
+  );

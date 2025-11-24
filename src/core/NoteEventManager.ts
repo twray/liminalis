@@ -4,23 +4,28 @@ import {
   NoteDownEvent,
   NoteEvent,
   NoteEventType,
+  NoteUpEvent,
 } from "../types";
 import { toNormalizedFloat } from "../util";
 
 export default class NoteEventManager {
-  private noteEvents: NoteEvent[] = [];
-  private pressedNotes: Map<string, any> = new Map();
-  private noteEventsForFrames: Map<number, NoteEvent[]> = new Map();
-  private timeStampSinceLastFetchOfNewNoteEventsForFrame: number;
-  private timeStampSinceLastPhraseEventDetected: number | null = null;
-  private timeStampSinceLastChordEventDetected: number | null = null;
-  private timeStampSinceLastHarmonicQualityChangeEventDetected: number | null =
-    null;
-  public currentHarmonicScheme: "major" | "non-major";
+  #noteEvents: NoteEvent[] = [];
+  #activeNotes: Map<string, NoteDownEvent> = new Map();
+  #noteEventsForFrames: Map<number, NoteEvent[]> = new Map();
+  #timeStampSinceLastFetchOfNewNoteEventsForFrame: number;
+  #timeStampSinceLastPhraseEventDetected: number | null = null;
+  #timeStampSinceLastChordEventDetected: number | null = null;
+  #timeStampSinceLastHarmonicQualityChangeEventDetected: number | null = null;
+
+  currentHarmonicScheme: "major" | "non-major";
 
   constructor(openingHarmonicScheme: "major" | "non-major" = "major") {
-    this.timeStampSinceLastFetchOfNewNoteEventsForFrame = new Date().getTime();
+    this.#timeStampSinceLastFetchOfNewNoteEventsForFrame = new Date().getTime();
     this.currentHarmonicScheme = openingHarmonicScheme;
+  }
+
+  get activeNotes() {
+    return Array.from(this.#activeNotes.values());
   }
 
   getNewNoteEventsForFrame(
@@ -31,18 +36,18 @@ export default class NoteEventManager {
 
     let newNoteEventsForFrame: NoteEvent[] = [];
 
-    if (!this.noteEventsForFrames.has(frameIndex)) {
-      newNoteEventsForFrame = this.noteEvents.filter(
+    if (!this.#noteEventsForFrames.has(frameIndex)) {
+      newNoteEventsForFrame = this.#noteEvents.filter(
         (noteEvent) =>
-          this.timeStampSinceLastFetchOfNewNoteEventsForFrame < noteEvent.time
+          this.#timeStampSinceLastFetchOfNewNoteEventsForFrame < noteEvent.time
       );
 
-      this.noteEventsForFrames.set(frameIndex, newNoteEventsForFrame);
+      this.#noteEventsForFrames.set(frameIndex, newNoteEventsForFrame);
     } else {
-      newNoteEventsForFrame = this.noteEventsForFrames.get(frameIndex)!;
+      newNoteEventsForFrame = this.#noteEventsForFrames.get(frameIndex)!;
     }
 
-    this.timeStampSinceLastFetchOfNewNoteEventsForFrame =
+    this.#timeStampSinceLastFetchOfNewNoteEventsForFrame =
       timeStampOfCurrentEventFetch;
 
     if (!eventFilter) {
@@ -60,9 +65,9 @@ export default class NoteEventManager {
     timeWindow: number = 2000,
     eventFilter?: string
   ): NoteEvent[] {
-    const recentlyPhrasedNoteEvents = this.noteEvents.filter((noteEvent) => {
+    const recentlyPhrasedNoteEvents = this.#noteEvents.filter((noteEvent) => {
       const noteEventIsNew =
-        this.timeStampSinceLastFetchOfNewNoteEventsForFrame <
+        this.#timeStampSinceLastFetchOfNewNoteEventsForFrame <
         noteEvent.time + timeWindow;
 
       if (eventFilter) {
@@ -85,12 +90,12 @@ export default class NoteEventManager {
 
     if (
       chordToneNoteEvents.length >= 3 &&
-      (this.timeStampSinceLastChordEventDetected === null ||
+      (this.#timeStampSinceLastChordEventDetected === null ||
         timeStampOfCurrentEventFetch -
-          this.timeStampSinceLastChordEventDetected >
+          this.#timeStampSinceLastChordEventDetected >
           100)
     ) {
-      this.timeStampSinceLastChordEventDetected = timeStampOfCurrentEventFetch;
+      this.#timeStampSinceLastChordEventDetected = timeStampOfCurrentEventFetch;
 
       return chordToneNoteEvents;
     }
@@ -99,11 +104,9 @@ export default class NoteEventManager {
   }
 
   getNewPhraseDetectionForFrame(pauseBetweenPhrases = 1000): boolean {
-    const { noteEvents } = this;
-
     const timeStampOfCurrentEventFetch = new Date().getTime();
 
-    const noteEventsNoteOn = noteEvents.filter(
+    const noteEventsNoteOn = this.#noteEvents.filter(
       (noteEvent) => noteEvent.event === "notedown"
     );
 
@@ -119,16 +122,16 @@ export default class NoteEventManager {
     }
 
     if (
-      this.timeStampSinceLastPhraseEventDetected === null ||
+      this.#timeStampSinceLastPhraseEventDetected === null ||
       timeStampOfCurrentEventFetch -
-        this.timeStampSinceLastPhraseEventDetected >
+        this.#timeStampSinceLastPhraseEventDetected >
         1000
     ) {
       const hasPhrasePauseBetweenLastTwoNoteEvents =
         lastEvent.time - secondToLastEvent.time >= pauseBetweenPhrases;
 
       if (hasPhrasePauseBetweenLastTwoNoteEvents) {
-        this.timeStampSinceLastPhraseEventDetected =
+        this.#timeStampSinceLastPhraseEventDetected =
           timeStampOfCurrentEventFetch;
         return true;
       } else {
@@ -152,12 +155,12 @@ export default class NoteEventManager {
 
     if (
       chordToneNoteEvents &&
-      (this.timeStampSinceLastHarmonicQualityChangeEventDetected === null ||
+      (this.#timeStampSinceLastHarmonicQualityChangeEventDetected === null ||
         timeStampOfCurrentEventFetch -
-          this.timeStampSinceLastHarmonicQualityChangeEventDetected >
+          this.#timeStampSinceLastHarmonicQualityChangeEventDetected >
           minimumPeriodBetweenHarmonicChanges)
     ) {
-      this.timeStampSinceLastHarmonicQualityChangeEventDetected =
+      this.#timeStampSinceLastHarmonicQualityChangeEventDetected =
         timeStampOfCurrentEventFetch;
 
       const chordTonesWithoutOctaveSuffixes = chordToneNoteEvents.map(
@@ -194,9 +197,7 @@ export default class NoteEventManager {
     maxSemitoneDistance = 5,
     timeWindowBetweenChordTones = 600
   ) {
-    const { noteEvents } = this;
-
-    const lastThreeNotesPlayed = noteEvents
+    const lastThreeNotesPlayed = this.#noteEvents
       .filter((noteEvent) => noteEvent.event === "notedown")
       .slice(-3);
 
@@ -274,25 +275,27 @@ export default class NoteEventManager {
     number: number,
     attack: NormalizedFloat = toNormalizedFloat(1)
   ): void {
-    this.pressedNotes.set(note, { note, noteNumber: number, attack });
-
-    this.noteEvents.push({
+    const noteDownEvent: NoteDownEvent = {
       event: "notedown",
       time: new Date().getTime(),
       note,
       noteNumber: number,
       attack,
-    });
+    };
+
+    this.#activeNotes.set(note, noteDownEvent);
+    this.#noteEvents.push(noteDownEvent);
   }
 
   registerNoteOffEvent(note: string, number: number): void {
-    this.pressedNotes.delete(note);
-
-    this.noteEvents.push({
+    const noteUpEvent: NoteUpEvent = {
       event: "noteup",
       time: new Date().getTime(),
       note,
       noteNumber: number,
-    });
+    };
+
+    this.#activeNotes.delete(note);
+    this.#noteEvents.push(noteUpEvent);
   }
 }
