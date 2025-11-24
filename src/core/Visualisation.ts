@@ -61,8 +61,8 @@ class Visualisation {
     if (hasIsometricObjects) {
       isometricView = new IsometricView(
         context,
-        context.canvas.width,
-        context.canvas.height
+        context.canvas.width / window.devicePixelRatio,
+        context.canvas.height / window.devicePixelRatio
       );
     }
 

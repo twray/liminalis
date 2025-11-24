@@ -43,7 +43,7 @@ class IsometricView {
     context: CanvasRenderingContext2D,
     contextWidth: number,
     contextHeight: number,
-    tileWidth = 100
+    tileWidth = 50
   ) {
     const isometricGrid: TileCoordinates[][] = [];
 

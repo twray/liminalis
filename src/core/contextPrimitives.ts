@@ -1,17 +1,9 @@
+import type { Dimensions2D, Point2D } from "../types";
+
 const DEFAULT_BACKGROUND_COLOR = "#fff";
 const DEFAULT_FILL_STYLE = "#333";
 const DEFAULT_STROKE_STYLE = "transparent";
 const DEFAULT_STROKE_WIDTH = 0;
-
-interface Coordinates {
-  x: number;
-  y: number;
-}
-
-interface Size {
-  width: number;
-  height: number;
-}
 
 interface FillStyles {
   fillColor?: string;
@@ -33,14 +25,14 @@ export interface CircleProps extends FillStyles, StrokeStyles {
 }
 
 export interface RectangleProps
-  extends Coordinates,
-    Size,
+  extends Point2D,
+    Dimensions2D,
     FillStyles,
     StrokeStyles {}
 
 export interface LineProps extends StrokeStyles {
-  start: Coordinates;
-  end: Coordinates;
+  start: Point2D;
+  end: Point2D;
 }
 
 const setBackground = (
@@ -53,7 +45,12 @@ const setBackground = (
 
   context.fillStyle = backgroundColor;
 
-  context.fillRect(0, 0, context.canvas.width, context.canvas.height);
+  context.fillRect(
+    0,
+    0,
+    context.canvas.width * window.devicePixelRatio,
+    context.canvas.height * window.devicePixelRatio
+  );
 
   context.restore();
 };
@@ -135,15 +132,7 @@ const drawLine = (context: CanvasRenderingContext2D, props: LineProps) => {
   context.restore();
 };
 
-const getCenter = (context: CanvasRenderingContext2D) => ({
-  x: context.canvas.width / 2,
-  y: context.canvas.height / 2,
-});
-
-export interface ContextPrimitives {}
-
 export const getContextPrimitives = (context: CanvasRenderingContext2D) => ({
-  getCenter: () => getCenter(context),
   setBackground: (props: BackgroundProps) => setBackground(context, props),
   drawRectangle: (props: RectangleProps) => drawRectangle(context, props),
   drawCircle: (props: CircleProps) => drawCircle(context, props),
@@ -151,7 +140,6 @@ export const getContextPrimitives = (context: CanvasRenderingContext2D) => ({
 });
 
 export interface ContextPrimitives {
-  getCenter: () => Coordinates;
   setBackground: (props: BackgroundProps) => void;
   drawRectangle: (props: RectangleProps) => void;
   drawCircle: (props: CircleProps) => void;

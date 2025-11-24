@@ -1,5 +1,9 @@
-import canvasSketch, { SketchProps } from "canvas-sketch";
+import canvasSketch from "canvas-sketch";
 import { Utilities, WebMidi } from "webmidi";
+import {
+  getContextPrimitives,
+  type ContextPrimitives,
+} from "./contextPrimitives";
 
 import type {
   AppSettings,
@@ -7,16 +11,15 @@ import type {
   NormalizedFloat,
   NoteDownEvent,
   NoteUpEvent,
+  Point2D,
   SketchSettings,
   TimeEvent,
 } from "../types";
 
 import {
   isTimeExpression,
-  propertyIsWritable,
   timeExpressionToMs,
   toNormalizedFloat,
-  watch,
 } from "../util";
 
 import ModeManager from "./ModeManager";
@@ -24,7 +27,6 @@ import NoteEventManager from "./NoteEventManager";
 import Visualisation from "./Visualisation";
 
 import keyMappings from "../data/keyMappings.json";
-import { ContextPrimitives, getContextPrimitives } from "./contextPrimitives";
 
 type MidiNoteEvent = {
   note: {
@@ -36,30 +38,17 @@ type MidiNoteEvent = {
 
 type MidiEventCallback = (event: MidiNoteEvent) => void;
 
-type CallbackBase<TData = Record<string, any>> = {
-  visualisation: Visualisation;
-  data: TData;
-};
+type NoteDownEventCallback = (params: NoteDownEvent) => void;
 
-type NoteDownEventCallback<TData = Record<string, any>> = (
-  params: NoteDownEvent & CallbackBase<TData>
-) => void;
+type NoteUpEventCallback = (params: NoteUpEvent) => void;
 
-type NoteUpEventCallback<TData = Record<string, any>> = (
-  params: NoteUpEvent & CallbackBase<TData>
-) => void;
+type TimeEventCallback = (params: TimeEvent) => void;
 
-type TimeEventCallback<TData = Record<string, any>> = (
-  params: TimeEvent & CallbackBase<TData>
-) => void;
+type AtStartEventCallback = () => void;
 
-type AtStartEventCallback<TData = Record<string, any>> = (
-  params: CallbackBase<TData>
-) => void;
-
-type TimeCallbackEntry<TData = Record<string, any>> = {
+type TimeCallbackEntry = {
   time: number;
-  callback: TimeEventCallback<TData>;
+  callback: TimeEventCallback;
   expired: boolean;
 };
 
@@ -76,29 +65,24 @@ interface VisualisationSettings {
   computerKeyboardDebugEnabled?: boolean;
 }
 
-interface SetupFunctionProps<TData = Record<string, any>>
-  extends ContextPrimitives {
-  context: CanvasRenderingContext2D;
+interface SetupFunctionProps<TData = Record<string, any>> {
   data: TData;
-  onNoteDown: (callback: NoteDownEventCallback<TData>) => void;
-  onNoteUp: (callback: NoteUpEventCallback<TData>) => void;
-  atTime: (time: number | string, callback: TimeEventCallback<TData>) => void;
-  atStart: (callback: AtStartEventCallback<TData>) => void;
+  visualisation: Visualisation;
+  onNoteDown: (callback: NoteDownEventCallback) => void;
+  onNoteUp: (callback: NoteUpEventCallback) => void;
+  atTime: (time: number | string, callback: TimeEventCallback) => void;
+  atStart: (callback: AtStartEventCallback) => void;
 }
 
-interface PropertyContextAction {
-  type: "property";
-  property: string;
-  value: any;
+interface RenderFunctionProps<TData = Record<string, any>>
+  extends ContextPrimitives {
+  data: TData;
+  context: CanvasRenderingContext2D;
+  width: number;
+  height: number;
+  center: Point2D;
+  time: number;
 }
-
-interface MethodContextAction {
-  type: "method";
-  method: string;
-  args: any[];
-}
-
-type ContextAction = PropertyContextAction | MethodContextAction;
 
 const DEFAULTS = {
   SETTINGS_WIDTH: 1080,
@@ -109,13 +93,14 @@ const DEFAULTS = {
 
 class VisualisationAnimationLoopHandler<TData = Record<string, any>> {
   #settings: SketchSettings = {
-    dimensions: [DEFAULTS.SETTINGS_WIDTH, DEFAULTS.SETTINGS_HEIGHT] as [
-      number,
-      number
-    ],
+    // dimensions: [DEFAULTS.SETTINGS_WIDTH, DEFAULTS.SETTINGS_HEIGHT] as [
+    //   number,
+    //   number
+    // ],
     animate: true,
     fps: DEFAULTS.SETTINGS_FPS,
     playbackRate: "throttle",
+    scaleToFit: true,
   };
 
   #appProperties: AppSettings = {
@@ -129,17 +114,12 @@ class VisualisationAnimationLoopHandler<TData = Record<string, any>> {
   #visualisation = new Visualisation();
   #visualisationData: TData = {} as TData;
 
-  // Time-based callbacks -- callbacks that begin with 'at' -- need to be
-  // tracked outside of the animation loop.
+  // Callbacks from event-based handlers that are registered in the 'setup'
+  // function
 
-  #timeCallbacks: TimeCallbackEntry<TData>[] = [];
-
-  // Changes and methods to context that are called within event handlers
-  // need to be queued so that they are stateful across frames. The following
-  // values track these actions, and track whether context is called within
-  // an event handler or not.
-
-  #queuedContextActions: ContextAction[] = [];
+  #timeCallbacks: TimeCallbackEntry[] = [];
+  #noteDownCallbacks: NoteDownEventCallback[] = [];
+  #noteUpCallbacks: NoteUpEventCallback[] = [];
 
   constructor() {}
 
@@ -168,78 +148,80 @@ class VisualisationAnimationLoopHandler<TData = Record<string, any>> {
   }
 
   setup(setupFunction: (props: SetupFunctionProps<TData>) => void) {
-    const sketchFunction = (sketchProps: SketchProps) => {
-      const { context } = sketchProps;
+    const onNoteDown = (callback: NoteDownEventCallback) => {
+      this.#noteDownCallbacks.push(callback);
+    };
 
-      // Store event-based callbacks to be executed as part of current frame
-      const noteDownCallbacks: NoteDownEventCallback<TData>[] = [];
-      const noteUpCallbacks: NoteUpEventCallback<TData>[] = [];
+    const onNoteUp = (callback: NoteUpEventCallback) => {
+      this.#noteUpCallbacks.push(callback);
+    };
 
-      const onNoteDown = (callback: NoteDownEventCallback<TData>) => {
-        noteDownCallbacks.push(callback);
-      };
+    const atTime = (
+      eventTime: number | string,
+      callback: TimeEventCallback
+    ) => {
+      let eventTimeInMs = 0;
 
-      const onNoteUp = (callback: NoteUpEventCallback<TData>) => {
-        noteUpCallbacks.push(callback);
-      };
+      if (typeof eventTime === "string") {
+        eventTimeInMs = isTimeExpression(eventTime)
+          ? timeExpressionToMs(eventTime) ?? 0
+          : 0;
+      } else {
+        eventTimeInMs = eventTime;
+      }
 
-      const atTime = (
-        eventTime: number | string,
-        callback: TimeEventCallback<TData>
-      ) => {
-        let eventTimeInMs = 0;
-
-        if (typeof eventTime === "string") {
-          eventTimeInMs = isTimeExpression(eventTime)
-            ? timeExpressionToMs(eventTime) ?? 0
-            : 0;
-        } else {
-          eventTimeInMs = eventTime;
-        }
-
-        this.#timeCallbacks.push({
-          time: eventTimeInMs,
-          callback,
-          expired: false,
-        });
-      };
-
-      const atStart = (callback: AtStartEventCallback<TData>) => {
-        atTime(0, callback);
-      };
-
-      const persistentContext = watch(context, {
-        onPropertyChange: (property, value) => {
-          this.#queuedContextActions.push({
-            type: "property",
-            property,
-            value,
-          });
-        },
-        onMethodCall: (method, args) => {
-          this.#queuedContextActions.push({ type: "method", method, args });
-        },
+      this.#timeCallbacks.push({
+        time: eventTimeInMs,
+        callback,
+        expired: false,
       });
+    };
 
-      setupFunction({
-        context: persistentContext,
-        data: this.#visualisationData,
-        onNoteDown,
-        onNoteUp,
-        atTime,
-        atStart,
-        ...getContextPrimitives(persistentContext),
-      });
+    const atStart = (callback: AtStartEventCallback) => {
+      atTime(0, callback);
+    };
 
+    setupFunction({
+      data: this.#visualisationData,
+      visualisation: this.#visualisation,
+      onNoteDown,
+      onNoteUp,
+      atTime,
+      atStart,
+    });
+
+    return this;
+  }
+
+  render(renderFunction?: (props: RenderFunctionProps<TData>) => void) {
+    const sketchFunction = () => {
       return (canvasProps: CanvasProps) => {
         const { context, width, height, frame, time } = canvasProps;
 
         // Rendering only works if animated and if there are workable frames
         if (!frame || !time) return;
 
+        // Computed properties of canvas centre and ms run-time
+        const center = { x: width / 2, y: height / 2 };
+        const timeInMs = time * 1000;
+
         // Set background color and clear the canvas for rendering
         context.fillStyle = "white";
         context.fillRect(0, 0, width, height);
+
+        // Call the custom render function if it is specified. This function
+        // runs on every frame and allows the user to manipulate the context
+        // in real time and/or use the convenience context primitive functions
+
+        renderFunction?.({
+          data: this.#visualisationData,
+          context,
+          width,
+          height,
+          center,
+          time: timeInMs,
+          ...getContextPrimitives(context),
+        });
 
         // Get recent key information as sent from MIDI controller / keyboard debugger
         const recentNotesPressedUp =
@@ -256,22 +238,18 @@ class VisualisationAnimationLoopHandler<TData = Record<string, any>> {
 
         // Handle module-level note down events
         recentNotesPressedDown.forEach((recentNotePressedDown) => {
-          noteDownCallbacks.forEach((callback) => {
+          this.#noteDownCallbacks.forEach((callback) => {
             callback({
               ...recentNotePressedDown,
-              visualisation: this.#visualisation,
-              data: this.#visualisationData,
             });
           });
         });
 
         // Handle module-level note up events
         recentNotesPressedUp.forEach((recentNotePressedUp) => {
-          noteUpCallbacks.forEach((callback) => {
+          this.#noteUpCallbacks.forEach((callback) => {
             callback({
               ...recentNotePressedUp,
-              visualisation: this.#visualisation,
-              data: this.#visualisationData,
             });
           });
         });
@@ -286,39 +264,11 @@ class VisualisationAnimationLoopHandler<TData = Record<string, any>> {
               if (timeInMs > queuedTimeEventHandler.time) {
                 queuedTimeEventHandler.callback({
                   time: timeInMs,
-                  visualisation: this.#visualisation,
-                  data: this.#visualisationData,
                 });
                 queuedTimeEventHandler.expired = true;
               }
             });
         }
-
-        // Apply queued context prop changes
-        this.#queuedContextActions.forEach((queuedAction) => {
-          switch (queuedAction.type) {
-            case "property": {
-              const { property, value } = queuedAction;
-
-              if (propertyIsWritable(context, property)) {
-                const key = property as keyof CanvasRenderingContext2D;
-                (context[key] as typeof value) = value;
-              }
-              break;
-            }
-            case "method": {
-              const { method, args } = queuedAction;
-              const key = method as keyof CanvasRenderingContext2D;
-              const fn = context[key];
-
-              if (typeof fn === "function") {
-                (fn as Function).apply(context, args);
-              }
-              break;
-            }
-            default:
-          }
-        });
 
         // Remove objects that are either decayed or not visible
         this.#visualisation.cleanUp();

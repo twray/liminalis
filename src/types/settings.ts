@@ -5,7 +5,7 @@ export interface AppSettings {
 }
 
 export interface SketchSettings {
-  dimensions: [number, number];
+  dimensions?: [number, number];
   animate: boolean;
   fps: number;
   duration?: number;
