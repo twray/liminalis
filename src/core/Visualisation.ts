@@ -43,7 +43,11 @@ class Visualisation {
     return animatableObject;
   }
 
-  renderObjects(context: CanvasRenderingContext2D) {
+  renderObjects(
+    context: CanvasRenderingContext2D,
+    width: number,
+    height: number
+  ) {
     if (!context) {
       throw new Error(
         "A CanvasRenderingContext2D instance must be provided to render AnimatableObjects." +
@@ -59,11 +63,7 @@ class Visualisation {
     let isometricView: IsometricView | null = null;
 
     if (hasIsometricObjects) {
-      isometricView = new IsometricView(
-        context,
-        context.canvas.width / window.devicePixelRatio,
-        context.canvas.height / window.devicePixelRatio
-      );
+      isometricView = new IsometricView(context, width, height);
     }
 
     this.animatableObjects.forEach((animatableObject) => {

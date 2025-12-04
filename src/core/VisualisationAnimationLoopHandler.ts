@@ -127,10 +127,6 @@ const DEFAULTS = {
 
 class VisualisationAnimationLoopHandler<TData = Record<string, any>> {
   #settings: SketchSettings = {
-    // dimensions: [DEFAULTS.SETTINGS_WIDTH, DEFAULTS.SETTINGS_HEIGHT] as [
-    //   number,
-    //   number
-    // ],
     animate: true,
     fps: DEFAULTS.SETTINGS_FPS,
     playbackRate: "throttle",
@@ -370,7 +366,7 @@ class VisualisationAnimationLoopHandler<TData = Record<string, any>> {
 
         // Render all animatable objects
 
-        this.#visualisation.renderObjects(context);
+        this.#visualisation.renderObjects(context, width, height);
       };
     };
 
