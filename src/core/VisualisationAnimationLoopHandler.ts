@@ -94,6 +94,8 @@ interface VisualisationSettings {
 interface SetupFunctionProps<TData = Record<string, any>> {
   data: TData;
   visualisation: Visualisation;
+  width: number;
+  height: number;
   onNoteDown: (callback: NoteDownEventCallback) => void;
   onNoteUp: (callback: NoteUpEventCallback) => void;
   atTime: (time: EventTime, callback: TimeEventCallback) => void;
@@ -117,6 +119,8 @@ interface RenderFunctionProps<TData = Record<string, any>>
     callback: TimeEventCallback
   ) => void;
 }
+
+const KEYBOARD_DEBUG_ATTACK_KEY_REGEX = /^[1-9]$/;
 
 const DEFAULTS = {
   SETTINGS_WIDTH: 1080,
@@ -150,6 +154,8 @@ class VisualisationAnimationLoopHandler<TData = Record<string, any>> {
   #timeCallbacks: ExpirableTimeCallbackEntry[] = [];
   #noteDownCallbacks: NoteDownEventCallback[] = [];
   #noteUpCallbacks: NoteUpEventCallback[] = [];
+
+  #currentKeyboardDebugNumericPressedKey: string | null = null;
 
   constructor() {}
 
@@ -201,6 +207,8 @@ class VisualisationAnimationLoopHandler<TData = Record<string, any>> {
     setupFunction({
       data: this.#visualisationData,
       visualisation: this.#visualisation,
+      width: this.#settings.dimensions?.[0] ?? window.innerWidth,
+      height: this.#settings.dimensions?.[1] ?? window.innerHeight,
       onNoteDown,
       onNoteUp,
       atTime,
@@ -390,13 +398,26 @@ class VisualisationAnimationLoopHandler<TData = Record<string, any>> {
       window.addEventListener("keydown", (event) => {
         if (event.repeat) return;
 
+        if (KEYBOARD_DEBUG_ATTACK_KEY_REGEX.test(event.key)) {
+          this.#currentKeyboardDebugNumericPressedKey = event.key;
+          return;
+        }
+
         const note = keyMappings.find(
           (keyMapping) => event.code === keyMapping.keyCode
         )?.note;
 
+        const simulatedAttackValue = this.#currentKeyboardDebugNumericPressedKey
+          ? +this.#currentKeyboardDebugNumericPressedKey / 10
+          : 1;
+
         if (note) {
           event.preventDefault();
-          handleNoteOn(note, Utilities.buildNote(note).number);
+          handleNoteOn(
+            note,
+            Utilities.buildNote(note).number,
+            toNormalizedFloat(simulatedAttackValue)
+          );
         }
       });
 
@@ -404,6 +425,11 @@ class VisualisationAnimationLoopHandler<TData = Record<string, any>> {
         const note = keyMappings.find(
           (keyMapping) => event.code === keyMapping.keyCode
         )?.note;
+
+        if (event.key === this.#currentKeyboardDebugNumericPressedKey) {
+          this.#currentKeyboardDebugNumericPressedKey = null;
+          return;
+        }
 
         if (note) {
           handleNoteOff(note, Utilities.buildNote(note).number);

@@ -74,9 +74,9 @@ class Visualisation {
           isometricView &&
           animatableObject instanceof AnimatableIsometricObject
         ) {
-          animatableObject.renderIn(isometricView);
+          animatableObject.renderIn(isometricView, width, height);
         } else {
-          animatableObject.renderIn(context);
+          animatableObject.renderIn(context, width, height);
         }
       } else if (wasVisible) {
         animatableObject.hasDecayed = true;

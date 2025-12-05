@@ -1,0 +1,29 @@
+import { easeInBounce, easeOutBack } from "easing-utils";
+import { animatableIsometric } from "../../../core";
+
+export const bouncyCuboid = () => {
+  return animatableIsometric<{
+    positionIndex: number;
+  }>().withRenderer(({ props, context, attackValue, decayFactor, animate }) => {
+    const { positionIndex } = props;
+
+    const adjustedAttackValue = easeInBounce(attackValue);
+
+    context.addCuboidAt({
+      isoX: -3 + positionIndex,
+      isoY: 0,
+      isoZ: -6 + positionIndex,
+      lengthX: 1,
+      lengthY: 3,
+      lengthZ: 1,
+      fill: "#333",
+      opacity: decayFactor === 1 ? animate({ duration: 500 }) : decayFactor,
+      translateZ: animate({
+        duration: 1000,
+        from: 750 * adjustedAttackValue,
+        to: 0,
+        easing: easeOutBack,
+      }),
+    });
+  });
+};

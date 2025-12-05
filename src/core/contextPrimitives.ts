@@ -1,8 +1,8 @@
 import type { Dimensions2D, Point2D } from "../types";
 
 const DEFAULT_BACKGROUND_COLOR = "#fff";
-const DEFAULT_FILL_STYLE = "#333";
-const DEFAULT_STROKE_STYLE = "transparent";
+const DEFAULT_FILL_STYLE = "transparent";
+const DEFAULT_STROKE_STYLE = "#333";
 const DEFAULT_STROKE_WIDTH = 0;
 
 interface FillStyles {
@@ -15,7 +15,7 @@ interface StrokeStyles {
 }
 
 export interface BackgroundProps {
-  backgroundColor: string;
+  color: string;
 }
 
 export interface CircleProps extends FillStyles, StrokeStyles {
@@ -35,11 +35,11 @@ export interface LineProps extends StrokeStyles {
   end: Point2D;
 }
 
-const setBackground = (
+const background = (
   context: CanvasRenderingContext2D,
   props: BackgroundProps
 ) => {
-  const { backgroundColor = DEFAULT_BACKGROUND_COLOR } = props;
+  const { color: backgroundColor = DEFAULT_BACKGROUND_COLOR } = props;
 
   context.save();
 
@@ -55,7 +55,7 @@ const setBackground = (
   context.restore();
 };
 
-const drawCircle = (context: CanvasRenderingContext2D, props: CircleProps) => {
+const circle = (context: CanvasRenderingContext2D, props: CircleProps) => {
   const {
     cx,
     cy,
@@ -81,10 +81,7 @@ const drawCircle = (context: CanvasRenderingContext2D, props: CircleProps) => {
   context.restore();
 };
 
-const drawRectangle = (
-  context: CanvasRenderingContext2D,
-  props: RectangleProps
-) => {
+const rect = (context: CanvasRenderingContext2D, props: RectangleProps) => {
   const {
     x,
     y,
@@ -111,7 +108,7 @@ const drawRectangle = (
   context.restore();
 };
 
-const drawLine = (context: CanvasRenderingContext2D, props: LineProps) => {
+const line = (context: CanvasRenderingContext2D, props: LineProps) => {
   const {
     start,
     end,
@@ -133,15 +130,15 @@ const drawLine = (context: CanvasRenderingContext2D, props: LineProps) => {
 };
 
 export const getContextPrimitives = (context: CanvasRenderingContext2D) => ({
-  setBackground: (props: BackgroundProps) => setBackground(context, props),
-  drawRectangle: (props: RectangleProps) => drawRectangle(context, props),
-  drawCircle: (props: CircleProps) => drawCircle(context, props),
-  drawLine: (props: LineProps) => drawLine(context, props),
+  background: (props: BackgroundProps) => background(context, props),
+  rect: (props: RectangleProps) => rect(context, props),
+  circle: (props: CircleProps) => circle(context, props),
+  line: (props: LineProps) => line(context, props),
 });
 
 export interface ContextPrimitives {
-  setBackground: (props: BackgroundProps) => void;
-  drawRectangle: (props: RectangleProps) => void;
-  drawCircle: (props: CircleProps) => void;
-  drawLine: (props: LineProps) => void;
+  background: (props: BackgroundProps) => void;
+  rect: (props: RectangleProps) => void;
+  circle: (props: CircleProps) => void;
+  line: (props: LineProps) => void;
 }

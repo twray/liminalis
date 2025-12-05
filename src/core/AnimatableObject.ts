@@ -1,24 +1,32 @@
-import { NormalizedFloat } from "../types";
+import { NormalizedFloat, Point2D } from "../types";
 import { toNormalizedFloat } from "../util";
 import { ContextPrimitives, getContextPrimitives } from "./contextPrimitives";
 
 interface RenderParams<TProps, TRenderContext = CanvasRenderingContext2D> {
   props: TProps;
   context: TRenderContext;
+  width: number;
+  height: number;
+  center: Point2D;
   attackValue: NormalizedFloat;
   decayFactor: NormalizedFloat;
-  getAnimationTrajectory: (
-    duration: number,
-    delay: number,
-    fromEnd: boolean,
-    easingFunction: ((t: number) => number) | null
-  ) => number;
+  animate: (options: AnimationOptions) => number;
 }
 
 type RenderParamsWithPrimitives<TProps, TRenderContext> =
   TRenderContext extends CanvasRenderingContext2D
     ? RenderParams<TProps, TRenderContext> & ContextPrimitives
     : RenderParams<TProps, TRenderContext>;
+
+interface AnimationOptions {
+  duration: number;
+  delay?: number;
+  from?: number;
+  to?: number;
+  easing?: ((t: number) => number) | null;
+  anchor?: "start" | "end";
+  reverse?: boolean;
+}
 
 class AnimatableObject<TProps = {}, TRenderContext = CanvasRenderingContext2D> {
   public attackValue: NormalizedFloat = toNormalizedFloat(0);
@@ -58,15 +66,20 @@ class AnimatableObject<TProps = {}, TRenderContext = CanvasRenderingContext2D> {
     return this;
   }
 
-  renderIn(context: TRenderContext): this {
+  renderIn(context: TRenderContext, width: number, height: number): this {
     const { props, attackValue, decayFactor } = this;
+
+    const center = { x: width / 2, y: height / 2 };
 
     const baseParams = {
       props,
       context,
+      width,
+      height,
+      center,
       attackValue,
       decayFactor,
-      getAnimationTrajectory: this.getAnimationTrajectory.bind(this),
+      animate: this.animate.bind(this),
     };
 
     const params =
@@ -130,25 +143,43 @@ class AnimatableObject<TProps = {}, TRenderContext = CanvasRenderingContext2D> {
     }
   }
 
-  getAnimationTrajectory(
-    duration: number,
-    delay: number = 0,
-    fromEnd: boolean = false,
-    easingFunction: ((t: number) => number) | null = null
-  ): number {
-    const { timeFirstShown, decayPeriod } = this;
-    const timeSinceFirstShown = this.getMsSince(timeFirstShown);
-    const computedDelay = fromEnd ? decayPeriod - duration - delay : delay;
+  animate(options: AnimationOptions): number {
+    const {
+      duration,
+      delay = 0,
+      from = 0,
+      to = 1,
+      easing = null,
+      anchor = "start",
+      reverse = false,
+    } = options;
 
-    const animationTrajectory =
-      timeSinceFirstShown > computedDelay
+    const { timeShown, decayPeriod } = this;
+    const timeSinceShown = this.getMsSince(timeShown);
+
+    // If duration is 0 or negative, then set it as 1 so it appears
+    // instantaneous
+    const validatedDuration = duration > 0 ? duration : 1;
+
+    const computedDelay =
+      anchor === "end" ? decayPeriod - validatedDuration - delay : delay;
+
+    let progress =
+      timeSinceShown > computedDelay
         ? 1 -
-          Math.max(0, duration - timeSinceFirstShown + computedDelay) / duration
+          Math.max(0, validatedDuration - timeSinceShown + computedDelay) /
+            validatedDuration
         : 0;
 
-    return typeof easingFunction === "function"
-      ? easingFunction(animationTrajectory)
-      : animationTrajectory;
+    if (typeof easing === "function") {
+      progress = easing(progress);
+    }
+
+    if (reverse) {
+      progress = 1 - progress;
+    }
+
+    return from + (to - from) * progress;
   }
 }
 
