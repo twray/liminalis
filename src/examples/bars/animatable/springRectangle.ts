@@ -1,4 +1,3 @@
-import { color } from "canvas-sketch-util";
 import { easeInCubic, easeOutBack } from "easing-utils";
 import { animatable } from "../../../core";
 
@@ -13,9 +12,6 @@ export const springRectangle = () => {
     const { x, y, width, height, fill } = props;
 
     const opacity = easeInCubic(decayFactor);
-
-    const [r, g, b] = color.parse(fill).rgb;
-    const fillWithAlpha = `rgba(${r}, ${g}, ${b}, ${opacity})`;
 
     const renderedHeight = animate({
       from: 0,
@@ -41,7 +37,8 @@ export const springRectangle = () => {
         }),
       width,
       height: renderedHeight,
-      fillColor: fillWithAlpha,
+      fillColor: fill,
+      opacity,
     });
   });
 };

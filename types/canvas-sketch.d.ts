@@ -101,10 +101,7 @@ declare module "canvas-sketch-util" {
   };
 
   export const color: {
-    parse(color: string): {
-      rgb: [number, number, number];
-      hsl: [number, number, number];
-    };
+    parse(color: string): ParsedColor;
     style(color: any): string;
     offsetHSL(
       baseColor: string,

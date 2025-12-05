@@ -16,6 +16,12 @@ createVisualisation
     const { x: cx, y: cy } = center;
 
     for (let i = 0; i < 25; i++) {
-      circle({ cx, cy, radius: 50 + 10 * i, strokeColor: "#999" });
+      circle({
+        cx,
+        cy,
+        radius: 50 + 10 * i,
+        strokeColor: "#333",
+        opacity: 1 - i / 25,
+      });
     }
   });

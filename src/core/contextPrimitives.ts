@@ -1,4 +1,6 @@
+import { color as colorUtil } from "canvas-sketch-util";
 import type { Dimensions2D, Point2D } from "../types";
+import { isNormalizedFloat } from "../util";
 
 const DEFAULT_BACKGROUND_COLOR = "#fff";
 const DEFAULT_FILL_STYLE = "transparent";
@@ -14,11 +16,15 @@ interface StrokeStyles {
   strokeWidth?: number;
 }
 
+interface WithOpacity {
+  opacity?: number;
+}
+
 export interface BackgroundProps {
   color: string;
 }
 
-export interface CircleProps extends FillStyles, StrokeStyles {
+export interface CircleProps extends FillStyles, StrokeStyles, WithOpacity {
   cx: number;
   cy: number;
   radius: number;
@@ -28,12 +34,33 @@ export interface RectangleProps
   extends Point2D,
     Dimensions2D,
     FillStyles,
-    StrokeStyles {}
+    StrokeStyles,
+    WithOpacity {}
 
-export interface LineProps extends StrokeStyles {
+export interface LineProps extends StrokeStyles, WithOpacity {
   start: Point2D;
   end: Point2D;
 }
+
+const getColorWithOpacity = (color: string, opacity: number) => {
+  let validatedOpacity = 1;
+
+  if (color === "transparent") return color;
+
+  if (!isNormalizedFloat(opacity)) {
+    console.warn("Opacity value must be between 0 and 1");
+  } else {
+    validatedOpacity = opacity;
+  }
+
+  try {
+    const [r, g, b, a] = colorUtil.parse(color).rgba;
+    return `rgba(${r}, ${g}, ${b}, ${a < 1 ? a : validatedOpacity})`;
+  } catch {
+    console.warn(`Invalid color: ${color}`);
+    return DEFAULT_STROKE_STYLE;
+  }
+};
 
 const background = (
   context: CanvasRenderingContext2D,
@@ -63,12 +90,13 @@ const circle = (context: CanvasRenderingContext2D, props: CircleProps) => {
     fillColor: fillStyle = DEFAULT_FILL_STYLE,
     strokeColor: strokeStyle = DEFAULT_STROKE_STYLE,
     strokeWidth = DEFAULT_STROKE_WIDTH,
+    opacity = 1,
   } = props;
 
   context.save();
 
-  context.fillStyle = fillStyle;
-  context.strokeStyle = strokeStyle;
+  context.fillStyle = getColorWithOpacity(fillStyle, opacity);
+  context.strokeStyle = getColorWithOpacity(strokeStyle, opacity);
   context.lineWidth = strokeWidth;
 
   context.beginPath();
@@ -90,12 +118,13 @@ const rect = (context: CanvasRenderingContext2D, props: RectangleProps) => {
     fillColor: fillStyle = DEFAULT_FILL_STYLE,
     strokeColor: strokeStyle = DEFAULT_STROKE_STYLE,
     strokeWidth = DEFAULT_STROKE_WIDTH,
+    opacity = 1,
   } = props;
 
   context.save();
 
-  context.fillStyle = fillStyle;
-  context.strokeStyle = strokeStyle;
+  context.fillStyle = getColorWithOpacity(fillStyle, opacity);
+  context.strokeStyle = getColorWithOpacity(strokeStyle, opacity);
   context.lineWidth = strokeWidth;
 
   context.beginPath();
@@ -114,11 +143,12 @@ const line = (context: CanvasRenderingContext2D, props: LineProps) => {
     end,
     strokeColor: strokeStyle = DEFAULT_STROKE_STYLE,
     strokeWidth = DEFAULT_STROKE_WIDTH,
+    opacity = 1,
   } = props;
 
   context.save();
 
-  context.strokeStyle = strokeStyle;
+  context.strokeStyle = getColorWithOpacity(strokeStyle, opacity);
   context.lineWidth = strokeWidth;
 
   context.moveTo(start.x, start.y);
