@@ -30,6 +30,7 @@ createVisualisation
     onNoteDown(({ note, attack }) => {
       visualisation.get(note[0])?.attack(attack);
     });
+
     onNoteUp(({ note }) => {
       visualisation.get(note[0])?.decay(2000);
     });
