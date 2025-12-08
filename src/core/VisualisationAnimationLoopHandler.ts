@@ -332,8 +332,8 @@ class VisualisationAnimationLoopHandler<TData = Record<string, any>> {
           }
         });
 
-        // Handle remaining event callbacks as registered within the setup()
-        // function
+        // Handle remaining event callbacks as registered
+        // within the setup() function
 
         const notesPressedUpForFrame =
           this.#noteEventManager.getNewNoteEventsForFrame(

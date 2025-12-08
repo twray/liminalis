@@ -120,12 +120,14 @@ class AnimatableObject<TProps = {}, TRenderContext = CanvasRenderingContext2D> {
   }
 
   release(releasePeriod: number = 1000): this {
-    if (this.isSustaining) {
-      this.releasePeriod = releasePeriod;
-      this.isSustaining = false;
-      this.isReleasing = true;
-      this.timeReleased = new Date();
-    }
+    setTimeout(() => {
+      if (this.isSustaining) {
+        this.releasePeriod = releasePeriod;
+        this.isSustaining = false;
+        this.isReleasing = true;
+        this.timeReleased = new Date();
+      }
+    }, this.sustainPeriod);
 
     return this;
   }
@@ -137,16 +139,14 @@ class AnimatableObject<TProps = {}, TRenderContext = CanvasRenderingContext2D> {
   }
 
   get releaseFactor(): NormalizedFloat {
-    const { releasePeriod, timeReleased, isSustaining, sustainPeriod } = this;
+    const { releasePeriod, timeReleased, isSustaining } = this;
     const msSinceReleased = this.getMsSince(timeReleased);
 
-    if (isSustaining || msSinceReleased < sustainPeriod) {
+    if (isSustaining) {
       return toNormalizedFloat(1);
     } else {
-      return msSinceReleased < releasePeriod + sustainPeriod
-        ? toNormalizedFloat(
-            1 - msSinceReleased / releasePeriod + sustainPeriod / releasePeriod
-          )
+      return msSinceReleased < releasePeriod
+        ? toNormalizedFloat(1 - msSinceReleased / releasePeriod)
         : toNormalizedFloat(0);
     }
   }

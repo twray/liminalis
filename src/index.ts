@@ -89,11 +89,11 @@ createVisualisation
     }
 
     onNoteDown(({ note, attack }) => {
-      visualisation.get(note)?.attack(attack);
+      visualisation.get(note)?.attack(attack).sustain(500);
     });
 
     onNoteUp(({ note }) => {
-      visualisation.get(note)?.release(500);
+      visualisation.get(note)?.release(1000);
     });
   })
   .render(({ background, rect, line, withStyles, translate, circle, data }) => {
