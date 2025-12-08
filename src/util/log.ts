@@ -37,7 +37,7 @@ type Loggable =
   | undefined
   | Record<string, any>;
 
-export const log = (() => {
+export const logMessage = (() => {
   let timeoutId: number | null = null;
 
   return (message: Loggable, truncateNumericValues?: number) => {

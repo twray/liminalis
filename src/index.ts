@@ -41,7 +41,7 @@ createVisualisation
       "E4",
       "F4",
       "F#4",
-      "G",
+      "G4",
       "G#4",
       "A4",
       "A#4",
