@@ -11,6 +11,8 @@ export interface SketchSettings {
   duration?: number;
   playbackRate?: "throttle" | "fixed";
   scaleToFit?: boolean;
+  attributes?: object;
+  canvas: HTMLCanvasElement;
 }
 
 export interface IsometricViewSettings {

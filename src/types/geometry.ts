@@ -14,6 +14,13 @@ export interface Point3D {
   z: number;
 }
 
+export interface Corners {
+  topLeft: number;
+  topRight: number;
+  bottomRight: number;
+  bottomLeft: number;
+}
+
 export interface IsometricPosition {
   isoX: number;
   isoY: number;

@@ -129,12 +129,16 @@ const DEFAULTS = {
   SETTINGS_COMPUTER_KEYBOARD_DEBUG_ENABLED: true,
 };
 
+const canvas = document.createElement("canvas");
+canvas.setAttribute("id", "canvas-visualisation");
+
 class VisualisationAnimationLoopHandler<TData = Record<string, any>> {
   #settings: SketchSettings = {
     animate: true,
     fps: DEFAULTS.SETTINGS_FPS,
     playbackRate: "throttle",
     scaleToFit: true,
+    canvas,
   };
 
   #appProperties: AppSettings = {
@@ -368,12 +372,10 @@ class VisualisationAnimationLoopHandler<TData = Record<string, any>> {
             }
           });
 
-        // Remove objects that are either decayed or not visible
-
+        // Remove objects that are either released or not visible
         this.#visualisation.cleanUp();
 
         // Render all animatable objects
-
         this.#visualisation.renderObjects(context, width, height);
       };
     };

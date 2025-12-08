@@ -18,8 +18,8 @@ class Visualisation {
       console.warn(
         `object with id "${id}" was requested but is not currently registered.` +
           ` It may have been removed from the visualisation already because objects are` +
-          ` removed automatically when they decay. If you wish to access this object again,` +
-          ` after it decays, call its setIsPermanent(true) method when creating it.`
+          ` removed automatically when they are release. If you wish to access this object again,` +
+          ` after it is released, call its setIsPermanent(true) method when creating it.`
       );
     }
 
@@ -35,12 +35,17 @@ class Visualisation {
     if (this.animatableObjects.size > maxAnimatableObjects) {
       console.warn(
         `Warning: Over ${maxAnimatableObjects} are registered. ` +
-          `Check that your objects are decaying and being cleaned up correctly ` +
+          `Check that your objects are releasing and being cleaned up correctly ` +
           `or increase the maximum number of allowed animatable objects.`
       );
     }
 
     return animatableObject;
+  }
+
+  addPermanently(id: string, animatableObject: AnyAnimatableObject) {
+    animatableObject.setIsPermanent(true);
+    this.add(id, animatableObject);
   }
 
   renderObjects(
@@ -67,9 +72,17 @@ class Visualisation {
     }
 
     this.animatableObjects.forEach((animatableObject) => {
-      const { isPersisting, decayFactor, wasVisible } = animatableObject;
+      const {
+        releaseFactor,
+        isPermanent,
+        isReleasing: hasBeenReleased,
+      } = animatableObject;
 
-      if (isPersisting || decayFactor > 0) {
+      if (releaseFactor === 0) {
+        animatableObject.isReleasing = false;
+      }
+
+      if (releaseFactor > 0 || isPermanent) {
         if (
           isometricView &&
           animatableObject instanceof AnimatableIsometricObject
@@ -78,8 +91,8 @@ class Visualisation {
         } else {
           animatableObject.renderIn(context, width, height);
         }
-      } else if (wasVisible) {
-        animatableObject.hasDecayed = true;
+      } else if (hasBeenReleased) {
+        animatableObject.markedForRemoval = true;
       }
     });
 
@@ -90,7 +103,7 @@ class Visualisation {
 
   cleanUp() {
     this.animatableObjects.forEach((animatableObject, id) => {
-      if (!animatableObject.isPermanent && animatableObject.hasDecayed) {
+      if (!animatableObject.isPermanent && animatableObject.markedForRemoval) {
         this.animatableObjects.delete(id);
       }
     });

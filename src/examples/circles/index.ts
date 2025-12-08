@@ -24,7 +24,7 @@ createVisualisation
     });
 
     onNoteUp(({ note }) => {
-      visualisation.get(note)?.decay();
+      visualisation.get(note)?.release();
     });
   })
   .render(({ background }) => {

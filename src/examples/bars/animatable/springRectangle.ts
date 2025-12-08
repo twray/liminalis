@@ -8,10 +8,10 @@ export const springRectangle = () => {
     width: number;
     height: number;
     fill: string;
-  }>().withRenderer(({ props, attackValue, decayFactor, rect, animate }) => {
+  }>().withRenderer(({ props, attackValue, releaseFactor, rect, animate }) => {
     const { x, y, width, height, fill } = props;
 
-    const opacity = easeInCubic(decayFactor);
+    const opacity = easeInCubic(releaseFactor);
 
     const renderedHeight = animate({
       from: 0,

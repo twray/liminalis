@@ -32,7 +32,7 @@ createVisualisation
     });
 
     onNoteUp(({ note }) => {
-      visualisation.get(note[0])?.decay(2000);
+      visualisation.get(note[0])?.release(2000);
     });
   })
   .render();

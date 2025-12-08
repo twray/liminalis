@@ -3,7 +3,7 @@ import { animatable } from "../../../core";
 
 export const springCircle = () => {
   return animatable<{ xOffset: number }>().withRenderer(
-    ({ props, circle, center, decayFactor, attackValue, animate }) => {
+    ({ props, circle, center, releaseFactor, attackValue, animate }) => {
       const { xOffset = 0 } = props;
       const { x: cx, y: cy } = center;
 
@@ -17,7 +17,7 @@ export const springCircle = () => {
           easing: easeOutBounce,
         }),
         strokeColor: "#666",
-        opacity: decayFactor,
+        opacity: releaseFactor,
       });
     }
   );
