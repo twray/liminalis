@@ -2,10 +2,14 @@ import { createVisualisation } from "../../core";
 import { bouncyCuboid } from "./animatable/bouncyCuboid";
 
 createVisualisation
-  .setup(({ onNoteDown, onNoteUp, visualisation }) => {
+  .withSettings({
+    width: 1080,
+    height: 1920,
+  })
+  .setup(({ onNoteDown, onNoteUp }) => {
     const mappableBaseNotes = ["C", "D", "E", "F", "G", "A", "B"];
 
-    onNoteDown(({ note, attack }) => {
+    onNoteDown(({ visualisation, note, attack }) => {
       const positionIndex = mappableBaseNotes.indexOf(note[0]) ?? 0;
 
       visualisation.add(
@@ -17,7 +21,7 @@ createVisualisation
       );
     });
 
-    onNoteUp(({ note }) => {
+    onNoteUp(({ visualisation, note }) => {
       visualisation.get(note[0])?.release(2000);
     });
   })

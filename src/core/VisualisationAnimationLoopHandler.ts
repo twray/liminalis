@@ -10,6 +10,7 @@ import type {
   AppSettings,
   CanvasProps,
   EventTime,
+  MidiNoteEvent,
   NormalizedFloat,
   NoteDownEvent,
   NoteUpEvent,
@@ -25,23 +26,25 @@ import Visualisation from "./Visualisation";
 
 import keyMappings from "../data/keyMappings.json";
 
-type MidiNoteEvent = {
-  note: {
-    identifier: string;
-    number: number;
-    attack: number;
-  };
-};
+interface WithVisualisationContext {
+  visualisation: Visualisation;
+}
 
 type MidiEventCallback = (event: MidiNoteEvent) => void;
 
-type NoteDownEventCallback = (params: NoteDownEvent) => void;
+type NoteDownEventCallback = (
+  params: NoteDownEvent & WithVisualisationContext
+) => void;
 
-type NoteUpEventCallback = (params: NoteUpEvent) => void;
+type NoteUpEventCallback = (
+  params: NoteUpEvent & WithVisualisationContext
+) => void;
+
+type FrameEventCallback = (params: FrameRenderEvent) => void;
+
+type TimeEventCallback = (params: WithVisualisationContext) => void;
 
 type NotesDownEventCallback = (params: ActiveNotesEvent) => void;
-
-type TimeEventCallback = () => void;
 
 interface TimeCallbackEntry {
   time: number;
@@ -91,20 +94,19 @@ interface VisualisationSettings {
   computerKeyboardDebugEnabled?: boolean;
 }
 
-interface SetupFunctionProps<TData = Record<string, any>> {
-  data: TData;
-  visualisation: Visualisation;
+interface SetupFunctionProps<TState> {
+  state: TState;
   width: number;
   height: number;
+  center: Point2D;
   onNoteDown: (callback: NoteDownEventCallback) => void;
   onNoteUp: (callback: NoteUpEventCallback) => void;
+  onEachFrame: (callback: FrameEventCallback) => void;
   atTime: (time: EventTime, callback: TimeEventCallback) => void;
   atStart: (callback: TimeEventCallback) => void;
 }
 
-interface RenderFunctionProps<TData = Record<string, any>>
-  extends ContextPrimitives {
-  data: TData;
+interface FrameRenderEvent extends ContextPrimitives {
   context: CanvasRenderingContext2D;
   width: number;
   height: number;
@@ -132,7 +134,7 @@ const DEFAULTS = {
 const canvas = document.createElement("canvas");
 canvas.setAttribute("id", "canvas-visualisation");
 
-class VisualisationAnimationLoopHandler<TData = Record<string, any>> {
+class VisualisationAnimationLoopHandler<TState> {
   #settings: SketchSettings = {
     animate: true,
     fps: DEFAULTS.SETTINGS_FPS,
@@ -150,14 +152,15 @@ class VisualisationAnimationLoopHandler<TData = Record<string, any>> {
   #modeManager = new ModeManager([], []);
 
   #visualisation = new Visualisation();
-  #visualisationData: TData = {} as TData;
+  #visualisationState: TState = {} as TState;
 
-  // Callbacks from event-based handlers that are registered in the 'setup'
-  // function
+  // Callbacks from event-based handlers that
+  // are registered in the 'setup' function
 
   #timeCallbacks: ExpirableTimeCallbackEntry[] = [];
   #noteDownCallbacks: NoteDownEventCallback[] = [];
   #noteUpCallbacks: NoteUpEventCallback[] = [];
+  #frameRenderCallbacks: FrameEventCallback[] = [];
 
   #currentKeyboardDebugNumericPressedKey: string | null = null;
 
@@ -179,21 +182,25 @@ class VisualisationAnimationLoopHandler<TData = Record<string, any>> {
     return this;
   }
 
-  withData<T extends Record<string, any>>(
-    data: T
+  withState<T extends Record<string, any>>(
+    state: T
   ): VisualisationAnimationLoopHandler<T> {
     const instance = this as any as VisualisationAnimationLoopHandler<T>;
-    instance.#visualisationData = data;
+    instance.#visualisationState = state;
     return instance;
   }
 
-  setup(setupFunction: (props: SetupFunctionProps<TData>) => void) {
+  setup(setupFunction: (props: SetupFunctionProps<TState>) => void) {
     const onNoteDown = (callback: NoteDownEventCallback) => {
       this.#noteDownCallbacks.push(callback);
     };
 
     const onNoteUp = (callback: NoteUpEventCallback) => {
       this.#noteUpCallbacks.push(callback);
+    };
+
+    const onEachFrame = (callback: FrameEventCallback) => {
+      this.#frameRenderCallbacks.push(callback);
     };
 
     const atTime = (eventTime: EventTime, callback: TimeEventCallback) => {
@@ -208,13 +215,18 @@ class VisualisationAnimationLoopHandler<TData = Record<string, any>> {
       atTime(0, callback);
     };
 
+    const canvasWidth = this.#settings.dimensions?.[0] ?? window.innerWidth;
+    const canvasHeight = this.#settings.dimensions?.[1] ?? window.innerHeight;
+    const center = { x: canvasWidth / 2, y: canvasHeight / 2 };
+
     setupFunction({
-      data: this.#visualisationData,
-      visualisation: this.#visualisation,
-      width: this.#settings.dimensions?.[0] ?? window.innerWidth,
-      height: this.#settings.dimensions?.[1] ?? window.innerHeight,
+      state: this.#visualisationState,
+      width: canvasWidth,
+      height: canvasHeight,
+      center,
       onNoteDown,
       onNoteUp,
+      onEachFrame,
       atTime,
       atStart,
     });
@@ -222,7 +234,7 @@ class VisualisationAnimationLoopHandler<TData = Record<string, any>> {
     return this;
   }
 
-  render(renderFunction?: (props: RenderFunctionProps<TData>) => void) {
+  render() {
     const sketchFunction = () => {
       return (canvasProps: CanvasProps) => {
         const { context, width, height, frame, time } = canvasProps;
@@ -278,18 +290,19 @@ class VisualisationAnimationLoopHandler<TData = Record<string, any>> {
         // runs on every frame and allows the user to manipulate the context
         // in real time and/or use the convenience context primitive functions
 
-        renderFunction?.({
-          data: this.#visualisationData,
-          context,
-          width,
-          height,
-          center,
-          time: timeInMs,
-          whileNotesDown,
-          beforeTime,
-          afterTime,
-          duringTimeInterval,
-          ...getContextPrimitives(context),
+        this.#frameRenderCallbacks.forEach((frameRenderCallback) => {
+          frameRenderCallback({
+            context,
+            width,
+            height,
+            center,
+            time: timeInMs,
+            whileNotesDown,
+            beforeTime,
+            afterTime,
+            duringTimeInterval,
+            ...getContextPrimitives(context),
+          });
         });
 
         // Process all frame-based events in the order as they are written
@@ -311,11 +324,15 @@ class VisualisationAnimationLoopHandler<TData = Record<string, any>> {
               break;
             }
             case "beforetime": {
-              if (timeInMs < callbackEntry.time) callback();
+              if (timeInMs < callbackEntry.time) {
+                callback({ visualisation: this.#visualisation });
+              }
               break;
             }
             case "aftertime": {
-              if (timeInMs >= callbackEntry.time) callback();
+              if (timeInMs >= callbackEntry.time) {
+                callback({ visualisation: this.#visualisation });
+              }
               break;
             }
             case "timeinterval": {
@@ -323,7 +340,7 @@ class VisualisationAnimationLoopHandler<TData = Record<string, any>> {
                 timeInMs >= callbackEntry.startTime &&
                 timeInMs < callbackEntry.endTime
               ) {
-                callback();
+                callback({ visualisation: this.#visualisation });
               }
               break;
             }
@@ -351,6 +368,7 @@ class VisualisationAnimationLoopHandler<TData = Record<string, any>> {
           this.#noteDownCallbacks.forEach((callback) => {
             callback({
               ...recentNotePressedDown,
+              visualisation: this.#visualisation,
             });
           });
         });
@@ -359,6 +377,7 @@ class VisualisationAnimationLoopHandler<TData = Record<string, any>> {
           this.#noteUpCallbacks.forEach((callback) => {
             callback({
               ...recentNotePressedUp,
+              visualisation: this.#visualisation,
             });
           });
         });
@@ -367,7 +386,7 @@ class VisualisationAnimationLoopHandler<TData = Record<string, any>> {
           .filter((timeCallback) => !timeCallback.expired)
           .forEach((timeCallback) => {
             if (timeInMs > timeCallback.time) {
-              timeCallback.callback();
+              timeCallback.callback({ visualisation: this.#visualisation });
               timeCallback.expired = true;
             }
           });

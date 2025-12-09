@@ -1,5 +1,5 @@
 import { easeOutBack } from "easing-utils";
-import { animatable } from "../core";
+import { animatable } from "../../../core";
 
 export const pianoKey = () => {
   return animatable<{
@@ -27,7 +27,7 @@ export const pianoKey = () => {
     switch (status) {
       case "sustained":
         heightExtension = animate({
-          anchor: "attack",
+          atEvent: "attack",
           from: 0,
           to: 20,
           duration: keyAnimationDuration,
@@ -36,7 +36,7 @@ export const pianoKey = () => {
         break;
       case "releasing":
         heightExtension = animate({
-          anchor: "release",
+          atEvent: "release",
           from: 20,
           to: 0,
           duration: keyAnimationDuration,

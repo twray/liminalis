@@ -27,7 +27,7 @@ interface AnimationOptions {
   from?: number;
   to?: number;
   easing?: ((t: number) => number) | null;
-  anchor?: "render" | "attack" | "release" | "end";
+  atEvent?: "render" | "attack" | "release" | "end";
   reverse?: boolean;
 }
 
@@ -158,7 +158,7 @@ class AnimatableObject<TProps = {}, TRenderContext = CanvasRenderingContext2D> {
       from = 0,
       to = 1,
       easing = null,
-      anchor = "attack",
+      atEvent: anchor = "attack",
       reverse = false,
     } = options;
 

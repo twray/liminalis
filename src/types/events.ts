@@ -42,6 +42,14 @@ export interface MidiEvent {
   channel: number;
 }
 
+export interface MidiNoteEvent {
+  note: {
+    identifier: string;
+    number: number;
+    attack: number;
+  };
+}
+
 export interface ArpeggioEvent {
   direction: 1 | -1;
   stepCount: number;

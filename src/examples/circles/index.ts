@@ -2,16 +2,20 @@ import { createVisualisation } from "../../core";
 import { springCircle } from "./animatable/springCircle";
 
 createVisualisation
-  .withData({
+  .withState({
     index: 0,
   })
-  .setup(({ onNoteDown, onNoteUp, data, visualisation }) => {
+  .setup(({ onNoteDown, onNoteUp, onEachFrame, state }) => {
     const numCircles = 7;
 
-    onNoteDown(({ note, attack }) => {
-      const { index } = data;
+    onEachFrame(({ background }) => {
+      background({ color: "beige" });
+    });
 
-      data.index = data.index < numCircles ? (data.index += 1) : 0;
+    onNoteDown(({ visualisation, note, attack }) => {
+      const { index } = state;
+
+      state.index = state.index < numCircles ? (state.index += 1) : 0;
       const circleDistance = 50;
       const startXOffset = -((numCircles * circleDistance) / 2);
 
@@ -23,10 +27,8 @@ createVisualisation
       );
     });
 
-    onNoteUp(({ note }) => {
+    onNoteUp(({ visualisation, note }) => {
       visualisation.get(note)?.release();
     });
   })
-  .render(({ background }) => {
-    background({ color: "beige" });
-  });
+  .render();
