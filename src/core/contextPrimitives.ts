@@ -111,6 +111,8 @@ const circle = (context: CanvasRenderingContext2D, props: CircleProps) => {
     opacity = 1,
   } = props;
 
+  const validatedRadius = radius >= 0 ? radius : 0;
+
   context.save();
 
   context.fillStyle = getColorWithOpacity(fillStyle, opacity);
@@ -119,7 +121,7 @@ const circle = (context: CanvasRenderingContext2D, props: CircleProps) => {
 
   context.beginPath();
 
-  context.arc(cx, cy, radius, 0, Math.PI * 2);
+  context.arc(cx, cy, validatedRadius, 0, Math.PI * 2);
 
   context.fill();
   context.stroke();

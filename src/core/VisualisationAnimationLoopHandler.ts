@@ -112,14 +112,10 @@ interface FrameRenderEvent extends ContextPrimitives {
   height: number;
   center: Point2D;
   time: number;
-  whileNotesDown: (callback: NotesDownEventCallback) => void;
-  beforeTime: (time: EventTime, callback: TimeEventCallback) => void;
-  afterTime: (time: EventTime, callback: TimeEventCallback) => void;
-  duringTimeInterval: (
-    startTime: EventTime,
-    endTime: EventTime,
-    callback: TimeEventCallback
-  ) => void;
+  before: (time: EventTime) => boolean;
+  after: (time: EventTime) => boolean;
+  during: (startTime: EventTime, endTime: EventTime) => boolean;
+  activeNotes: NoteDownEvent[];
 }
 
 const KEYBOARD_DEBUG_ATTACK_KEY_REGEX = /^[1-9]$/;
@@ -253,38 +249,13 @@ class VisualisationAnimationLoopHandler<TState> {
         // Set up event handlers that get rendered on frame-by-frame basis.
         const renderContextCallbackEntries: RenderContextCallbackEntry[] = [];
 
-        const whileNotesDown = (callback: NotesDownEventCallback) => {
-          renderContextCallbackEntries.push({ type: "notesdown", callback });
-        };
+        const before = (time: EventTime) => timeInMs < eventTimeToMs(time);
+        const after = (time: EventTime) => timeInMs > eventTimeToMs(time);
+        const during = (startTime: EventTime, endTime: EventTime) =>
+          timeInMs >= eventTimeToMs(startTime) &&
+          timeInMs <= eventTimeToMs(endTime);
 
-        const beforeTime = (time: EventTime, callback: TimeEventCallback) => {
-          renderContextCallbackEntries.push({
-            type: "beforetime",
-            time: eventTimeToMs(time),
-            callback,
-          });
-        };
-
-        const afterTime = (time: EventTime, callback: TimeEventCallback) => {
-          renderContextCallbackEntries.push({
-            type: "aftertime",
-            time: eventTimeToMs(time),
-            callback,
-          });
-        };
-
-        const duringTimeInterval = (
-          startTime: EventTime,
-          endTime: EventTime,
-          callback: TimeEventCallback
-        ) => {
-          renderContextCallbackEntries.push({
-            type: "timeinterval",
-            startTime: eventTimeToMs(startTime),
-            endTime: eventTimeToMs(endTime),
-            callback,
-          });
-        };
+        const activeNotesForFrame = this.#noteEventManager.activeNotes;
 
         // Call the custom render function if it is specified. This function
         // runs on every frame and allows the user to manipulate the context
@@ -297,10 +268,10 @@ class VisualisationAnimationLoopHandler<TState> {
             height,
             center,
             time: timeInMs,
-            whileNotesDown,
-            beforeTime,
-            afterTime,
-            duringTimeInterval,
+            before,
+            after,
+            during,
+            activeNotes: activeNotesForFrame,
             ...getContextPrimitives(context),
           });
         });
@@ -310,8 +281,6 @@ class VisualisationAnimationLoopHandler<TState> {
         // of appearance within the render function) which items within the
         // frame should be rendered first if two frame-based events happen
         // at the same time
-
-        const activeNotesForFrame = this.#noteEventManager.activeNotes;
 
         renderContextCallbackEntries.forEach((callbackEntry) => {
           const { type, callback } = callbackEntry;
