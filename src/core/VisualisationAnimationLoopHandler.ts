@@ -6,7 +6,6 @@ import {
 } from "./contextPrimitives";
 
 import type {
-  ActiveNotesEvent,
   AppSettings,
   CanvasProps,
   EventTime,
@@ -44,8 +43,6 @@ type FrameEventCallback = (params: FrameRenderEvent) => void;
 
 type TimeEventCallback = (params: WithVisualisationContext) => void;
 
-type NotesDownEventCallback = (params: ActiveNotesEvent) => void;
-
 interface TimeCallbackEntry {
   time: number;
   callback: TimeEventCallback;
@@ -54,32 +51,6 @@ interface TimeCallbackEntry {
 interface ExpirableTimeCallbackEntry extends TimeCallbackEntry {
   expired: boolean;
 }
-
-interface NotesDownCallbackEntry {
-  type: "notesdown";
-  callback: NotesDownEventCallback;
-}
-
-interface BeforeTimeCallbackEntry extends TimeCallbackEntry {
-  type: "beforetime";
-}
-
-interface AfterTimeCallbackEntry extends TimeCallbackEntry {
-  type: "aftertime";
-}
-
-interface TimeIntervalCallbackEntry {
-  type: "timeinterval";
-  startTime: number;
-  endTime: number;
-  callback: TimeEventCallback;
-}
-
-type RenderContextCallbackEntry =
-  | NotesDownCallbackEntry
-  | BeforeTimeCallbackEntry
-  | AfterTimeCallbackEntry
-  | TimeIntervalCallbackEntry;
 
 interface SetUpEventListenersParams {
   appProperties: AppSettings;
@@ -112,9 +83,9 @@ interface FrameRenderEvent extends ContextPrimitives {
   height: number;
   center: Point2D;
   time: number;
-  before: (time: EventTime) => boolean;
-  after: (time: EventTime) => boolean;
-  during: (startTime: EventTime, endTime: EventTime) => boolean;
+  beforeTime: (time: EventTime) => boolean;
+  afterTime: (time: EventTime) => boolean;
+  duringTimeInterval: (startTime: EventTime, endTime: EventTime) => boolean;
   activeNotes: NoteDownEvent[];
 }
 
@@ -246,9 +217,6 @@ class VisualisationAnimationLoopHandler<TState> {
         context.fillStyle = "white";
         context.fillRect(0, 0, width, height);
 
-        // Set up event handlers that get rendered on frame-by-frame basis.
-        const renderContextCallbackEntries: RenderContextCallbackEntry[] = [];
-
         const before = (time: EventTime) => timeInMs < eventTimeToMs(time);
         const after = (time: EventTime) => timeInMs > eventTimeToMs(time);
         const during = (startTime: EventTime, endTime: EventTime) =>
@@ -268,54 +236,12 @@ class VisualisationAnimationLoopHandler<TState> {
             height,
             center,
             time: timeInMs,
-            before,
-            after,
-            during,
+            beforeTime: before,
+            afterTime: after,
+            duringTimeInterval: during,
             activeNotes: activeNotesForFrame,
             ...getContextPrimitives(context),
           });
-        });
-
-        // Process all frame-based events in the order as they are written
-        // within the render function, allowing the user to determine (in order
-        // of appearance within the render function) which items within the
-        // frame should be rendered first if two frame-based events happen
-        // at the same time
-
-        renderContextCallbackEntries.forEach((callbackEntry) => {
-          const { type, callback } = callbackEntry;
-
-          switch (type) {
-            case "notesdown": {
-              if (activeNotesForFrame.length > 0) {
-                callback({ notes: activeNotesForFrame });
-              }
-              break;
-            }
-            case "beforetime": {
-              if (timeInMs < callbackEntry.time) {
-                callback({ visualisation: this.#visualisation });
-              }
-              break;
-            }
-            case "aftertime": {
-              if (timeInMs >= callbackEntry.time) {
-                callback({ visualisation: this.#visualisation });
-              }
-              break;
-            }
-            case "timeinterval": {
-              if (
-                timeInMs >= callbackEntry.startTime &&
-                timeInMs < callbackEntry.endTime
-              ) {
-                callback({ visualisation: this.#visualisation });
-              }
-              break;
-            }
-            default:
-              throw new Error("Invalid callback entry");
-          }
         });
 
         // Handle remaining event callbacks as registered
