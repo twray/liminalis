@@ -68,7 +68,7 @@ createVisualisation
 
       background({ color: "#F7F2E7" });
 
-      withStyles({ strokeColor: "#666", strokeWidth: 3 }, () => {
+      withStyles({ strokeStyle: "#666", strokeWidth: 3 }, () => {
         translate({ x: windowOrigin.x, y: windowOrigin.y }, () => {
           rect({
             width: windowDimensions.width,
@@ -92,8 +92,8 @@ createVisualisation
               cx: cx + i * (buttonRadius * 3),
               cy,
               radius: 15,
-              fillColor: buttonColors[i],
-              strokeColor: buttonColors[i],
+              fillStyle: buttonColors[i],
+              strokeStyle: buttonColors[i],
             });
           }
         });

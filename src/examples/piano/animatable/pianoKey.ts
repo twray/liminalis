@@ -46,14 +46,14 @@ export const pianoKey = () => {
         break;
     }
 
-    withStyles({ strokeColor: noteColor, strokeWidth: 3 }, () => {
+    withStyles({ strokeStyle: noteColor, strokeWidth: 3 }, () => {
       rect({
         x: keyType === "black" ? x + width * 0.125 : x,
         y,
         width: keyType === "black" ? width * 0.75 : width,
         height:
           (keyType === "black" ? height * 0.66 : height) + heightExtension,
-        fillColor: keyType === "black" ? noteColor : "transparent",
+        fillStyle: keyType === "black" ? noteColor : "transparent",
         strokeWidth: 4,
         cornerRadius: keyCornerRadii,
       });

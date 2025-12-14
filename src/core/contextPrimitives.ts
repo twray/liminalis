@@ -3,16 +3,16 @@ import type { Corners, Dimensions2D, Point2D } from "../types";
 import { isCorners, isNormalizedFloat } from "../util";
 
 const DEFAULT_BACKGROUND_COLOR = "#fff";
-const DEFAULT_FILL_COLOR = "transparent";
-const DEFAULT_STROKE_COLOR = "#333";
+const DEFAULT_FILL_STYLE = "transparent";
+const DEFAULT_STROKE_STYLE = "#333";
 const DEFAULT_STROKE_WIDTH = 1;
 
 interface FillStyles {
-  fillColor?: string;
+  fillStyle?: string;
 }
 
 interface StrokeStyles {
-  strokeColor?: string;
+  strokeStyle?: string;
   strokeWidth?: number;
 }
 
@@ -71,7 +71,7 @@ const getColorWithOpacity = (color: string, opacity: number) => {
     return `rgba(${r}, ${g}, ${b}, ${a < 1 ? a : validatedOpacity})`;
   } catch {
     console.warn(`Invalid color: ${color}`);
-    return DEFAULT_STROKE_COLOR;
+    return DEFAULT_STROKE_STYLE;
   }
 };
 
@@ -105,8 +105,8 @@ const circle = (context: CanvasRenderingContext2D, props: CircleProps) => {
     cx = 0,
     cy = 0,
     radius,
-    fillColor: fillStyle = DEFAULT_FILL_COLOR,
-    strokeColor: strokeStyle = DEFAULT_STROKE_COLOR,
+    fillStyle = DEFAULT_FILL_STYLE,
+    strokeStyle = DEFAULT_STROKE_STYLE,
     strokeWidth = DEFAULT_STROKE_WIDTH,
     opacity = 1,
   } = props;
@@ -118,6 +118,8 @@ const circle = (context: CanvasRenderingContext2D, props: CircleProps) => {
   context.fillStyle = getColorWithOpacity(fillStyle, opacity);
   context.strokeStyle = getColorWithOpacity(strokeStyle, opacity);
   context.lineWidth = strokeWidth;
+
+  console.log({ fillStyle });
 
   context.beginPath();
 
@@ -135,8 +137,8 @@ const rect = (context: CanvasRenderingContext2D, props: RectProps) => {
     y = 0,
     width,
     height,
-    fillColor = DEFAULT_FILL_COLOR,
-    strokeColor = DEFAULT_STROKE_COLOR,
+    fillStyle: fillColor = DEFAULT_FILL_STYLE,
+    strokeStyle: strokeColor = DEFAULT_STROKE_STYLE,
     strokeWidth = DEFAULT_STROKE_WIDTH,
     opacity = 1,
     cornerRadius = 0,
@@ -171,7 +173,7 @@ const line = (context: CanvasRenderingContext2D, props: LineProps) => {
   const {
     start: { x: startX = 0, y: startY = 0 },
     end: { x: endX = 0, y: endY = 0 },
-    strokeColor = DEFAULT_STROKE_COLOR,
+    strokeStyle: strokeColor = DEFAULT_STROKE_STYLE,
     strokeWidth = DEFAULT_STROKE_WIDTH,
     opacity = 1,
   } = props;
@@ -192,8 +194,8 @@ const line = (context: CanvasRenderingContext2D, props: LineProps) => {
 
 export const getContextPrimitives = (context: CanvasRenderingContext2D) => {
   let defaultStyles: Partial<FillStyles & StrokeStyles & WithOpacity> = {
-    fillColor: DEFAULT_FILL_COLOR,
-    strokeColor: DEFAULT_STROKE_COLOR,
+    fillStyle: DEFAULT_FILL_STYLE,
+    strokeStyle: DEFAULT_STROKE_STYLE,
     strokeWidth: DEFAULT_STROKE_WIDTH,
   };
 

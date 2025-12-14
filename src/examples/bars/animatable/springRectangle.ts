@@ -37,7 +37,7 @@ export const springRectangle = () => {
         }),
       width,
       height: renderedHeight,
-      fillColor: fill,
+      fillStyle: fill,
       opacity,
     });
   });

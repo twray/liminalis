@@ -16,7 +16,7 @@ export const springCircle = () => {
           duration: 1000 * attackValue,
           easing: easeOutBounce,
         }),
-        strokeColor: "#666",
+        strokeStyle: "#666",
         opacity: releaseFactor,
       });
     }
