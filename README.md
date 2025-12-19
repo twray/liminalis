@@ -12,8 +12,8 @@ A creative coding framework for building real-time music visualizations in TypeS
 
 ## Table of Contents
 
-- [Installation](#installation)
 - [Quick Start](#quick-start)
+- [Installation](#installation)
 - [Core Concepts](#core-concepts)
   - [MIDI Event Handling](#midi-event-handling)
   - [Animatable Objects & Lifecycle](#animatable-objects--lifecycle)
@@ -23,9 +23,32 @@ A creative coding framework for building real-time music visualizations in TypeS
 - [API Reference](#api-reference)
 - [Development](#development)
 
+## Quick Start
+
+The fastest way to get started with Liminalis is using the CLI scaffolding tool:
+
+```bash
+npm create liminalis-app my-music-viz
+cd my-music-viz
+npm install
+npm run dev
+```
+
+This creates a new project with:
+
+- ✅ TypeScript support out of the box
+- ✅ Vite for instant hot module reloading
+- ✅ MIDI device integration pre-configured
+- ✅ Example visualizations to get started
+- ✅ Production build setup
+
+**Choose from templates:**
+
+Your browser will open at `http://localhost:3000` with your visualization running. Press keys `1-9` to test without MIDI hardware, or connect a MIDI controller to see real-time reactions!
+
 ## Installation
 
-Install Liminalis via npm:
+For adding Liminalis to an existing project:
 
 ```bash
 npm install liminalis
@@ -43,7 +66,7 @@ Or with pnpm:
 pnpm add liminalis
 ```
 
-## Quick Start
+### Manual Setup
 
 Create your first MIDI-driven visualization:
 
@@ -97,44 +120,79 @@ createVisualisation
   .render();
 ```
 
-### Running Your Visualization
+### Running with Vite (Recommended)
 
-Liminalis uses [canvas-sketch](https://github.com/mattdesl/canvas-sketch) for rendering. To run your visualization:
+The easiest way is using `create-liminalis-app` which sets up Vite automatically. For manual setup:
 
-1. **Install canvas-sketch CLI globally** (if not already installed):
+1. **Install Vite**:
+
+```bash
+npm install --save-dev vite
+```
+
+2. **Create `vite.config.ts`**:
+
+```typescript
+import { defineConfig } from "vite";
+
+export default defineConfig({
+  server: {
+    port: 3000,
+    open: true,
+  },
+});
+```
+
+3. **Add to `package.json`**:
+
+```json
+{
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview"
+  }
+}
+```
+
+4. **Create `index.html`**:
+
+```html
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Liminalis App</title>
+  </head>
+  <body>
+    <canvas id="canvas-visualisation"></canvas>
+    <script type="module" src="/src/index.ts"></script>
+  </body>
+</html>
+```
+
+5. **Run**:
+
+```bash
+npm run dev
+```
+
+### Alternative: canvas-sketch CLI
+
+If you prefer canvas-sketch's workflow:
+
+1. **Install globally**:
 
 ```bash
 npm install -g canvas-sketch-cli
 ```
 
-2. **Build your TypeScript code**:
+2. **Build and run**:
 
 ```bash
 npx tsc
-```
-
-3. **Run with canvas-sketch**:
-
-```bash
-canvas-sketch dist/your-file.js --hot
-```
-
-Or set up your `package.json` scripts:
-
-```json
-{
-  "scripts": {
-    "build": "tsc",
-    "dev": "tsc --watch & sleep 2 && canvas-sketch dist/index.js --hot",
-    "start": "canvas-sketch dist/index.js"
-  }
-}
-```
-
-Then run:
-
-```bash
-npm run dev
+canvas-sketch dist/index.js --hot
 ```
 
 ### TypeScript Configuration
