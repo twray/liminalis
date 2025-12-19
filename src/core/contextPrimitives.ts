@@ -119,8 +119,6 @@ const circle = (context: CanvasRenderingContext2D, props: CircleProps) => {
   context.strokeStyle = getColorWithOpacity(strokeStyle, opacity);
   context.lineWidth = strokeWidth;
 
-  console.log({ fillStyle });
-
   context.beginPath();
 
   context.arc(cx, cy, validatedRadius, 0, Math.PI * 2);

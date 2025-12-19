@@ -6,6 +6,7 @@ import {
 } from "./contextPrimitives";
 
 import type {
+  AnimationOptions,
   AppSettings,
   CanvasProps,
   EventTime,
@@ -24,6 +25,7 @@ import NoteEventManager from "./NoteEventManager";
 import Visualisation from "./Visualisation";
 
 import keyMappings from "../data/keyMappings.json";
+import { getAnimatedValueForCurrentTime } from "./animation";
 
 interface WithVisualisationContext {
   visualisation: Visualisation;
@@ -72,7 +74,7 @@ interface SetupFunctionProps<TState> {
   center: Point2D;
   onNoteDown: (callback: NoteDownEventCallback) => void;
   onNoteUp: (callback: NoteUpEventCallback) => void;
-  onEachFrame: (callback: FrameEventCallback) => void;
+  onRender: (callback: FrameEventCallback) => void;
   atTime: (time: EventTime, callback: TimeEventCallback) => void;
   atStart: (callback: TimeEventCallback) => void;
 }
@@ -86,6 +88,7 @@ interface FrameRenderEvent extends ContextPrimitives {
   beforeTime: (time: EventTime) => boolean;
   afterTime: (time: EventTime) => boolean;
   duringTimeInterval: (startTime: EventTime, endTime: EventTime) => boolean;
+  animate: (options: AnimationOptions | AnimationOptions[]) => number;
   activeNotes: NoteDownEvent[];
 }
 
@@ -166,7 +169,7 @@ class VisualisationAnimationLoopHandler<TState> {
       this.#noteUpCallbacks.push(callback);
     };
 
-    const onEachFrame = (callback: FrameEventCallback) => {
+    const onRender = (callback: FrameEventCallback) => {
       this.#frameRenderCallbacks.push(callback);
     };
 
@@ -193,7 +196,7 @@ class VisualisationAnimationLoopHandler<TState> {
       center,
       onNoteDown,
       onNoteUp,
-      onEachFrame,
+      onRender,
       atTime,
       atStart,
     });
@@ -240,6 +243,8 @@ class VisualisationAnimationLoopHandler<TState> {
             afterTime: after,
             duringTimeInterval: during,
             activeNotes: activeNotesForFrame,
+            animate: (options: AnimationOptions | AnimationOptions[]) =>
+              getAnimatedValueForCurrentTime(timeInMs, options),
             ...getContextPrimitives(context),
           });
         });

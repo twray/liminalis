@@ -1,3 +1,4 @@
+export * from "./animation.js";
 export * from "./canvas.js";
 export * from "./color.js";
 export * from "./common.js";

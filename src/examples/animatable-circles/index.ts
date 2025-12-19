@@ -1,5 +1,5 @@
-import { animatable, createVisualisation } from "./core";
-import { toNormalizedFloat } from "./util";
+import { animatable, createVisualisation } from "../../core";
+import { toNormalizedFloat } from "../../util";
 
 createVisualisation
   .setup(({ atStart, onNoteDown, onNoteUp, onRender }) => {

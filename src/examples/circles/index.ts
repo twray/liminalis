@@ -5,7 +5,7 @@ createVisualisation
   .withState({
     index: 0,
   })
-  .setup(({ onNoteDown, onNoteUp, onEachFrame, state }) => {
+  .setup(({ onNoteDown, onNoteUp, onRender: onEachFrame, state }) => {
     const numCircles = 7;
 
     onEachFrame(({ background }) => {

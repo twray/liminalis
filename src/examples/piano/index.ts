@@ -6,7 +6,7 @@ createVisualisation
     width: 1080,
     height: 1920,
   })
-  .setup(({ atStart, onEachFrame, onNoteDown, onNoteUp, center }) => {
+  .setup(({ atStart, onRender: onEachFrame, onNoteDown, onNoteUp, center }) => {
     // Setup computed properties of the window, which we can draw in each frame
 
     const windowDimensions = { width: 800, height: 500 };

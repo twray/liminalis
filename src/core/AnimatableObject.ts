@@ -1,5 +1,6 @@
-import { NormalizedFloat, Point2D } from "../types";
+import { AnimationOptions, NormalizedFloat, Point2D } from "../types";
 import { toNormalizedFloat } from "../util";
+import { getAnimatedValueForCurrentTime } from "./animation";
 import { ContextPrimitives, getContextPrimitives } from "./contextPrimitives";
 
 type AnimatableObjectStatus = "idle" | "sustained" | "releasing";
@@ -13,23 +14,16 @@ interface RenderParams<TProps, TRenderContext = CanvasRenderingContext2D> {
   status: AnimatableObjectStatus;
   attackValue: NormalizedFloat;
   releaseFactor: NormalizedFloat;
-  animate: (options: AnimationOptions) => number;
+  timeFirstRender: number | null;
+  timeAttacked: number | null;
+  timeReleased: number | null;
+  animate: (options: AnimationOptions | AnimationOptions[]) => number;
 }
 
 type RenderParamsWithPrimitives<TProps, TRenderContext> =
   TRenderContext extends CanvasRenderingContext2D
     ? RenderParams<TProps, TRenderContext> & ContextPrimitives
     : RenderParams<TProps, TRenderContext>;
-
-interface AnimationOptions {
-  duration: number;
-  delay?: number;
-  from?: number;
-  to?: number;
-  easing?: ((t: number) => number) | null;
-  atEvent?: "render" | "attack" | "release" | "end";
-  reverse?: boolean;
-}
 
 class AnimatableObject<TProps = {}, TRenderContext = CanvasRenderingContext2D> {
   public attackValue: NormalizedFloat = toNormalizedFloat(0);
@@ -40,8 +34,12 @@ class AnimatableObject<TProps = {}, TRenderContext = CanvasRenderingContext2D> {
   public markedForRemoval: boolean = false;
 
   public timeFirstRender: Date | null = null;
+
   public timeAttacked: Date | null = null;
   public timeReleased: Date | null = null;
+
+  public timeAttackedSinceFirstRender: number | null = null;
+  public timeReleasedSinceFirstRender: number | null = null;
 
   public isPermanent: boolean = false;
 
@@ -74,8 +72,15 @@ class AnimatableObject<TProps = {}, TRenderContext = CanvasRenderingContext2D> {
   }
 
   renderIn(context: TRenderContext, width: number, height: number): this {
-    const { props, attackValue, releaseFactor, isSustaining, isReleasing } =
-      this;
+    const {
+      props,
+      attackValue,
+      releaseFactor,
+      isSustaining,
+      isReleasing,
+      timeAttackedSinceFirstRender: timeAttacked,
+      timeReleasedSinceFirstRender: timeReleased,
+    } = this;
 
     const center = { x: width / 2, y: height / 2 };
 
@@ -92,7 +97,14 @@ class AnimatableObject<TProps = {}, TRenderContext = CanvasRenderingContext2D> {
       status,
       attackValue,
       releaseFactor,
-      animate: this.animate.bind(this),
+      timeFirstRender: 0,
+      timeAttacked,
+      timeReleased,
+      animate: (options: AnimationOptions | AnimationOptions[]) =>
+        getAnimatedValueForCurrentTime(
+          this.getMsSince(this.timeFirstRender),
+          options
+        ),
     };
 
     const params =
@@ -106,10 +118,21 @@ class AnimatableObject<TProps = {}, TRenderContext = CanvasRenderingContext2D> {
   }
 
   attack(attackValue: NormalizedFloat): this {
+    const { timeFirstRender } = this;
+
     this.attackValue = attackValue;
     this.isSustaining = true;
     this.isReleasing = false;
     this.timeAttacked = new Date();
+
+    if (!this.timeFirstRender) {
+      this.timeFirstRender = this.timeAttacked;
+    }
+
+    this.timeAttackedSinceFirstRender = this.getMsSince(
+      timeFirstRender,
+      this.timeAttacked
+    );
 
     return this;
   }
@@ -122,20 +145,29 @@ class AnimatableObject<TProps = {}, TRenderContext = CanvasRenderingContext2D> {
   release(releasePeriod: number = 1000): this {
     setTimeout(() => {
       if (this.isSustaining) {
+        const { timeFirstRender } = this;
+
         this.releasePeriod = releasePeriod;
         this.isSustaining = false;
         this.isReleasing = true;
         this.timeReleased = new Date();
+
+        this.timeReleasedSinceFirstRender = this.getMsSince(
+          timeFirstRender,
+          this.timeReleased
+        );
       }
     }, this.sustainPeriod);
 
     return this;
   }
 
-  getMsSince(time: Date | null): number {
-    return time && time instanceof Date
-      ? new Date().getTime() - time.getTime()
-      : 0;
+  getMsSince(time?: Date | null, referenceTime?: Date | null): number {
+    const timeNow = referenceTime
+      ? referenceTime.getTime()
+      : new Date().getTime();
+
+    return time && time instanceof Date ? timeNow - time.getTime() : 0;
   }
 
   get releaseFactor(): NormalizedFloat {
@@ -149,61 +181,6 @@ class AnimatableObject<TProps = {}, TRenderContext = CanvasRenderingContext2D> {
         ? toNormalizedFloat(1 - msSinceReleased / releasePeriod)
         : toNormalizedFloat(0);
     }
-  }
-
-  animate(options: AnimationOptions): number {
-    const {
-      duration,
-      delay = 0,
-      from = 0,
-      to = 1,
-      easing = null,
-      atEvent: anchor = "attack",
-      reverse = false,
-    } = options;
-
-    const { timeFirstRender, timeAttacked, timeReleased, releasePeriod } = this;
-
-    let startTime;
-
-    switch (anchor) {
-      case "render":
-        startTime = this.getMsSince(timeFirstRender);
-        break;
-      case "release":
-        startTime = this.getMsSince(timeReleased);
-        break;
-      default:
-      case "attack":
-        startTime = this.getMsSince(timeAttacked);
-        break;
-    }
-
-    this.getMsSince(timeAttacked);
-
-    // If duration is 0 or negative, then set it as
-    // so it appears instantaneous
-    const validatedDuration = duration > 0 ? duration : 1;
-
-    const computedDelay =
-      anchor === "end" ? releasePeriod - validatedDuration - delay : delay;
-
-    let progress =
-      startTime > computedDelay
-        ? 1 -
-          Math.max(0, validatedDuration - startTime + computedDelay) /
-            validatedDuration
-        : 0;
-
-    if (typeof easing === "function") {
-      progress = easing(progress);
-    }
-
-    if (reverse) {
-      progress = 1 - progress;
-    }
-
-    return from + (to - from) * progress;
   }
 }
 

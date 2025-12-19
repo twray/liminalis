@@ -19,7 +19,9 @@ export const bouncyCuboid = () => {
         lengthZ: 1,
         fill: "#333",
         opacity:
-          releaseFactor === 1 ? animate({ duration: 500 }) : releaseFactor,
+          releaseFactor === 1
+            ? animate({ from: 1, to: 0, duration: 500 })
+            : releaseFactor,
         translateZ: animate({
           duration: 1000,
           from: 750 * adjustedAttackValue,
