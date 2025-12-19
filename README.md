@@ -12,7 +12,8 @@ A creative coding framework for building real-time music visualizations in TypeS
 
 ## Table of Contents
 
-- [Getting Started](#getting-started)
+- [Installation](#installation)
+- [Quick Start](#quick-start)
 - [Core Concepts](#core-concepts)
   - [MIDI Event Handling](#midi-event-handling)
   - [Animatable Objects & Lifecycle](#animatable-objects--lifecycle)
@@ -20,34 +21,144 @@ A creative coding framework for building real-time music visualizations in TypeS
   - [Timeline Animations](#timeline-animations)
 - [Examples](#examples)
 - [API Reference](#api-reference)
+- [Development](#development)
 
-## Getting Started
+## Installation
+
+Install Liminalis via npm:
 
 ```bash
-npm install
-npm run dev
+npm install liminalis
 ```
 
-Create your first visualization:
+Or with yarn:
+
+```bash
+yarn add liminalis
+```
+
+Or with pnpm:
+
+```bash
+pnpm add liminalis
+```
+
+## Quick Start
+
+Create your first MIDI-driven visualization:
 
 ```typescript
-import { createVisualisation } from "./core";
+import { createVisualisation, animatable } from "liminalis";
+import { easeOutBounce } from "easing-utils";
 
 createVisualisation
   .setup(({ atStart, onNoteDown, onNoteUp }) => {
-    atStart(() => {
-      console.log("Visualization started!");
+    // Create a circle that responds to MIDI
+    atStart(({ visualisation }) => {
+      visualisation.addPermanently(
+        "circle",
+        animatable().withRenderer(
+          ({ circle, center, animate, timeAttacked, timeReleased }) => {
+            circle({
+              cx: center.x,
+              cy: center.y,
+              radius: animate([
+                {
+                  startTime: timeAttacked,
+                  from: 50,
+                  to: 150,
+                  duration: 1000,
+                  easing: easeOutBounce,
+                },
+                {
+                  startTime: timeReleased,
+                  from: 150,
+                  to: 50,
+                  duration: 1000,
+                },
+              ]),
+              strokeStyle: "#666",
+            });
+          }
+        )
+      );
     });
 
-    onNoteDown(({ note, attack }) => {
-      console.log(`Note ${note} pressed with velocity ${attack}`);
+    // Trigger attack on MIDI note press
+    onNoteDown(({ visualisation }) => {
+      visualisation.get("circle")?.attack(1);
     });
 
-    onNoteUp(({ note }) => {
-      console.log(`Note ${note} released`);
+    // Trigger release on MIDI note release
+    onNoteUp(({ visualisation }) => {
+      visualisation.get("circle")?.release();
     });
   })
   .render();
+```
+
+### Running Your Visualization
+
+Liminalis uses [canvas-sketch](https://github.com/mattdesl/canvas-sketch) for rendering. To run your visualization:
+
+1. **Install canvas-sketch CLI globally** (if not already installed):
+
+```bash
+npm install -g canvas-sketch-cli
+```
+
+2. **Build your TypeScript code**:
+
+```bash
+npx tsc
+```
+
+3. **Run with canvas-sketch**:
+
+```bash
+canvas-sketch dist/your-file.js --hot
+```
+
+Or set up your `package.json` scripts:
+
+```json
+{
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch & sleep 2 && canvas-sketch dist/index.js --hot",
+    "start": "canvas-sketch dist/index.js"
+  }
+}
+```
+
+Then run:
+
+```bash
+npm run dev
+```
+
+### TypeScript Configuration
+
+Create a `tsconfig.json` for your project:
+
+```json
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "module": "ES2020",
+    "moduleResolution": "node",
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "declaration": true,
+    "sourceMap": true
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist"]
+}
 ```
 
 ## Core Concepts
@@ -865,6 +976,119 @@ obj?.attack(0.8);
 obj?.release(1000);
 ```
 
+## Development
+
+### Contributing to Liminalis
+
+If you want to contribute or run the examples locally:
+
+1. **Clone the repository**:
+
+```bash
+git clone https://github.com/twray/liminalis.git
+cd liminalis
+```
+
+2. **Install dependencies**:
+
+```bash
+npm install
+```
+
+3. **Build the project**:
+
+```bash
+npm run build
+```
+
+4. **Run in development mode**:
+
+```bash
+npm run dev
+```
+
+5. **Run examples**:
+
+Edit `src/index.ts` to import different examples:
+
+```typescript
+// Run the piano example
+import "./examples/piano";
+
+// Or run the circles example
+import "./examples/circles";
+```
+
+Then run `npm run dev` to see the visualization.
+
+### Project Structure
+
+```
+liminalis/
+├── src/
+│   ├── core/           # Core framework code
+│   ├── types/          # TypeScript type definitions
+│   ├── util/           # Utility functions
+│   ├── views/          # View rendering logic
+│   ├── data/           # Color palettes and key mappings
+│   ├── examples/       # Example visualizations
+│   └── lib.ts          # Main library export
+├── types/              # Additional type declarations
+├── dist/               # Compiled output
+└── README.md
+```
+
+### Building for Production
+
+```bash
+npm run build
+```
+
+### Publishing
+
+The package is configured with automatic build on publish:
+
+```bash
+npm version patch  # or minor, or major
+npm publish
+```
+
+## MIDI Setup
+
+Liminalis uses WebMIDI to connect to MIDI devices. To use MIDI:
+
+1. **Connect a MIDI controller** to your computer (via USB or Bluetooth)
+2. **Allow MIDI access** when prompted by your browser
+3. **Play notes** on your controller to trigger visualizations
+
+### Computer Keyboard Debug Mode
+
+For testing without a MIDI controller, Liminalis includes keyboard debug mode (enabled by default):
+
+- Press number keys `1-9` to simulate different attack velocities
+- The framework maps computer keys to MIDI note equivalents
+
+Disable keyboard debug mode:
+
+```typescript
+createVisualisation
+  .withSettings({
+    computerKeyboardDebugEnabled: false,
+  })
+  .setup(...)
+  .render();
+```
+
+## Browser Compatibility
+
+Liminalis requires a modern browser with support for:
+
+- WebMIDI API (Chrome, Edge, Opera)
+- Canvas 2D rendering
+- ES2020+ JavaScript features
+
+For browsers without WebMIDI support, use a polyfill like [webmidi](https://www.npmjs.com/package/webmidi).
+
 ## License
 
-MIT
+MIT © Tim Wray

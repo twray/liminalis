@@ -2,8 +2,45 @@
   "name": "liminalis",
   "version": "1.0.0",
   "type": "module",
-  "description": "",
-  "main": "index.js",
+  "description": "A creative coding framework for building real-time music visualizations with native MIDI support, lifecycle-driven animations, and timeline-based rendering",
+  "main": "./dist/lib.js",
+  "types": "./dist/lib.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/lib.d.ts",
+      "import": "./dist/lib.js"
+    }
+  },
+  "files": [
+    "dist",
+    "types",
+    "README.md",
+    "LICENSE"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/twray/liminalis.git"
+  },
+  "bugs": {
+    "url": "https://github.com/twray/liminalis/issues"
+  },
+  "homepage": "https://github.com/twray/liminalis#readme",
+  "keywords": [
+    "midi",
+    "visualization",
+    "creative-coding",
+    "music-visualization",
+    "canvas",
+    "animation",
+    "webmidi",
+    "generative-art",
+    "real-time",
+    "performance",
+    "canvas-sketch",
+    "typescript"
+  ],
+  "author": "Tim Wray",
+  "license": "MIT",
   "dependencies": {
     "abs-svg-path": "^0.1.1",
     "adaptive-bezier-curve": "^1.0.3",
@@ -75,19 +112,18 @@
     "webmidi": "^3.1.14"
   },
   "scripts": {
-    "build": "tsc --watch",
+    "build": "tsc",
+    "build:watch": "tsc --watch",
     "clean": "rm -rf dist",
     "prebuild": "npm run clean",
-    "dev": "npm run build & sleep 2 && canvas-sketch dist/index.js --hot",
+    "prepublishOnly": "npm run build",
+    "dev": "npm run build:watch & sleep 2 && canvas-sketch dist/index.js --hot",
     "start": "canvas-sketch dist/index.js",
     "type-check": "tsc --noEmit",
     "type-check:watch": "tsc --noEmit --watch",
     "lint": "tsc --noEmit --strict",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
   "devDependencies": {
     "@types/node": "^24.9.1",
     "typescript": "^5.9.3"

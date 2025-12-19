@@ -1,0 +1,23 @@
+# Development files
+src/
+tsconfig.json
+scripts/
+
+# Examples (users can view on GitHub)
+src/examples/
+
+# Development dependencies
+.vscode/
+.git/
+.gitignore
+
+# Build artifacts
+output/
+*.log
+
+# OS files
+.DS_Store
+
+# Test files
+**/*.test.ts
+**/*.spec.ts
