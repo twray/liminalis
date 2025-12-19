@@ -1,41 +1,870 @@
 # Liminalis
 
-A generative visual engine for real-time music performance written in TypeScript. Liminalis creates dynamic, interactive visualizations that respond to MIDI input and keyboard events, featuring isometric 3D graphics and various animated elements.
+A creative coding framework for building real-time music visualizations in TypeScript. Liminalis provides first-class support for MIDI events, animatable objects with lifecycle hooks, and a powerful timeline animation system—all designed to create responsive, interactive visual experiences.
 
 ## Features
 
-- **Real-time MIDI Integration**: Responds to MIDI controllers and keyboards via WebMIDI
-- **Isometric 3D Graphics**: Renders beautiful isometric visualizations using canvas-sketch
-- **Color Palette System**: Dynamic color schemes with predefined palettes
-- **Mode Management**: Switch between different visual modes and behaviors
-- **Key Mapping**: Customizable keyboard controls for interactive performance
+- 🎹 **Native MIDI Support**: Built-in `onNoteDown` and `onNoteUp` event handlers for seamless MIDI integration
+- 🎨 **Lifecycle-Driven Animations**: Objects respond to attack, sustain, and release phases with automatic state management
+- ⏱️ **Timeline Animation System**: Create smooth, overlapping animations with event-based timing
+- 🖼️ **Dual Rendering Modes**: Render dynamic objects via lifecycle callbacks OR static content via `onRender`
+- 🎭 **Canvas Primitives**: Expressive API with stateful styling, transformations, and easing functions
 
-## Architecture
+## Table of Contents
 
-The project is organized into several key modules:
+- [Getting Started](#getting-started)
+- [Core Concepts](#core-concepts)
+  - [MIDI Event Handling](#midi-event-handling)
+  - [Animatable Objects & Lifecycle](#animatable-objects--lifecycle)
+  - [Rendering Strategies](#rendering-strategies)
+  - [Timeline Animations](#timeline-animations)
+- [Examples](#examples)
+- [API Reference](#api-reference)
 
-- **`animatable/`**: Visual elements that can be animated (cuboids, stripes, coils, etc.)
-- **`managers/`**: Core systems for managing objects, key events, and modes
-- **`views/`**: Isometric view rendering and display logic
-- **`types/`**: TypeScript type definitions for geometry, colors, and settings
-- **`util/`**: Helper utilities for color palettes and mode handling
-- **`data/`**: Configuration files for color palettes and key mappings
+## Getting Started
 
-## Usage
+```bash
+npm install
+npm run dev
+```
 
-### Basic Setup
+Create your first visualization:
 
-The engine is built on top of canvas-sketch and WebMIDI. The main entry point initializes:
+```typescript
+import { createVisualisation } from "./core";
 
-1. Canvas sketch with specified dimensions (1080x1920)
-2. WebMIDI for real-time music input
-3. Various animatable objects and managers
-4. Isometric view rendering system
+createVisualisation
+  .setup(({ atStart, onNoteDown, onNoteUp }) => {
+    atStart(() => {
+      console.log("Visualization started!");
+    });
 
-### MIDI Integration
+    onNoteDown(({ note, attack }) => {
+      console.log(`Note ${note} pressed with velocity ${attack}`);
+    });
 
-Connect a MIDI controller or keyboard to trigger visual responses. The engine supports:
+    onNoteUp(({ note }) => {
+      console.log(`Note ${note} released`);
+    });
+  })
+  .render();
+```
 
-- Note on/off events
-- Control change messages
-- Real-time parameter modulation
+## Core Concepts
+
+### MIDI Event Handling
+
+Liminalis provides native MIDI event handlers that make it trivial to respond to musical input. The framework automatically manages MIDI connections via WebMIDI and provides clean callback interfaces.
+
+#### `onNoteDown` - Triggered when a MIDI note is pressed
+
+```typescript
+createVisualisation
+  .setup(({ onNoteDown, visualisation }) => {
+    onNoteDown(({ note, attack, visualisation }) => {
+      // 'note' is the MIDI note name (e.g., "C4", "A#3")
+      // 'attack' is normalized velocity (0.0 to 1.0)
+
+      console.log(`Note: ${note}, Velocity: ${attack}`);
+    });
+  })
+  .render();
+```
+
+#### `onNoteUp` - Triggered when a MIDI note is released
+
+```typescript
+createVisualisation
+  .setup(({ onNoteUp, visualisation }) => {
+    onNoteUp(({ note, visualisation }) => {
+      // Handle note release
+      visualisation.get(note)?.release();
+    });
+  })
+  .render();
+```
+
+#### Example: Piano Keyboard Visualization
+
+```typescript
+createVisualisation
+  .setup(({ atStart, onNoteDown, onNoteUp }) => {
+    const notes = ["C4", "D4", "E4", "F4", "G4", "A4", "B4"];
+
+    atStart(({ visualisation }) => {
+      // Create a piano key for each note
+      notes.forEach((note, index) => {
+        visualisation.addPermanently(
+          note,
+          pianoKey().withProps({ x: index * 60, y: 100 })
+        );
+      });
+    });
+
+    onNoteDown(({ visualisation, note, attack }) => {
+      // Trigger attack animation on the corresponding key
+      visualisation.get(note)?.attack(attack);
+    });
+
+    onNoteUp(({ visualisation, note }) => {
+      // Trigger release animation
+      visualisation.get(note)?.release();
+    });
+  })
+  .render();
+```
+
+### Animatable Objects & Lifecycle
+
+The heart of Liminalis is the **animatable object system**. Objects can respond to MIDI lifecycle events (attack, sustain, release) with automatic state tracking and timing.
+
+#### Creating Animatable Objects
+
+```typescript
+import { animatable } from "./core";
+
+const springCircle = () => {
+  return animatable<{ xOffset: number }>().withRenderer(
+    ({ props, circle, center, attackValue, releaseFactor, animate }) => {
+      const { xOffset = 0 } = props;
+      const { x: cx, y: cy } = center;
+
+      circle({
+        cx: cx + xOffset,
+        cy,
+        radius: animate({
+          from: 0,
+          to: 100 * attackValue, // Scale by attack velocity
+          duration: 1000,
+          easing: easeOutBounce,
+        }),
+        strokeStyle: "#666",
+        opacity: releaseFactor, // Fade during release
+      });
+    }
+  );
+};
+```
+
+#### Lifecycle States
+
+Animatable objects automatically track their lifecycle state:
+
+- **`idle`**: Before any interaction
+- **`sustained`**: After attack, before release
+- **`releasing`**: During release phase
+- **`released`**: After release completes
+
+#### Lifecycle Properties
+
+Your renderer receives these properties automatically:
+
+- **`status`**: Current lifecycle state
+- **`attackValue`**: Attack velocity (0.0 to 1.0)
+- **`releaseFactor`**: Opacity multiplier during release (1.0 → 0.0)
+- **`timeAttacked`**: Timestamp when attack occurred
+- **`timeReleased`**: Timestamp when release occurred
+- **`timeFirstRender`**: Timestamp of first render
+
+#### Example: State-Based Rendering
+
+```typescript
+const pianoKey = () => {
+  return animatable<{ x: number; y: number }>().withRenderer(
+    ({ props, rect, status, animate, timeAttacked, timeReleased }) => {
+      const { x, y } = props;
+
+      let heightExtension = 0;
+
+      // Render differently based on lifecycle state
+      switch (status) {
+        case "sustained":
+          heightExtension = animate({
+            startTime: timeAttacked,
+            from: 0,
+            to: 20,
+            duration: 500,
+            easing: easeOutBack,
+          });
+          break;
+
+        case "releasing":
+          heightExtension = animate({
+            startTime: timeReleased,
+            from: 20,
+            to: 0,
+            duration: 500,
+            easing: easeOutBack,
+          });
+          break;
+      }
+
+      rect({
+        x,
+        y,
+        width: 60,
+        height: 200 + heightExtension,
+        strokeStyle: "#666",
+      });
+    }
+  );
+};
+```
+
+#### Managing Objects
+
+```typescript
+// Add an object permanently (persists across frames)
+visualisation.addPermanently(
+  "my-circle",
+  springCircle().withProps({ xOffset: 50 })
+);
+
+// Add an object temporarily (removed after release completes)
+visualisation.add("temp-circle", springCircle().withProps({ xOffset: 100 }));
+
+// Trigger lifecycle events
+visualisation.get("my-circle")?.attack(0.8); // Attack with velocity 0.8
+visualisation.get("my-circle")?.release(1000); // Release over 1000ms
+
+// Retrieve current object
+const obj = visualisation.get("my-circle");
+```
+
+### Rendering Strategies
+
+Liminalis supports two complementary rendering approaches:
+
+#### 1. Lifecycle-Based Rendering (Dynamic Objects)
+
+Use animatable objects with lifecycle callbacks for interactive elements that respond to MIDI events:
+
+```typescript
+createVisualisation
+  .setup(({ atStart, onNoteDown, onNoteUp }) => {
+    atStart(({ visualisation }) => {
+      // Add animatable object
+      visualisation.addPermanently(
+        "note",
+        animatable().withRenderer(
+          ({ circle, center, animate, timeAttacked, timeReleased }) => {
+            circle({
+              cx: center.x,
+              cy: center.y,
+              radius: animate([
+                {
+                  startTime: timeAttacked,
+                  from: 50,
+                  to: 100,
+                  duration: 1000,
+                },
+                {
+                  startTime: timeReleased,
+                  from: 100,
+                  to: 50,
+                  duration: 1000,
+                },
+              ]),
+            });
+          }
+        )
+      );
+    });
+
+    onNoteDown(({ visualisation }) => {
+      visualisation.get("note")?.attack(1);
+    });
+
+    onNoteUp(({ visualisation }) => {
+      visualisation.get("note")?.release();
+    });
+  })
+  .render();
+```
+
+#### 2. Static Rendering (Per-Frame)
+
+Use `onRender` for static elements that don't need lifecycle management:
+
+```typescript
+createVisualisation
+  .setup(({ onRender }) => {
+    onRender(({ background, rect, circle, withStyles, time }) => {
+      background({ color: "#F7F2E7" });
+
+      // Draw static UI elements
+      withStyles({ strokeStyle: "#666", strokeWidth: 3 }, () => {
+        rect({ x: 100, y: 100, width: 800, height: 500, cornerRadius: 30 });
+
+        // Draw window buttons
+        const buttonColors = ["#FF605C", "#FFBD44", "#00CA4E"];
+        buttonColors.forEach((color, i) => {
+          circle({
+            cx: 50 + i * 45,
+            cy: 50,
+            radius: 15,
+            fillStyle: color,
+            strokeStyle: color,
+          });
+        });
+      });
+    });
+  })
+  .render();
+```
+
+#### Combined Example: Piano with UI
+
+```typescript
+createVisualisation
+  .setup(({ atStart, onRender, onNoteDown, onNoteUp }) => {
+    // Static UI rendered every frame
+    onRender(({ background, rect, line, withStyles }) => {
+      background({ color: "#F7F2E7" });
+
+      withStyles({ strokeStyle: "#666", strokeWidth: 3 }, () => {
+        rect({ x: 100, y: 100, width: 800, height: 500, cornerRadius: 30 });
+        line({ start: { x: 100, y: 170 }, end: { x: 900, y: 170 } });
+      });
+    });
+
+    // Dynamic piano keys respond to MIDI
+    atStart(({ visualisation }) => {
+      const notes = ["C4", "D4", "E4", "F4", "G4"];
+      notes.forEach((note, i) => {
+        visualisation.addPermanently(
+          note,
+          pianoKey().withProps({ x: 200 + i * 65, y: 250 })
+        );
+      });
+    });
+
+    onNoteDown(({ visualisation, note, attack }) => {
+      visualisation.get(note)?.attack(attack);
+    });
+
+    onNoteUp(({ visualisation, note }) => {
+      visualisation.get(note)?.release(1000);
+    });
+  })
+  .render();
+```
+
+### Timeline Animations
+
+Liminalis features a powerful timeline animation system that supports:
+
+- **Event-based timing** using `timeAttacked`, `timeReleased`, `timeFirstRender`
+- **Smooth overlapping** - animations blend seamlessly when events occur rapidly
+- **Cumulative properties** - timeline segments inherit properties from previous segments
+
+#### Single Animation
+
+```typescript
+animate({
+  from: 0,
+  to: 100,
+  duration: 1000,
+  easing: easeOutBounce,
+  delay: 200,
+});
+```
+
+#### Timeline Array (Attack → Release)
+
+```typescript
+animate([
+  {
+    startTime: timeAttacked, // Event-based timing
+    from: 50,
+    to: 100,
+    duration: 1000,
+  },
+  {
+    startTime: timeReleased,
+    from: 100, // Explicit from value
+    to: 50,
+    duration: 1000,
+  },
+]);
+```
+
+#### Smooth Overlap Handling
+
+When `timeReleased` occurs before the attack animation completes, Liminalis automatically:
+
+1. Detects the overlap
+2. Calculates the interpolated value at the moment of release
+3. Uses that value as the starting point for the release animation
+
+**Example**: If attack animates 50→100 over 1000ms, but release occurs at 200ms (when value is ~60), the release animation smoothly continues from 60→50.
+
+#### Animation Options
+
+```typescript
+interface AnimationOptions {
+  from: number; // Start value
+  to: number; // End value
+  startTime?: number | null; // When to start (ms or event time)
+  duration?: number; // Duration in ms
+  endTime?: number; // Alternative: absolute end time
+  delay?: number; // Delay before starting
+  easing?: (t: number) => number; // Easing function (0→1)
+  reverse?: boolean; // Reverse the animation
+}
+```
+
+## Examples
+
+### 1. Simple Circles (`/examples/animatable-circles`)
+
+Demonstrates both rendering strategies in one visualization:
+
+- **Dynamic circles** that respond to MIDI attack/release
+- **Static circles** animated via `onRender` with staggered delays
+
+```typescript
+createVisualisation
+  .setup(({ atStart, onRender, onNoteDown, onNoteUp }) => {
+    // Dynamic MIDI-responsive circle
+    atStart(({ visualisation }) => {
+      visualisation.addPermanently("note", animatable().withRenderer(...));
+    });
+
+    // Static animated circles
+    onRender(({ circle, animate, center }) => {
+      for (let i = 0; i < 3; i++) {
+        circle({
+          cx: center.x + i * 40 - 40,
+          cy: animate({
+            from: center.y - 200,
+            to: center.y - 100,
+            duration: 1000,
+            delay: 500 + i * 250,
+          }),
+          radius: 10,
+        });
+      }
+    });
+
+    onNoteDown(({ visualisation }) => visualisation.get("note")?.attack(1));
+    onNoteUp(({ visualisation }) => visualisation.get("note")?.release());
+  })
+  .render();
+```
+
+### 2. Spring Circles (`/examples/circles`)
+
+Creates circles on note press that bounce in with spring easing:
+
+```typescript
+createVisualisation
+  .withState({ index: 0 })
+  .setup(({ onNoteDown, onNoteUp, state }) => {
+    onNoteDown(({ visualisation, note, attack }) => {
+      const { index } = state;
+      state.index = (state.index + 1) % 7;
+
+      visualisation.add(
+        note,
+        springCircle()
+          .withProps({ xOffset: -150 + index * 50 })
+          .attack(attack)
+      );
+    });
+
+    onNoteUp(({ visualisation, note }) => {
+      visualisation.get(note)?.release();
+    });
+  })
+  .render();
+```
+
+### 3. Animated Bars (`/examples/bars`)
+
+Vertical bars that spring up from the bottom with note-based positioning:
+
+```typescript
+createVisualisation
+  .setup(({ atStart, onNoteDown, onNoteUp }) => {
+    const notes = ["C", "D", "E", "F", "G", "A", "B"];
+
+    atStart(({ visualisation }) => {
+      notes.forEach((note, index) => {
+        visualisation.addPermanently(
+          note,
+          springRectangle().withProps({
+            x: 100 + index * 120,
+            y: 500,
+            width: 80,
+            height: 800,
+          })
+        );
+      });
+    });
+
+    onNoteDown(({ visualisation, note, attack }) => {
+      visualisation.get(note[0])?.attack(attack); // Use base note (C, D, etc.)
+    });
+
+    onNoteUp(({ visualisation, note }) => {
+      visualisation.get(note[0])?.release(2000); // 2-second release
+    });
+  })
+  .render();
+```
+
+### 4. Interactive Piano (`/examples/piano`)
+
+Full piano keyboard with attack/release animations:
+
+- Static UI (window, buttons) rendered via `onRender`
+- Dynamic piano keys (white/black) as animatable objects
+- Keys extend downward on press, retract on release
+
+```typescript
+createVisualisation
+  .setup(({ atStart, onRender, onNoteDown, onNoteUp }) => {
+    // Static window UI
+    onRender(({ background, rect, circle, withStyles }) => {
+      background({ color: "#F7F2E7" });
+      withStyles({ strokeStyle: "#666", strokeWidth: 3 }, () => {
+        rect({ x: 100, y: 100, width: 800, height: 500, cornerRadius: 30 });
+      });
+    });
+
+    // Dynamic piano keys
+    atStart(({ visualisation }) => {
+      const notes = ["C4", "C#4", "D4", "D#4", "E4", "F4", "F#4", "G4", ...];
+      notes.forEach((note) => {
+        const keyType = note.includes("#") ? "black" : "white";
+        visualisation.addPermanently(
+          note,
+          pianoKey().withProps({ keyType, ... })
+        );
+      });
+    });
+
+    onNoteDown(({ visualisation, note, attack }) => {
+      visualisation.get(note)?.attack(attack);
+    });
+
+    onNoteUp(({ visualisation, note }) => {
+      visualisation.get(note)?.release(1000);
+    });
+  })
+  .render();
+```
+
+## API Reference
+
+### `createVisualisation`
+
+Main entry point for creating visualizations.
+
+#### Methods
+
+##### `.withSettings(settings)`
+
+Configure canvas dimensions and behavior:
+
+```typescript
+createVisualisation.withSettings({
+  width: 1080,
+  height: 1920,
+  fps: 60,
+  computerKeyboardDebugEnabled: true,
+});
+```
+
+##### `.withState(initialState)`
+
+Provide stateful data that persists across renders:
+
+```typescript
+createVisualisation.withState({ index: 0, score: 0 }).setup(({ state }) => {
+  state.index += 1; // Mutate state directly
+});
+```
+
+##### `.setup(setupFunction)`
+
+Configure event handlers and initialize objects:
+
+```typescript
+createVisualisation.setup(({ atStart, onNoteDown, onNoteUp, onRender }) => {
+  // Setup code
+});
+```
+
+**Setup Function Parameters:**
+
+- `atStart(callback)` - Run once on initialization
+- `onNoteDown(callback)` - Handle MIDI note press
+- `onNoteUp(callback)` - Handle MIDI note release
+- `onRender(callback)` - Render static content each frame
+- `atTime(time, callback)` - Schedule callback at specific time
+- `state` - Access state object (if using `.withState()`)
+- `width`, `height` - Canvas dimensions
+- `center` - `{ x, y }` center point
+
+##### `.render()`
+
+Start the visualization loop:
+
+```typescript
+createVisualisation
+  .setup(...)
+  .render();
+```
+
+### `animatable<TProps>()`
+
+Create an animatable object with custom properties.
+
+```typescript
+const myObject = animatable<{ color: string; size: number }>().withRenderer(
+  ({ props, circle, center }) => {
+    circle({
+      cx: center.x,
+      cy: center.y,
+      radius: props.size,
+      fillStyle: props.color,
+    });
+  }
+);
+```
+
+#### Methods
+
+##### `.withRenderer(renderFunction)`
+
+Define how the object should be drawn:
+
+```typescript
+.withRenderer((context) => {
+  // Render using context
+})
+```
+
+**Render Context:**
+
+- **Lifecycle**: `status`, `attackValue`, `releaseFactor`, `timeAttacked`, `timeReleased`, `timeFirstRender`
+- **Properties**: `props` (custom props passed via `.withProps()`)
+- **Canvas**: `context`, `width`, `height`, `center`
+- **Primitives**: `background`, `rect`, `circle`, `line`
+- **Styling**: `withStyles`, `translate`, `rotate`, `scale`
+- **Animation**: `animate(options)`
+- **Timing**: `beforeTime`, `afterTime`, `duringTimeInterval`
+
+##### `.withProps(properties)`
+
+Attach custom properties to the object:
+
+```typescript
+springCircle().withProps({ xOffset: 100, color: "#FF0000" });
+```
+
+##### `.attack(velocity)`
+
+Trigger attack phase (typically called in `onNoteDown`):
+
+```typescript
+myObject.attack(0.8); // Attack with velocity 0.8
+```
+
+##### `.release(duration?)`
+
+Trigger release phase (typically called in `onNoteUp`):
+
+```typescript
+myObject.release(1000); // Release over 1000ms
+```
+
+### Canvas Primitives
+
+All primitives are available in both `onRender` and animatable renderers.
+
+#### `background({ color })`
+
+```typescript
+background({ color: "#F7F2E7" });
+background({ color: "beige" });
+```
+
+#### `rect({ x?, y?, width, height, fillStyle?, strokeStyle?, cornerRadius?, opacity? })`
+
+```typescript
+rect({
+  x: 100,
+  y: 100,
+  width: 800,
+  height: 500,
+  cornerRadius: 30,
+  fillStyle: "transparent",
+  strokeStyle: "#666",
+  strokeWidth: 3,
+  opacity: 0.8,
+});
+```
+
+#### `circle({ cx, cy, radius, fillStyle?, strokeStyle?, strokeWidth?, opacity? })`
+
+```typescript
+circle({
+  cx: 400,
+  cy: 300,
+  radius: 50,
+  fillStyle: "#FF605C",
+  strokeStyle: "#666",
+  strokeWidth: 2,
+  opacity: 1,
+});
+```
+
+#### `line({ start, end, strokeStyle?, strokeWidth? })`
+
+```typescript
+line({
+  start: { x: 100, y: 100 },
+  end: { x: 500, y: 100 },
+  strokeStyle: "#666",
+  strokeWidth: 3,
+});
+```
+
+### Styling & Transformations
+
+#### `withStyles(styles, callback)`
+
+Apply styles within a scope:
+
+```typescript
+withStyles({ strokeStyle: "#666", strokeWidth: 3 }, () => {
+  circle({ cx: 100, cy: 100, radius: 50 });
+  rect({ x: 200, y: 200, width: 100, height: 100 });
+});
+// Styles automatically restored after callback
+```
+
+#### `translate(offset, callback)`
+
+Translate origin within a scope:
+
+```typescript
+translate({ x: 100, y: 50 }, () => {
+  circle({ cx: 0, cy: 0, radius: 50 }); // Drawn at (100, 50)
+});
+```
+
+#### `rotate(angle, callback)`
+
+Rotate canvas (angle in radians):
+
+```typescript
+rotate(Math.PI / 4, () => {
+  rect({ x: 0, y: 0, width: 100, height: 100 });
+});
+```
+
+#### `scale(factor, callback)`
+
+Scale canvas:
+
+```typescript
+scale({ x: 2, y: 2 }, () => {
+  circle({ cx: 50, cy: 50, radius: 25 }); // Drawn twice as large
+});
+```
+
+### Animation System
+
+#### `animate(options | options[])`
+
+Animate a value over time:
+
+**Single Animation:**
+
+```typescript
+const radius = animate({
+  from: 0,
+  to: 100,
+  duration: 1000,
+  easing: easeOutBounce,
+});
+```
+
+**Timeline (Array):**
+
+```typescript
+const radius = animate([
+  {
+    startTime: timeAttacked,
+    from: 50,
+    to: 100,
+    duration: 1000,
+  },
+  {
+    startTime: timeReleased,
+    from: 100,
+    to: 50,
+    duration: 1000,
+  },
+]);
+```
+
+**Options:**
+
+- `from` - Start value
+- `to` - End value
+- `startTime` - When to start (ms, or `null` to skip)
+- `duration` - Duration in milliseconds
+- `endTime` - Alternative to duration (absolute time)
+- `delay` - Delay before starting
+- `easing` - Easing function `(t: number) => number`
+- `reverse` - Reverse the animation
+
+**Common Easing Functions** (via `easing-utils`):
+
+- `easeOutBounce`
+- `easeOutBack`
+- `easeInCubic`
+- `easeOutCubic`
+- `easeInOutCubic`
+
+### Visualisation Manager
+
+Manages lifecycle of animatable objects.
+
+#### `visualisation.addPermanently(id, object)`
+
+Add object that persists until explicitly removed:
+
+```typescript
+visualisation.addPermanently(
+  "my-circle",
+  springCircle().withProps({ xOffset: 50 })
+);
+```
+
+#### `visualisation.add(id, object)`
+
+Add object that's removed after release completes:
+
+```typescript
+visualisation.add(note, springCircle().withProps({ xOffset: 100 }));
+```
+
+#### `visualisation.get(id)`
+
+Retrieve an object by ID:
+
+```typescript
+const obj = visualisation.get("my-circle");
+obj?.attack(0.8);
+obj?.release(1000);
+```
+
+## License
+
+MIT
