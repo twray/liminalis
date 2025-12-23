@@ -135,5 +135,8 @@ dist
 # local output
 output/
 
+# Test apps directory for library development
+test-apps/
+
 # .vscode file
 .vscode/

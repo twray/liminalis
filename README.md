@@ -1038,46 +1038,63 @@ obj?.release(1000);
 
 ### Contributing to Liminalis
 
-If you want to contribute or run the examples locally:
+Want to contribute to the library or add new features? We've set up a development workflow that lets you test changes against real-world scaffolded projects.
 
-1. **Clone the repository**:
+**See [DEVELOPMENT.md](./DEVELOPMENT.md) for the complete guide.**
+
+#### Quick Start for Contributors
+
+1. **Clone and setup**:
 
 ```bash
 git clone https://github.com/twray/liminalis.git
 cd liminalis
-```
-
-2. **Install dependencies**:
-
-```bash
 npm install
-```
-
-3. **Build the project**:
-
-```bash
 npm run build
+npm link
 ```
 
-4. **Run in development mode**:
+2. **Start development mode** (Terminal 1):
 
 ```bash
 npm run dev
 ```
 
-5. **Run examples**:
+3. **Create a test project** (Terminal 2):
 
-Edit `src/index.ts` to import different examples:
-
-```typescript
-// Run the piano example
-import "./examples/piano";
-
-// Or run the circles example
-import "./examples/circles";
+```bash
+npm run test:create
+cd test-apps/test-<timestamp>
+npm run dev
 ```
 
-Then run `npm run dev` to see the visualization.
+Now any changes to the library will automatically rebuild and hot-reload in your test project!
+
+#### Available Development Commands
+
+```bash
+npm run dev                 # Build library in watch mode
+npm run test:create         # Create test project
+npm run test:all-templates  # Validate all templates
+npm run test:dev            # Build + create + run (one command)
+```
+
+#### VS Code Integration
+
+Press `Cmd+Shift+B` to access build tasks:
+
+- **Build Library (Watch Mode)** - Default task
+- **Create Test Project** - Quick test setup
+- **🚀 Build + Create + Run** - Complete workflow
+
+#### Testing Philosophy
+
+We test library changes against projects created with `create-liminalis-app` to ensure:
+
+- ✅ Real-world compatibility
+- ✅ Template validation
+- ✅ Breaking change detection
+- ✅ Production parity
 
 ### Project Structure
 

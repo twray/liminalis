@@ -117,12 +117,16 @@
     "clean": "rm -rf dist",
     "prebuild": "npm run clean",
     "prepublishOnly": "npm run build",
-    "dev": "npm run build:watch & sleep 2 && canvas-sketch dist/index.js --hot",
+    "dev": "npm run build:watch",
     "start": "canvas-sketch dist/index.js",
     "type-check": "tsc --noEmit",
     "type-check:watch": "tsc --noEmit --watch",
     "lint": "tsc --noEmit --strict",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "test:link": "npm link",
+    "test:create": "node scripts/create-test-project.js",
+    "test:all-templates": "node scripts/test-all-templates.js",
+    "test:dev": "npm run build && npm run test:create"
   },
   "devDependencies": {
     "@types/node": "^24.9.1",
