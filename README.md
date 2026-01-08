@@ -7,8 +7,9 @@ A creative coding framework for building real-time music visualizations in TypeS
 - 🎹 **Native MIDI Support**: Built-in `onNoteDown` and `onNoteUp` event handlers for seamless MIDI integration
 - 🎨 **Lifecycle-Driven Animations**: Objects respond to attack, sustain, and release phases with automatic state management
 - ⏱️ **Timeline Animation System**: Create smooth, overlapping animations with event-based timing
-- 🖼️ **Dual Rendering Modes**: Render dynamic objects via lifecycle callbacks OR static content via `onRender`
+- 🖼️ **Unified Rendering API**: Compose 2D canvas primitives and isometric views in the same render operation
 - 🎭 **Canvas Primitives**: Expressive API with stateful styling, transformations, and easing functions
+- 🎲 **Isometric Rendering**: Built-in isometric projection with cuboids and tiles
 
 ## Table of Contents
 
@@ -71,7 +72,7 @@ pnpm add liminalis
 Create your first MIDI-driven visualization:
 
 ```typescript
-import { createVisualisation, animatable } from "liminalis";
+import { createVisualisation, midiVisual } from "liminalis";
 import { easeOutBounce } from "easing-utils";
 
 createVisualisation
@@ -80,27 +81,29 @@ createVisualisation
     atStart(({ visualisation }) => {
       visualisation.addPermanently(
         "circle",
-        animatable().withRenderer(
-          ({ circle, center, animate, timeAttacked, timeReleased }) => {
-            circle({
-              cx: center.x,
-              cy: center.y,
-              radius: animate([
-                {
-                  startTime: timeAttacked,
-                  from: 50,
-                  to: 150,
-                  duration: 1000,
-                  easing: easeOutBounce,
-                },
-                {
-                  startTime: timeReleased,
-                  from: 150,
-                  to: 50,
-                  duration: 1000,
-                },
-              ]),
-              strokeStyle: "#666",
+        midiVisual().withRenderer(
+          ({ draw, animate, timeAttacked, timeReleased }) => {
+            draw(({ circle, center }) => {
+              circle({
+                cx: center.x,
+                cy: center.y,
+                radius: animate([
+                  {
+                    startTime: timeAttacked,
+                    from: 50,
+                    to: 150,
+                    duration: 1000,
+                    easing: easeOutBounce,
+                  },
+                  {
+                    startTime: timeReleased,
+                    from: 150,
+                    to: 50,
+                    duration: 1000,
+                  },
+                ]),
+                strokeStyle: "#666",
+              });
             });
           }
         )
@@ -287,28 +290,31 @@ createVisualisation
 
 The heart of Liminalis is the **animatable object system**. Objects can respond to MIDI lifecycle events (attack, sustain, release) with automatic state tracking and timing.
 
-#### Creating Animatable Objects
+#### Creating MIDI Visuals
 
 ```typescript
-import { animatable } from "./core";
+import { midiVisual } from "liminalis";
+import { easeOutBounce } from "easing-utils";
 
 const springCircle = () => {
-  return animatable<{ xOffset: number }>().withRenderer(
-    ({ props, circle, center, attackValue, releaseFactor, animate }) => {
-      const { xOffset = 0 } = props;
-      const { x: cx, y: cy } = center;
+  return midiVisual<{ xOffset: number }>().withRenderer(
+    ({ props, draw, attackValue, releaseFactor, animate }) => {
+      draw(({ circle, center }) => {
+        const { xOffset = 0 } = props;
+        const { x: cx, y: cy } = center;
 
-      circle({
-        cx: cx + xOffset,
-        cy,
-        radius: animate({
-          from: 0,
-          to: 100 * attackValue, // Scale by attack velocity
-          duration: 1000,
-          easing: easeOutBounce,
-        }),
-        strokeStyle: "#666",
-        opacity: releaseFactor, // Fade during release
+        circle({
+          cx: cx + xOffset,
+          cy,
+          radius: animate({
+            from: 0,
+            to: 100 * attackValue, // Scale by attack velocity
+            duration: 1000,
+            easing: easeOutBounce,
+          }),
+          strokeStyle: "#666",
+          opacity: releaseFactor, // Fade during release
+        });
       });
     }
   );
@@ -338,42 +344,46 @@ Your renderer receives these properties automatically:
 #### Example: State-Based Rendering
 
 ```typescript
+import { easeOutBack } from "easing-utils";
+
 const pianoKey = () => {
-  return animatable<{ x: number; y: number }>().withRenderer(
-    ({ props, rect, status, animate, timeAttacked, timeReleased }) => {
-      const { x, y } = props;
+  return midiVisual<{ x: number; y: number }>().withRenderer(
+    ({ props, draw, status, animate, timeAttacked, timeReleased }) => {
+      draw(({ rect }) => {
+        const { x, y } = props;
 
-      let heightExtension = 0;
+        let heightExtension = 0;
 
-      // Render differently based on lifecycle state
-      switch (status) {
-        case "sustained":
-          heightExtension = animate({
-            startTime: timeAttacked,
-            from: 0,
-            to: 20,
-            duration: 500,
-            easing: easeOutBack,
-          });
-          break;
+        // Render differently based on lifecycle state
+        switch (status) {
+          case "sustained":
+            heightExtension = animate({
+              startTime: timeAttacked,
+              from: 0,
+              to: 20,
+              duration: 500,
+              easing: easeOutBack,
+            });
+            break;
 
-        case "releasing":
-          heightExtension = animate({
-            startTime: timeReleased,
-            from: 20,
-            to: 0,
-            duration: 500,
-            easing: easeOutBack,
-          });
-          break;
-      }
+          case "releasing":
+            heightExtension = animate({
+              startTime: timeReleased,
+              from: 20,
+              to: 0,
+              duration: 500,
+              easing: easeOutBack,
+            });
+            break;
+        }
 
-      rect({
-        x,
-        y,
-        width: 60,
-        height: 200 + heightExtension,
-        strokeStyle: "#666",
+        rect({
+          x,
+          y,
+          width: 60,
+          height: 200 + heightExtension,
+          strokeStyle: "#666",
+        });
       });
     }
   );
@@ -402,38 +412,89 @@ const obj = visualisation.get("my-circle");
 
 ### Rendering Strategies
 
-Liminalis supports two complementary rendering approaches:
+Liminalis provides a unified, composable rendering API that allows you to combine 2D canvas primitives and isometric 3D projections in the same frame.
+
+#### Composable Rendering API
+
+Both `onRender` (for static content) and `.withRenderer()` (for MIDI visuals) use the same composable structure:
+
+```typescript
+// Access both 2D and isometric rendering in the same callback
+onRender(({ draw, renderIsometric }) => {
+  // Draw 2D canvas primitives
+  draw(({ circle, rect, background, withStyles }) => {
+    background({ color: "#faf0e6" });
+
+    withStyles({ strokeStyle: "#333", strokeWidth: 2 }, () => {
+      circle({ cx: 400, cy: 300, radius: 50 });
+      rect({ x: 100, y: 100, width: 200, height: 100 });
+    });
+  });
+
+  // Render isometric 3D objects
+  renderIsometric(({ cuboid, tile, withStyles }) => {
+    withStyles({ fillStyle: "white", strokeWidth: 3 }, () => {
+      cuboid({
+        isoX: 0,
+        isoY: 0,
+        isoZ: 0,
+        lengthX: 2,
+        lengthY: 2,
+        lengthZ: 1,
+      });
+
+      tile({
+        isoX: 0,
+        isoY: 0,
+        isoZ: 2,
+        width: 2,
+        height: 2,
+        type: "top",
+      });
+    });
+  });
+});
+```
+
+**Key Benefits:**
+
+- ✅ **Consistent API**: Same structure for static and dynamic rendering
+- ✅ **Composable**: Mix 2D and 3D in the same frame
+- ✅ **Isolated contexts**: `draw()` and `renderIsometric()` don't interfere with each other
+- ✅ **Type-safe**: Full TypeScript support for all primitives
 
 #### 1. Lifecycle-Based Rendering (Dynamic Objects)
 
-Use animatable objects with lifecycle callbacks for interactive elements that respond to MIDI events:
+Use MIDI visuals with lifecycle callbacks for interactive elements that respond to MIDI events:
 
 ```typescript
 createVisualisation
   .setup(({ atStart, onNoteDown, onNoteUp }) => {
     atStart(({ visualisation }) => {
-      // Add animatable object
+      // Add MIDI visual
       visualisation.addPermanently(
         "note",
-        animatable().withRenderer(
-          ({ circle, center, animate, timeAttacked, timeReleased }) => {
-            circle({
-              cx: center.x,
-              cy: center.y,
-              radius: animate([
-                {
-                  startTime: timeAttacked,
-                  from: 50,
-                  to: 100,
-                  duration: 1000,
-                },
-                {
-                  startTime: timeReleased,
-                  from: 100,
-                  to: 50,
-                  duration: 1000,
-                },
-              ]),
+        midiVisual().withRenderer(
+          ({ draw, animate, timeAttacked, timeReleased }) => {
+            draw(({ circle, center }) => {
+              circle({
+                cx: center.x,
+                cy: center.y,
+                radius: animate([
+                  {
+                    startTime: timeAttacked,
+                    from: 50,
+                    to: 100,
+                    duration: 1000,
+                  },
+                  {
+                    startTime: timeReleased,
+                    from: 100,
+                    to: 50,
+                    duration: 1000,
+                  },
+                ]),
+              });
             });
           }
         )
@@ -453,27 +514,29 @@ createVisualisation
 
 #### 2. Static Rendering (Per-Frame)
 
-Use `onRender` for static elements that don't need lifecycle management:
+Use `onRender` with `draw()` for static elements that don't need lifecycle management:
 
 ```typescript
 createVisualisation
   .setup(({ onRender }) => {
-    onRender(({ background, rect, circle, withStyles, time }) => {
-      background({ color: "#F7F2E7" });
+    onRender(({ draw, time }) => {
+      draw(({ background, rect, circle, withStyles }) => {
+        background({ color: "#F7F2E7" });
 
-      // Draw static UI elements
-      withStyles({ strokeStyle: "#666", strokeWidth: 3 }, () => {
-        rect({ x: 100, y: 100, width: 800, height: 500, cornerRadius: 30 });
+        // Draw static UI elements
+        withStyles({ strokeStyle: "#666", strokeWidth: 3 }, () => {
+          rect({ x: 100, y: 100, width: 800, height: 500, cornerRadius: 30 });
 
-        // Draw window buttons
-        const buttonColors = ["#FF605C", "#FFBD44", "#00CA4E"];
-        buttonColors.forEach((color, i) => {
-          circle({
-            cx: 50 + i * 45,
-            cy: 50,
-            radius: 15,
-            fillStyle: color,
-            strokeStyle: color,
+          // Draw window buttons
+          const buttonColors = ["#FF605C", "#FFBD44", "#00CA4E"];
+          buttonColors.forEach((color, i) => {
+            circle({
+              cx: 50 + i * 45,
+              cy: 50,
+              radius: 15,
+              fillStyle: color,
+              strokeStyle: color,
+            });
           });
         });
       });
@@ -488,12 +551,14 @@ createVisualisation
 createVisualisation
   .setup(({ atStart, onRender, onNoteDown, onNoteUp }) => {
     // Static UI rendered every frame
-    onRender(({ background, rect, line, withStyles }) => {
-      background({ color: "#F7F2E7" });
+    onRender(({ draw }) => {
+      draw(({ background, rect, line, withStyles }) => {
+        background({ color: "#F7F2E7" });
 
-      withStyles({ strokeStyle: "#666", strokeWidth: 3 }, () => {
-        rect({ x: 100, y: 100, width: 800, height: 500, cornerRadius: 30 });
-        line({ start: { x: 100, y: 170 }, end: { x: 900, y: 170 } });
+        withStyles({ strokeStyle: "#666", strokeWidth: 3 }, () => {
+          rect({ x: 100, y: 100, width: 800, height: 500, cornerRadius: 30 });
+          line({ start: { x: 100, y: 170 }, end: { x: 900, y: 170 } });
+        });
       });
     });
 
@@ -511,13 +576,106 @@ createVisualisation
     onNoteDown(({ visualisation, note, attack }) => {
       visualisation.get(note)?.attack(attack);
     });
+```
+
+#### Composing 2D and Isometric Together
+
+You can seamlessly mix 2D UI elements with 3D isometric visualizations:
+
+```typescript
+createVisualisation
+  .setup(({ onRender, onNoteDown, onNoteUp }) => {
+    onRender(({ draw, renderIsometric }) => {
+      // Draw 2D background and UI
+      draw(({ circle, center, background }) => {
+        const { x: cx, y: cy } = center;
+        background({ color: "#faf0e6" });
+
+        // Concentric circles in 2D
+        for (let i = 0; i < 10; i++) {
+          circle({
+            cx,
+            cy,
+            radius: (i + 1) * 10,
+            fillStyle: "#333333",
+            opacity: 1 - i / 10,
+          });
+        }
+      });
+
+      // Render 3D isometric objects on top
+      renderIsometric(({ cuboid, tile, withStyles }) => {
+        withStyles({ fillStyle: "white", strokeWidth: 3 }, () => {
+          cuboid({
+            isoX: 0,
+            isoY: 0,
+            isoZ: -0.5,
+            lengthX: 1,
+            lengthY: 1,
+            lengthZ: 1,
+          });
+
+          tile({
+            isoX: 0,
+            isoY: 0,
+            isoZ: 2.5,
+            width: 1,
+            height: 1,
+            type: "side-right",
+          });
+        });
+      });
+    });
+
+    // MIDI visuals can also compose both
+    onNoteDown(({ visualisation, note }) => {
+      visualisation.add(
+        note,
+        midiVisual()
+          .withRenderer(({ draw, renderIsometric, releaseFactor }) => {
+            // 2D circle
+            draw(({ center, circle }) => {
+              circle({
+                cx: center.x,
+                cy: center.y,
+                radius: 200,
+                opacity: releaseFactor,
+              });
+            });
+
+            // 3D cuboid
+            renderIsometric(({ cuboid }) => {
+              cuboid({
+                isoX: 0,
+                isoY: 0,
+                isoZ: -2.5,
+                lengthX: 3,
+                lengthY: 3,
+                lengthZ: 3,
+                strokeStyle: "white",
+                fillStyle: "transparent",
+              });
+            });
+          })
+          .attack(1)
+      );
+    });
 
     onNoteUp(({ visualisation, note }) => {
-      visualisation.get(note)?.release(1000);
+      visualisation.get(note)?.release(500);
     });
   })
   .render();
 ```
+
+    onNoteUp(({ visualisation, note }) => {
+      visualisation.get(note)?.release(1000);
+    });
+
+})
+.render();
+
+````
 
 ### Timeline Animations
 
@@ -537,7 +695,7 @@ animate({
   easing: easeOutBounce,
   delay: 200,
 });
-```
+````
 
 #### Timeline Array (Attack → Release)
 
@@ -597,23 +755,32 @@ createVisualisation
   .setup(({ atStart, onRender, onNoteDown, onNoteUp }) => {
     // Dynamic MIDI-responsive circle
     atStart(({ visualisation }) => {
-      visualisation.addPermanently("note", animatable().withRenderer(...));
+      visualisation.addPermanently(
+        "note",
+        midiVisual().withRenderer(({ draw }) => {
+          draw(({ circle, center }) => {
+            // ...rendering logic
+          });
+        })
+      );
     });
 
     // Static animated circles
-    onRender(({ circle, animate, center }) => {
-      for (let i = 0; i < 3; i++) {
-        circle({
-          cx: center.x + i * 40 - 40,
-          cy: animate({
-            from: center.y - 200,
-            to: center.y - 100,
-            duration: 1000,
-            delay: 500 + i * 250,
-          }),
-          radius: 10,
-        });
-      }
+    onRender(({ draw, animate }) => {
+      draw(({ circle, center }) => {
+        for (let i = 0; i < 3; i++) {
+          circle({
+            cx: center.x + i * 40 - 40,
+            cy: animate({
+              from: center.y - 200,
+              to: center.y - 100,
+              duration: 1000,
+              delay: 500 + i * 250,
+            }),
+            radius: 10,
+          });
+        }
+      });
     });
 
     onNoteDown(({ visualisation }) => visualisation.get("note")?.attack(1));
@@ -687,15 +854,16 @@ createVisualisation
 
 Full piano keyboard with attack/release animations:
 
-- Static UI (window, buttons) rendered via `onRender`
-- Dynamic piano keys (white/black) as animatable objects
+- Static UI (window, buttons) rendered via `onRender` with `draw()`
+- Dynamic piano keys (white/black) as MIDI visuals
 - Keys extend downward on press, retract on release
 
 ```typescript
 createVisualisation
   .setup(({ atStart, onRender, onNoteDown, onNoteUp }) => {
     // Static window UI
-    onRender(({ background, rect, circle, withStyles }) => {
+    onRender(({ draw }) => {
+      draw(({ background, rect, circle, withStyles }) => {
       background({ color: "#F7F2E7" });
       withStyles({ strokeStyle: "#666", strokeWidth: 3 }, () => {
         rect({ x: 100, y: 100, width: 800, height: 500, cornerRadius: 30 });
@@ -777,6 +945,17 @@ createVisualisation.setup(({ atStart, onNoteDown, onNoteUp, onRender }) => {
 - `width`, `height` - Canvas dimensions
 - `center` - `{ x, y }` center point
 
+**onRender Callback Parameters:**
+
+The `onRender` callback receives an object with:
+
+- `draw(callback)` - Access 2D canvas primitives (background, rect, circle, line, withStyles, etc.)
+- `renderIsometric(callback)` - Access isometric 3D primitives (cuboid, tile, withStyles)
+- `animate(options)` - Create time-based animations
+- `time` - Current time in milliseconds
+- `width`, `height` - Canvas dimensions
+- `center` - Canvas center point
+
 ##### `.render()`
 
 Start the visualization loop:
@@ -787,18 +966,20 @@ createVisualisation
   .render();
 ```
 
-### `animatable<TProps>()`
+### `midiVisual<TProps>()`
 
-Create an animatable object with custom properties.
+Create a MIDI-responsive visual object with custom properties.
 
 ```typescript
-const myObject = animatable<{ color: string; size: number }>().withRenderer(
-  ({ props, circle, center }) => {
-    circle({
-      cx: center.x,
-      cy: center.y,
-      radius: props.size,
-      fillStyle: props.color,
+const myObject = midiVisual<{ color: string; size: number }>().withRenderer(
+  ({ props, draw }) => {
+    draw(({ circle, center }) => {
+      circle({
+        cx: center.x,
+        cy: center.y,
+        radius: props.size,
+        fillStyle: props.color,
+      });
     });
   }
 );
@@ -812,7 +993,14 @@ Define how the object should be drawn:
 
 ```typescript
 .withRenderer((context) => {
-  // Render using context
+  // Access rendering methods via draw() and renderIsometric()
+  context.draw(({ circle, rect, background }) => {
+    // 2D canvas primitives
+  });
+
+  context.renderIsometric(({ cuboid, tile }) => {
+    // Isometric 3D objects
+  });
 })
 ```
 
@@ -820,11 +1008,20 @@ Define how the object should be drawn:
 
 - **Lifecycle**: `status`, `attackValue`, `releaseFactor`, `timeAttacked`, `timeReleased`, `timeFirstRender`
 - **Properties**: `props` (custom props passed via `.withProps()`)
+- **Rendering**: `draw(callback)`, `renderIsometric(callback)`
+- **Animation**: `animate(options)`
+- **Timing**: `beforeTime`, `afterTime`, `duringTimeInterval`
+
+**Draw Callback (2D Canvas):**
+
 - **Canvas**: `context`, `width`, `height`, `center`
 - **Primitives**: `background`, `rect`, `circle`, `line`
 - **Styling**: `withStyles`, `translate`, `rotate`, `scale`
-- **Animation**: `animate(options)`
-- **Timing**: `beforeTime`, `afterTime`, `duringTimeInterval`
+
+**Render Isometric Callback (3D Projection):**
+
+- **Isometric Primitives**: `cuboid`, `tile`
+- **Styling**: `withStyles`
 
 ##### `.withProps(properties)`
 
