@@ -4,4 +4,7 @@ export * from "./color.js";
 export * from "./common.js";
 export * from "./events.js";
 export * from "./geometry.js";
+export * from "./isometric.js";
+export * from "./render.js";
 export * from "./settings.js";
+export * from "./styles.js";

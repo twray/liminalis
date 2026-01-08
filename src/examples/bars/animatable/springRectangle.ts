@@ -1,8 +1,8 @@
 import { easeInCubic, easeOutBack } from "easing-utils";
-import { animatable } from "../../../core";
+import { midiVisual } from "../../../core";
 
 export const springRectangle = () => {
-  return animatable<{
+  return midiVisual<{
     x: number;
     y: number;
     width: number;

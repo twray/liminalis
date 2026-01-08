@@ -1,4 +1,4 @@
-import { animatable, createVisualisation } from "../../core";
+import { createVisualisation, midiVisual } from "../../core";
 import { toNormalizedFloat } from "../../util";
 
 createVisualisation
@@ -6,7 +6,7 @@ createVisualisation
     atStart(({ visualisation }) => {
       visualisation.addPermanently(
         "note",
-        animatable().withRenderer(
+        midiVisual().withRenderer(
           ({
             center,
             circle,

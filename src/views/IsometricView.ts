@@ -1,12 +1,19 @@
 import { color, math } from "canvas-sketch-util";
-import type { IsometricPosition, Point2D } from "../types/index.js";
-import IsometricViewTileFaceType from "./IsometricViewTileFaceType.js";
+import type {
+  IsometricCuboid,
+  IsometricPosition,
+  IsometricTile,
+  IsometricTileFaceType,
+  Point2D,
+} from "../types/index.js";
+import { DebugMode } from "../types/util.js";
 
 interface TileData {
-  type: IsometricViewTileFaceType;
+  type: IsometricTileFaceType;
   points: Point2D[];
-  fill: string;
-  stroke: string;
+  fillStyle: string;
+  strokeStyle: string;
+  strokeWidth: number;
   opacity: number;
   debugMode: boolean;
 }
@@ -27,6 +34,7 @@ interface TileCoordinates {
 class IsometricView {
   private static readonly DEFAULT_FILL_COLOR = "#333333";
   private static readonly DEFAULT_STROKE_COLOR = "transparent";
+  private static readonly DEFAULT_STROKE_WIDTH = 1;
 
   public readonly context: CanvasRenderingContext2D;
   public readonly contextWidth: number;
@@ -183,7 +191,7 @@ class IsometricView {
             isoX: x,
             isoY: y,
             isoZ: 0,
-            type: IsometricViewTileFaceType.BASE,
+            type: "base",
             width: 1,
             height: 1,
             debugMode: true,
@@ -224,7 +232,12 @@ class IsometricView {
     return row && row[yIndex];
   }
 
-  addTileForRendering(isoX: number, isoY: number, isoZ: number, tileData: any) {
+  addTileForRendering(
+    isoX: number,
+    isoY: number,
+    isoZ: number,
+    tileData: TileData
+  ) {
     const originCellIndices = this.getOriginCellIndices();
 
     const xIndex = originCellIndices.x + (isoX + isoZ) - (isoY + isoZ);
@@ -240,18 +253,19 @@ class IsometricView {
     isoX = 0,
     isoY = 0,
     isoZ = 0,
-    type = IsometricViewTileFaceType.BASE,
+    type = "base",
     width = 1,
     height = 1,
-    fill = IsometricView.DEFAULT_FILL_COLOR,
-    stroke = IsometricView.DEFAULT_STROKE_COLOR,
+    fillStyle = IsometricView.DEFAULT_FILL_COLOR,
+    strokeStyle = IsometricView.DEFAULT_STROKE_COLOR,
+    strokeWidth = IsometricView.DEFAULT_STROKE_WIDTH,
     opacity = 1,
     translateX = 0,
     translateY = 0,
     translateZ = 0,
     scale = 1,
     debugMode = false,
-  }) {
+  }: IsometricTile & DebugMode) {
     const { tileWidth, tileHeight } = this;
     const { lerp } = math;
 
@@ -267,7 +281,7 @@ class IsometricView {
       let points;
 
       switch (type) {
-        case IsometricViewTileFaceType.BASE:
+        case "base":
         default: {
           points = [
             {
@@ -296,7 +310,7 @@ class IsometricView {
 
           break;
         }
-        case IsometricViewTileFaceType.SIDE_RIGHT: {
+        case "side-right": {
           points = [
             {
               x: top.x,
@@ -321,7 +335,7 @@ class IsometricView {
           ];
           break;
         }
-        case IsometricViewTileFaceType.SIDE_LEFT: {
+        case "side-left": {
           points = [
             {
               x: top.x,
@@ -388,8 +402,9 @@ class IsometricView {
       this.addTileForRendering(isoX, isoY, isoZ, {
         type,
         points,
-        fill,
-        stroke,
+        fillStyle,
+        strokeStyle,
+        strokeWidth,
         opacity,
         debugMode,
       });
@@ -408,50 +423,54 @@ class IsometricView {
     lengthX = 1,
     lengthY = 1,
     lengthZ = 1,
-    fill = IsometricView.DEFAULT_FILL_COLOR,
-    stroke = IsometricView.DEFAULT_STROKE_COLOR,
+    fillStyle = IsometricView.DEFAULT_FILL_COLOR,
+    strokeStyle = IsometricView.DEFAULT_STROKE_COLOR,
+    strokeWidth = IsometricView.DEFAULT_STROKE_WIDTH,
     opacity = 1,
     translateX = 0,
     translateY = 0,
     translateZ = 0,
-  }) {
+  }: IsometricCuboid & DebugMode) {
     this.addTileAt({
-      type: IsometricViewTileFaceType.SIDE_RIGHT,
+      type: "side-right",
       isoX,
       isoY,
       isoZ,
       width: lengthX,
       height: lengthZ,
-      fill,
-      stroke,
+      fillStyle,
+      strokeStyle,
+      strokeWidth,
       opacity,
       translateX,
       translateY,
       translateZ,
     });
     this.addTileAt({
-      type: IsometricViewTileFaceType.SIDE_LEFT,
+      type: "side-left",
       isoX,
       isoY,
       isoZ,
       width: lengthY,
       height: lengthZ,
-      fill,
-      stroke,
+      fillStyle,
+      strokeStyle,
+      strokeWidth,
       opacity,
       translateX,
       translateY,
       translateZ,
     });
     this.addTileAt({
-      type: IsometricViewTileFaceType.BASE,
+      type: "base",
       isoX: isoX + lengthZ,
       isoY: isoY + lengthZ,
       isoZ,
       width: lengthX,
       height: lengthY,
-      fill,
-      stroke,
+      fillStyle,
+      strokeStyle,
+      strokeWidth,
       opacity,
       translateX,
       translateY,
@@ -462,8 +481,9 @@ class IsometricView {
   renderTile({
     type,
     points,
-    fill,
-    stroke,
+    fillStyle,
+    strokeStyle,
+    strokeWidth,
     opacity,
     debugMode,
   }: TileData): void {
@@ -474,7 +494,7 @@ class IsometricView {
     context.beginPath();
     context.lineWidth = 2;
 
-    if (type === IsometricViewTileFaceType.BASE && debugMode) {
+    if (type === "base" && debugMode) {
       context.font = "bold 12px Arial";
       context.textAlign = "center";
       context.textBaseline = "middle";
@@ -486,30 +506,32 @@ class IsometricView {
       let renderedFill: string;
       let colorRgb: number[];
 
-      if (fill !== "transparent") {
+      if (fillStyle !== "transparent") {
         switch (type) {
-          case IsometricViewTileFaceType.BASE:
+          case "base":
           default: {
-            colorRgb = parse(fill).rgb;
+            colorRgb = parse(fillStyle).rgb;
             break;
           }
-          case IsometricViewTileFaceType.SIDE_RIGHT: {
-            colorRgb = offsetHSL(fill, 0, 0, -5).rgb;
+          case "side-right": {
+            colorRgb = offsetHSL(fillStyle, 0, 0, -5).rgb;
             break;
           }
-          case IsometricViewTileFaceType.SIDE_LEFT: {
-            colorRgb = offsetHSL(fill, 0, 0, 5).rgb;
+          case "side-left": {
+            colorRgb = offsetHSL(fillStyle, 0, 0, 5).rgb;
             break;
           }
         }
 
         renderedFill = `rgba(${colorRgb[0]}, ${colorRgb[1]}, ${colorRgb[2]}, ${opacity})`;
       } else {
-        renderedFill = fill;
+        renderedFill = fillStyle;
       }
 
       context.fillStyle = renderedFill;
-      context.strokeStyle = stroke;
+      context.strokeStyle = strokeStyle;
+      context.lineWidth = strokeWidth;
+      context.lineJoin = "round";
     }
 
     points.forEach((point: Point2D, i: number) => {

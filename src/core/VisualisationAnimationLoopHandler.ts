@@ -1,20 +1,22 @@
 import canvasSketch from "canvas-sketch";
 import { Utilities, WebMidi } from "webmidi";
-import {
-  getContextPrimitives,
-  type ContextPrimitives,
-} from "./contextPrimitives";
+
+import { getDrawMethods } from "./drawMethods";
+import { getRenderIsometricMethods } from "./renderIsometricMethods";
 
 import type {
   AnimationOptions,
   AppSettings,
   CanvasProps,
+  DrawCallback,
   EventTime,
   MidiNoteEvent,
   NormalizedFloat,
   NoteDownEvent,
   NoteUpEvent,
   Point2D,
+  RenderIsometricCallback,
+  RenderProps,
   SketchSettings,
 } from "../types";
 
@@ -23,6 +25,8 @@ import { eventTimeToMs, toNormalizedFloat } from "../util";
 import ModeManager from "./ModeManager";
 import NoteEventManager from "./NoteEventManager";
 import Visualisation from "./Visualisation";
+
+import IsometricView from "../views/IsometricView";
 
 import keyMappings from "../data/keyMappings.json";
 import { getAnimatedValueForCurrentTime } from "./animation";
@@ -41,7 +45,7 @@ type NoteUpEventCallback = (
   params: NoteUpEvent & WithVisualisationContext
 ) => void;
 
-type FrameEventCallback = (params: FrameRenderEvent) => void;
+type FrameEventCallback = (params: FrameRenderProps) => void;
 
 type TimeEventCallback = (params: WithVisualisationContext) => void;
 
@@ -79,16 +83,11 @@ interface SetupFunctionProps<TState> {
   atStart: (callback: TimeEventCallback) => void;
 }
 
-interface FrameRenderEvent extends ContextPrimitives {
-  context: CanvasRenderingContext2D;
-  width: number;
-  height: number;
-  center: Point2D;
+interface FrameRenderProps extends RenderProps {
   time: number;
   beforeTime: (time: EventTime) => boolean;
   afterTime: (time: EventTime) => boolean;
   duringTimeInterval: (startTime: EventTime, endTime: EventTime) => boolean;
-  animate: (options: AnimationOptions | AnimationOptions[]) => number;
   activeNotes: NoteDownEvent[];
 }
 
@@ -210,15 +209,21 @@ class VisualisationAnimationLoopHandler<TState> {
         const { context, width, height, frame, time } = canvasProps;
 
         // Rendering only works if animated and if there are workable frames
+
         if (!frame || !time) return;
 
         // Computed properties of canvas centre and ms run-time
+
         const center = { x: width / 2, y: height / 2 };
         const timeInMs = time * 1000;
 
         // Set background color and clear the canvas for rendering
+
         context.fillStyle = "white";
         context.fillRect(0, 0, width, height);
+
+        // Convenience functions for conditional rendering based on time
+        // intervals
 
         const before = (time: EventTime) => timeInMs < eventTimeToMs(time);
         const after = (time: EventTime) => timeInMs > eventTimeToMs(time);
@@ -230,9 +235,23 @@ class VisualisationAnimationLoopHandler<TState> {
 
         // Call the custom render function if it is specified. This function
         // runs on every frame and allows the user to manipulate the context
-        // in real time and/or use the convenience context primitive functions
+        // in real time and/or use the provided draw() callbacks to access
+        // convenience methods for manipulating the canvas context
 
         this.#frameRenderCallbacks.forEach((frameRenderCallback) => {
+          // Callbacks for calls to draw() and renderIsometric() methods
+
+          const drawCallbacks: DrawCallback[] = [];
+          const renderIsometricCallbacks: RenderIsometricCallback[] = [];
+
+          const draw = (callback: DrawCallback) => {
+            drawCallbacks.push(callback);
+          };
+
+          const renderIsometric = (callback: RenderIsometricCallback) => {
+            renderIsometricCallbacks.push(callback);
+          };
+
           frameRenderCallback({
             context,
             width,
@@ -243,9 +262,20 @@ class VisualisationAnimationLoopHandler<TState> {
             afterTime: after,
             duringTimeInterval: during,
             activeNotes: activeNotesForFrame,
+            draw,
+            renderIsometric,
             animate: (options: AnimationOptions | AnimationOptions[]) =>
               getAnimatedValueForCurrentTime(timeInMs, options),
-            ...getContextPrimitives(context),
+          });
+
+          drawCallbacks.forEach((drawCallback) => {
+            drawCallback(getDrawMethods(context, width, height));
+          });
+
+          renderIsometricCallbacks.forEach((renderIsometricCallback) => {
+            const isometricView = new IsometricView(context, width, height);
+            renderIsometricCallback(getRenderIsometricMethods(isometricView));
+            isometricView.render();
           });
         });
 

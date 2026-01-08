@@ -1,12 +1,6 @@
-import AnimatableIsometricObject from "./AnimatableIsometricObject";
-import AnimatableObject from "./AnimatableObject";
+import MidiVisual from "./MidiVisual";
 import VisualisationAnimationLoopHandler from "./VisualisationAnimationLoopHandler";
 
 export { logMessage } from "../util/log";
-
-export const animatable = <TProps>() => new AnimatableObject<TProps>();
-
-export const animatableIsometric = <TProps>() =>
-  new AnimatableIsometricObject<TProps>();
-
+export const midiVisual = <TProps>() => new MidiVisual<TProps>();
 export const createVisualisation = new VisualisationAnimationLoopHandler();

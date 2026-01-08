@@ -1,8 +1,6 @@
-import AnimatableIsometricObject from "../core/AnimatableIsometricObject";
-import AnimatableObject from "../core/AnimatableObject";
-import IsometricView from "../views/IsometricView";
+import MidiVisual from "./MidiVisual";
 
-type AnyAnimatableObject = AnimatableObject<any, any>;
+type AnyAnimatableObject = MidiVisual<any, any>;
 
 class Visualisation {
   public idsOfAllAnimatableObjectsCreated: string[] = [];
@@ -61,16 +59,6 @@ class Visualisation {
       );
     }
 
-    const hasIsometricObjects = Array.from(
-      this.animatableObjects.values()
-    ).some((obj) => obj instanceof AnimatableIsometricObject);
-
-    let isometricView: IsometricView | null = null;
-
-    if (hasIsometricObjects) {
-      isometricView = new IsometricView(context, width, height);
-    }
-
     this.animatableObjects.forEach((animatableObject) => {
       const {
         releaseFactor,
@@ -83,22 +71,11 @@ class Visualisation {
       }
 
       if (releaseFactor > 0 || isPermanent) {
-        if (
-          isometricView &&
-          animatableObject instanceof AnimatableIsometricObject
-        ) {
-          animatableObject.renderIn(isometricView, width, height);
-        } else {
-          animatableObject.renderIn(context, width, height);
-        }
+        animatableObject.renderIn(context, width, height);
       } else if (hasBeenReleased) {
         animatableObject.markedForRemoval = true;
       }
     });
-
-    if (isometricView) {
-      isometricView.render();
-    }
   }
 
   cleanUp() {

@@ -20,21 +20,3 @@ export interface Corners {
   bottomRight: number;
   bottomLeft: number;
 }
-
-export interface IsometricPosition {
-  isoX: number;
-  isoY: number;
-  isoZ: number;
-}
-
-export interface BlockDimensions extends IsometricPosition {
-  lengthX: number;
-  lengthY: number;
-  lengthZ: number;
-}
-
-export interface Dimensions3D {
-  lengthX: number;
-  lengthY: number;
-  lengthZ: number;
-}

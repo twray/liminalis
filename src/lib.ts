@@ -1,10 +1,5 @@
 // Main library entry point for npm package
-export {
-  animatable,
-  animatableIsometric,
-  createVisualisation,
-  logMessage,
-} from "./core";
+export { createVisualisation, logMessage, midiVisual } from "./core";
 export type {
   AnimationOptions,
   AppSettings,

@@ -1,5 +1,10 @@
 import { color as colorUtil } from "canvas-sketch-util";
-import type { Corners, Dimensions2D, Point2D } from "../types";
+import type {
+  Corners,
+  Dimensions2D,
+  PartialDrawStyles,
+  Point2D,
+} from "../types";
 import { isCorners, isNormalizedFloat } from "../util";
 
 const DEFAULT_BACKGROUND_COLOR = "#fff";
@@ -19,6 +24,8 @@ interface StrokeStyles {
 interface WithOpacity {
   opacity?: number;
 }
+
+type SomeStyles = Partial<FillStyles & StrokeStyles & WithOpacity>;
 
 export interface BackgroundProps {
   color: string;
@@ -53,6 +60,21 @@ export interface ScaleProps {
   sx: number;
   sy: number;
   origin?: Point2D;
+}
+
+export interface DrawMethods {
+  width: number;
+  height: number;
+  withStyles: (styles: PartialDrawStyles, callback: () => void) => void;
+  translate: (props: Point2D, callback: () => void) => void;
+  rotate: (props: RotateProps, callback: () => void) => void;
+  scale: (props: ScaleProps, callback: () => void) => void;
+  background: (props: BackgroundProps) => void;
+  center: Point2D;
+  centerOf: (props: Dimensions2D) => Point2D;
+  rect: (props: RectProps) => void;
+  circle: (props: CircleProps) => void;
+  line: (props: LineProps) => void;
 }
 
 const getColorWithOpacity = (color: string, opacity: number) => {
@@ -190,108 +212,115 @@ const line = (context: CanvasRenderingContext2D, props: LineProps) => {
   context.restore();
 };
 
-export const getContextPrimitives = (context: CanvasRenderingContext2D) => {
-  let defaultStyles: Partial<FillStyles & StrokeStyles & WithOpacity> = {
+const translate = (
+  context: CanvasRenderingContext2D,
+  props: Point2D,
+  callback: () => void
+) => {
+  const { x, y } = props;
+
+  context.save();
+  context.translate(x, y);
+
+  try {
+    return callback();
+  } finally {
+    context.restore();
+  }
+};
+
+const rotate = (
+  context: CanvasRenderingContext2D,
+  props: RotateProps,
+  callback: () => void
+): void => {
+  const { degrees, origin } = props;
+  const radians = (degrees * Math.PI) / 180;
+
+  context.save();
+
+  if (origin) {
+    context.translate(origin.x, origin.y);
+    context.rotate(radians);
+    context.translate(-origin.x, -origin.y);
+  } else {
+    context.rotate(radians);
+  }
+
+  try {
+    return callback();
+  } finally {
+    context.restore();
+  }
+};
+
+const scale = (
+  context: CanvasRenderingContext2D,
+  props: ScaleProps,
+  callback: () => void
+): void => {
+  const { sx, sy, origin } = props;
+
+  context.save();
+
+  if (origin) {
+    context.translate(origin.x, origin.y);
+    context.scale(sx, sy);
+    context.translate(-origin.x, -origin.y);
+  } else {
+    context.scale(sx, sy);
+  }
+
+  try {
+    return callback();
+  } finally {
+    context.restore();
+  }
+};
+
+export const getDrawMethods = (
+  context: CanvasRenderingContext2D,
+  width: number,
+  height: number
+): DrawMethods => {
+  let appliedStyles: SomeStyles = {
     fillStyle: DEFAULT_FILL_STYLE,
     strokeStyle: DEFAULT_STROKE_STYLE,
     strokeWidth: DEFAULT_STROKE_WIDTH,
   };
 
-  const mergedStyles = <
-    T extends Partial<FillStyles & StrokeStyles & WithOpacity>
-  >(
-    props: T
-  ): T =>
+  const mergeStyles = <T extends SomeStyles>(props: T): T & SomeStyles =>
     ({
-      ...defaultStyles,
+      ...appliedStyles,
       ...props,
-    } as T);
+    } as T & SomeStyles);
+
+  const withStyles = (styles: SomeStyles, callback: () => void): void => {
+    const previousStyles = appliedStyles;
+    appliedStyles = { ...appliedStyles, ...styles };
+
+    try {
+      return callback();
+    } finally {
+      appliedStyles = previousStyles;
+    }
+  };
 
   return {
-    withStyles: <T>(
-      styles: Partial<FillStyles & StrokeStyles & WithOpacity>,
-      callback: () => T
-    ): T => {
-      const previousStyles = defaultStyles;
-      defaultStyles = { ...defaultStyles, ...styles };
-      try {
-        return callback();
-      } finally {
-        defaultStyles = previousStyles;
-      }
-    },
-
-    translate: <T>(props: Point2D, callback: () => T): T => {
-      const { x, y } = props;
-      context.save();
-      context.translate(x, y);
-      try {
-        return callback();
-      } finally {
-        context.restore();
-      }
-    },
-
-    rotate: <T>(props: RotateProps, callback: () => T): T => {
-      const { degrees, origin } = props;
-      const radians = (degrees * Math.PI) / 180;
-
-      context.save();
-
-      if (origin) {
-        context.translate(origin.x, origin.y);
-        context.rotate(radians);
-        context.translate(-origin.x, -origin.y);
-      } else {
-        context.rotate(radians);
-      }
-
-      try {
-        return callback();
-      } finally {
-        context.restore();
-      }
-    },
-
-    scale: <T>(props: ScaleProps, callback: () => T): T => {
-      const { sx, sy, origin } = props;
-
-      context.save();
-
-      if (origin) {
-        context.translate(origin.x, origin.y);
-        context.scale(sx, sy);
-        context.translate(-origin.x, -origin.y);
-      } else {
-        context.scale(sx, sy);
-      }
-
-      try {
-        return callback();
-      } finally {
-        context.restore();
-      }
-    },
-
+    width,
+    height,
+    withStyles,
+    translate: (props: Point2D, callback: () => void) =>
+      translate(context, props, callback),
+    rotate: (props: RotateProps, callback: () => void): void =>
+      rotate(context, props, callback),
+    scale: (props: ScaleProps, callback: () => void): void =>
+      scale(context, props, callback),
     background: (props: BackgroundProps) => background(context, props),
+    center: { x: width / 2, y: height / 2 },
     centerOf,
-    rect: (props: RectProps) => rect(context, mergedStyles(props)),
-    circle: (props: CircleProps) => circle(context, mergedStyles(props)),
-    line: (props: LineProps) => line(context, mergedStyles(props)),
+    rect: (props: RectProps) => rect(context, mergeStyles(props)),
+    circle: (props: CircleProps) => circle(context, mergeStyles(props)),
+    line: (props: LineProps) => line(context, mergeStyles(props)),
   };
 };
-
-export interface ContextPrimitives {
-  withStyles: <T>(
-    styles: Partial<FillStyles & StrokeStyles & WithOpacity>,
-    callback: () => T
-  ) => T;
-  translate: <T>(props: Point2D, callback: () => T) => T;
-  rotate: <T>(props: RotateProps, callback: () => T) => T;
-  scale: <T>(props: ScaleProps, callback: () => T) => T;
-  background: (props: BackgroundProps) => void;
-  centerOf: (props: Dimensions2D) => Point2D;
-  rect: (props: RectProps) => void;
-  circle: (props: CircleProps) => void;
-  line: (props: LineProps) => void;
-}

@@ -1,8 +1,8 @@
 import { easeOutBounce } from "easing-utils";
-import { animatable } from "../../../core";
+import { midiVisual } from "../../../core";
 
 export const springCircle = () => {
-  return animatable<{ xOffset: number }>().withRenderer(
+  return midiVisual<{ xOffset: number }>().withRenderer(
     ({ props, circle, center, releaseFactor, attackValue, animate }) => {
       const { xOffset = 0 } = props;
       const { x: cx, y: cy } = center;

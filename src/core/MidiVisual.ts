@@ -1,31 +1,32 @@
-import { AnimationOptions, NormalizedFloat, Point2D } from "../types";
-import { toNormalizedFloat } from "../util";
+import {
+  AnimationOptions,
+  DrawCallback,
+  NormalizedFloat,
+  RenderIsometricCallback,
+  RenderProps,
+} from "../types";
+import IsometricView from "../views/IsometricView";
 import { getAnimatedValueForCurrentTime } from "./animation";
-import { ContextPrimitives, getContextPrimitives } from "./contextPrimitives";
+import { getDrawMethods } from "./drawMethods";
+import { getRenderIsometricMethods } from "./renderIsometricMethods";
 
-type AnimatableObjectStatus = "idle" | "sustained" | "releasing";
+import { toNormalizedFloat } from "../util";
 
-interface RenderParams<TProps, TRenderContext = CanvasRenderingContext2D> {
+type MidiVisualStatus = "idle" | "sustained" | "releasing";
+
+interface MidiVisualRenderProps<TProps> extends RenderProps {
   props: TProps;
-  context: TRenderContext;
-  width: number;
-  height: number;
-  center: Point2D;
-  status: AnimatableObjectStatus;
+  status: MidiVisualStatus;
   attackValue: NormalizedFloat;
   releaseFactor: NormalizedFloat;
+  releasePeriod: number;
   timeFirstRender: number | null;
   timeAttacked: number | null;
   timeReleased: number | null;
   animate: (options: AnimationOptions | AnimationOptions[]) => number;
 }
 
-type RenderParamsWithPrimitives<TProps, TRenderContext> =
-  TRenderContext extends CanvasRenderingContext2D
-    ? RenderParams<TProps, TRenderContext> & ContextPrimitives
-    : RenderParams<TProps, TRenderContext>;
-
-class AnimatableObject<TProps = {}, TRenderContext = CanvasRenderingContext2D> {
+class MidiVisual<TProps = {}> {
   public attackValue: NormalizedFloat = toNormalizedFloat(0);
   public sustainPeriod: number = 0;
   public releasePeriod: number = 0;
@@ -45,17 +46,11 @@ class AnimatableObject<TProps = {}, TRenderContext = CanvasRenderingContext2D> {
 
   public props: TProps = {} as TProps;
 
-  public renderer: (
-    params: RenderParamsWithPrimitives<TProps, TRenderContext>
-  ) => void = () => {};
+  public renderer: (params: MidiVisualRenderProps<TProps>) => void = () => {};
 
   constructor() {}
 
-  withRenderer(
-    renderer: (
-      params: RenderParamsWithPrimitives<TProps, TRenderContext>
-    ) => void
-  ) {
+  withRenderer(renderer: (params: MidiVisualRenderProps<TProps>) => void) {
     this.renderer = renderer;
     return this;
   }
@@ -71,11 +66,16 @@ class AnimatableObject<TProps = {}, TRenderContext = CanvasRenderingContext2D> {
     return this;
   }
 
-  renderIn(context: TRenderContext, width: number, height: number): this {
+  renderIn(
+    context: CanvasRenderingContext2D,
+    width: number,
+    height: number
+  ): this {
     const {
       props,
       attackValue,
       releaseFactor,
+      releasePeriod,
       isSustaining,
       isReleasing,
       timeAttackedSinceFirstRender: timeAttacked,
@@ -84,11 +84,24 @@ class AnimatableObject<TProps = {}, TRenderContext = CanvasRenderingContext2D> {
 
     const center = { x: width / 2, y: height / 2 };
 
-    let status: AnimatableObjectStatus = "idle";
+    let status: MidiVisualStatus = "idle";
     if (isSustaining) status = "sustained";
     if (isReleasing) status = "releasing";
 
-    const baseParams = {
+    // Callbacks for calls to draw() and renderIsometric() methods
+
+    const drawCallbacks: DrawCallback[] = [];
+    const renderIsometricCallbacks: RenderIsometricCallback[] = [];
+
+    const draw = (callback: DrawCallback) => {
+      drawCallbacks.push(callback);
+    };
+
+    const renderIsometric = (callback: RenderIsometricCallback) => {
+      renderIsometricCallbacks.push(callback);
+    };
+
+    this.renderer({
       props,
       context,
       width,
@@ -97,30 +110,36 @@ class AnimatableObject<TProps = {}, TRenderContext = CanvasRenderingContext2D> {
       status,
       attackValue,
       releaseFactor,
+      releasePeriod,
       timeFirstRender: 0,
       timeAttacked,
       timeReleased,
+      draw,
+      renderIsometric,
       animate: (options: AnimationOptions | AnimationOptions[]) =>
         getAnimatedValueForCurrentTime(
           this.getMsSince(this.timeFirstRender),
           options
         ),
-    };
+    });
 
-    const params =
-      context instanceof CanvasRenderingContext2D
-        ? { ...baseParams, ...getContextPrimitives(context) }
-        : baseParams;
+    drawCallbacks.forEach((drawCallback) => {
+      drawCallback(getDrawMethods(context, width, height));
+    });
 
-    this.renderer(params as RenderParamsWithPrimitives<TProps, TRenderContext>);
+    renderIsometricCallbacks.forEach((renderIsometricCallback) => {
+      const isometricView = new IsometricView(context, width, height);
+      renderIsometricCallback(getRenderIsometricMethods(isometricView));
+      isometricView.render();
+    });
 
     return this;
   }
 
-  attack(attackValue: NormalizedFloat): this {
+  attack(attackValue: number): this {
     const { timeFirstRender } = this;
 
-    this.attackValue = attackValue;
+    this.attackValue = toNormalizedFloat(attackValue);
     this.isSustaining = true;
     this.isReleasing = false;
     this.timeAttacked = new Date();
@@ -184,4 +203,4 @@ class AnimatableObject<TProps = {}, TRenderContext = CanvasRenderingContext2D> {
   }
 }
 
-export default AnimatableObject;
+export default MidiVisual;
