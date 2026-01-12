@@ -287,7 +287,14 @@ import { easeOutBounce } from "easing-utils";
 
 const springCircle = () => {
   return midiVisual<{ xOffset: number }>().withRenderer(
-    ({ props, draw, attackValue, releaseFactor, animate }) => {
+    ({
+      props,
+      draw,
+      attackValue,
+      releaseFactor,
+      timeAttacked,
+      timeReleased,
+    }) => {
       draw(({ circle, center }) => {
         const { xOffset = 0 } = props;
         const { x: cx, y: cy } = center;
@@ -295,15 +302,15 @@ const springCircle = () => {
         circle({
           cx: cx + xOffset,
           cy,
-          radius: animate({
-            from: 0,
-            to: 100 * attackValue, // Scale by attack velocity
-            duration: 1000,
-            easing: easeOutBounce,
-          }),
+          radius: 0,
           strokeStyle: "#666",
           opacity: releaseFactor, // Fade during release
-        });
+        })
+          .animateTo(
+            { radius: 100 * attackValue }, // Scale by attack velocity
+            { at: timeAttacked, duration: 1000, easing: easeOutBounce }
+          )
+          .animateTo({ radius: 0 }, { at: timeReleased, duration: 500 });
       });
     }
   );
@@ -337,42 +344,25 @@ import { easeOutBack } from "easing-utils";
 
 const pianoKey = () => {
   return midiVisual<{ x: number; y: number }>().withRenderer(
-    ({ props, draw, status, animate, timeAttacked, timeReleased }) => {
+    ({ props, draw, timeAttacked, timeReleased }) => {
       draw(({ rect }) => {
         const { x, y } = props;
-
-        let heightExtension = 0;
-
-        // Render differently based on lifecycle state
-        switch (status) {
-          case "sustained":
-            heightExtension = animate({
-              startTime: timeAttacked,
-              from: 0,
-              to: 20,
-              duration: 500,
-              easing: easeOutBack,
-            });
-            break;
-
-          case "releasing":
-            heightExtension = animate({
-              startTime: timeReleased,
-              from: 20,
-              to: 0,
-              duration: 500,
-              easing: easeOutBack,
-            });
-            break;
-        }
 
         rect({
           x,
           y,
           width: 60,
-          height: 200 + heightExtension,
+          height: 200,
           strokeStyle: "#666",
-        });
+        })
+          .animateTo(
+            { height: 220 },
+            { at: timeAttacked, duration: 500, easing: easeOutBack }
+          )
+          .animateTo(
+            { height: 200 },
+            { at: timeReleased, duration: 500, easing: easeOutBack }
+          );
       });
     }
   );
@@ -463,30 +453,17 @@ createVisualisation
       // Add MIDI visual
       visualisation.addPermanently(
         "note",
-        midiVisual().withRenderer(
-          ({ draw, animate, timeAttacked, timeReleased }) => {
-            draw(({ circle, center }) => {
-              circle({
-                cx: center.x,
-                cy: center.y,
-                radius: animate([
-                  {
-                    startTime: timeAttacked,
-                    from: 50,
-                    to: 100,
-                    duration: 1000,
-                  },
-                  {
-                    startTime: timeReleased,
-                    from: 100,
-                    to: 50,
-                    duration: 1000,
-                  },
-                ]),
-              });
-            });
-          }
-        )
+        midiVisual().withRenderer(({ draw, timeAttacked, timeReleased }) => {
+          draw(({ circle, center }) => {
+            circle({
+              cx: center.x,
+              cy: center.y,
+              radius: 50,
+            })
+              .animateTo({ radius: 100 }, { at: timeAttacked, duration: 1000 })
+              .animateTo({ radius: 50 }, { at: timeReleased, duration: 1000 });
+          });
+        })
       );
     });
 
@@ -1118,7 +1095,6 @@ The `onRender` callback receives an object with:
 
 - `draw(callback)` - Access 2D canvas primitives (background, rect, circle, line, withStyles, etc.)
 - `renderIsometric(callback)` - Access isometric 3D primitives (cuboid, tile, withStyles)
-- `animate(options)` - Create time-based animations
 - `time` - Current time in milliseconds
 - `width`, `height` - Canvas dimensions
 - `center` - Canvas center point
@@ -1176,8 +1152,9 @@ Define how the object should be drawn:
 - **Lifecycle**: `status`, `attackValue`, `releaseFactor`, `timeAttacked`, `timeReleased`, `timeFirstRender`
 - **Properties**: `props` (custom props passed via `.withProps()`)
 - **Rendering**: `draw(callback)`, `renderIsometric(callback)`
-- **Animation**: `animate(options)`
 - **Timing**: `beforeTime`, `afterTime`, `duringTimeInterval`
+
+> **Note:** Shape primitives returned by `draw()` support the `.animateTo()` method for declarative animations.
 
 **Draw Callback (2D Canvas):**
 
