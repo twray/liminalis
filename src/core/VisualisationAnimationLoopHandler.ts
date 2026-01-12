@@ -1,11 +1,10 @@
 import canvasSketch from "canvas-sketch";
 import { Utilities, WebMidi } from "webmidi";
 
-import { getDrawMethods } from "./drawMethods";
+import { createDrawContext } from "./drawMethods";
 import { getRenderIsometricMethods } from "./renderIsometricMethods";
 
 import type {
-  AnimationOptions,
   AppSettings,
   CanvasProps,
   DrawCallback,
@@ -29,7 +28,6 @@ import Visualisation from "./Visualisation";
 import IsometricView from "../views/IsometricView";
 
 import keyMappings from "../data/keyMappings.json";
-import { getAnimatedValueForCurrentTime } from "./animation";
 
 interface WithVisualisationContext {
   visualisation: Visualisation;
@@ -84,7 +82,6 @@ interface SetupFunctionProps<TState> {
 }
 
 interface FrameRenderProps extends RenderProps {
-  time: number;
   beforeTime: (time: EventTime) => boolean;
   afterTime: (time: EventTime) => boolean;
   duringTimeInterval: (startTime: EventTime, endTime: EventTime) => boolean;
@@ -204,6 +201,10 @@ class VisualisationAnimationLoopHandler<TState> {
   }
 
   render() {
+    // Create draw context scoped to this render lifecycle
+    // This persists across frames but is isolated to this visualisation
+    const drawContext = createDrawContext();
+
     const sketchFunction = () => {
       return (canvasProps: CanvasProps) => {
         const { context, width, height, frame, time } = canvasProps;
@@ -215,7 +216,7 @@ class VisualisationAnimationLoopHandler<TState> {
         // Computed properties of canvas centre and ms run-time
 
         const center = { x: width / 2, y: height / 2 };
-        const timeInMs = time * 1000;
+        const timeInMs = Math.floor(time * 1000);
 
         // Set background color and clear the canvas for rendering
 
@@ -225,9 +226,9 @@ class VisualisationAnimationLoopHandler<TState> {
         // Convenience functions for conditional rendering based on time
         // intervals
 
-        const before = (time: EventTime) => timeInMs < eventTimeToMs(time);
-        const after = (time: EventTime) => timeInMs > eventTimeToMs(time);
-        const during = (startTime: EventTime, endTime: EventTime) =>
+        const beforeTime = (time: EventTime) => timeInMs < eventTimeToMs(time);
+        const afterTime = (time: EventTime) => timeInMs > eventTimeToMs(time);
+        const duringTimeInterval = (startTime: EventTime, endTime: EventTime) =>
           timeInMs >= eventTimeToMs(startTime) &&
           timeInMs <= eventTimeToMs(endTime);
 
@@ -258,23 +259,29 @@ class VisualisationAnimationLoopHandler<TState> {
             height,
             center,
             time: timeInMs,
-            beforeTime: before,
-            afterTime: after,
-            duringTimeInterval: during,
+            beforeTime,
+            afterTime,
+            duringTimeInterval,
             activeNotes: activeNotesForFrame,
             draw,
             renderIsometric,
-            animate: (options: AnimationOptions | AnimationOptions[]) =>
-              getAnimatedValueForCurrentTime(timeInMs, options),
           });
 
           drawCallbacks.forEach((drawCallback) => {
-            drawCallback(getDrawMethods(context, width, height));
+            drawContext.executeDrawCallback(
+              drawCallback,
+              context,
+              width,
+              height,
+              timeInMs
+            );
           });
 
           renderIsometricCallbacks.forEach((renderIsometricCallback) => {
             const isometricView = new IsometricView(context, width, height);
-            renderIsometricCallback(getRenderIsometricMethods(isometricView));
+            renderIsometricCallback(
+              getRenderIsometricMethods(isometricView, timeInMs)
+            );
             isometricView.render();
           });
         });
@@ -325,7 +332,7 @@ class VisualisationAnimationLoopHandler<TState> {
         this.#visualisation.cleanUp();
 
         // Render all animatable objects
-        this.#visualisation.renderObjects(context, width, height);
+        this.#visualisation.renderObjects(context, width, height, timeInMs);
       };
     };
 

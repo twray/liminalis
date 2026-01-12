@@ -1,6 +1,6 @@
 import MidiVisual from "./MidiVisual";
 
-type AnyAnimatableObject = MidiVisual<any, any>;
+type AnyAnimatableObject = MidiVisual<any>;
 
 class Visualisation {
   public idsOfAllAnimatableObjectsCreated: string[] = [];
@@ -43,13 +43,14 @@ class Visualisation {
 
   addPermanently(id: string, animatableObject: AnyAnimatableObject) {
     animatableObject.setIsPermanent(true);
-    this.add(id, animatableObject);
+    return this.add(id, animatableObject);
   }
 
   renderObjects(
     context: CanvasRenderingContext2D,
     width: number,
-    height: number
+    height: number,
+    timeInMs: number
   ) {
     if (!context) {
       throw new Error(
@@ -71,7 +72,7 @@ class Visualisation {
       }
 
       if (releaseFactor > 0 || isPermanent) {
-        animatableObject.renderIn(context, width, height);
+        animatableObject.renderIn(context, width, height, timeInMs);
       } else if (hasBeenReleased) {
         animatableObject.markedForRemoval = true;
       }

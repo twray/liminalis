@@ -8,16 +8,8 @@ export const pianoKey = () => {
     width?: number;
     height?: number;
     keyType?: "white" | "black";
-  }>().withRenderer(
-    ({
-      props,
-      rect,
-      withStyles,
-      animate,
-      status,
-      timeAttacked,
-      timeReleased,
-    }) => {
+  }>().withRenderer(({ props, draw, timeAttacked, timeReleased }) => {
+    draw(({ rect, withStyles }) => {
       const { x, y, width = 60, height = 200, keyType = "white" } = props;
 
       const noteColor = "#666";
@@ -31,42 +23,34 @@ export const pianoKey = () => {
 
       const keyAnimationDuration = 500;
 
-      let heightExtension = 0;
-
-      switch (status) {
-        case "sustained":
-          heightExtension = animate({
-            startTime: timeAttacked,
-            from: 0,
-            to: 20,
-            duration: keyAnimationDuration,
-            easing: easeOutBack,
-          });
-          break;
-        case "releasing":
-          heightExtension = animate({
-            startTime: timeReleased,
-            from: 20,
-            to: 0,
-            duration: keyAnimationDuration,
-            delay: 100,
-            easing: easeOutBack,
-          });
-          break;
-      }
-
       withStyles({ strokeStyle: noteColor, strokeWidth: 3 }, () => {
         rect({
           x: keyType === "black" ? x + width * 0.125 : x,
           y,
           width: keyType === "black" ? width * 0.75 : width,
-          height:
-            (keyType === "black" ? height * 0.66 : height) + heightExtension,
+          height: keyType === "black" ? height * 0.66 : height,
           fillStyle: keyType === "black" ? noteColor : "transparent",
           strokeWidth: 4,
           cornerRadius: keyCornerRadii,
-        });
+        })
+          .animateTo(
+            { height: (keyType === "black" ? height * 0.66 : height) + 20 },
+            {
+              at: timeAttacked,
+              duration: keyAnimationDuration,
+              easing: easeOutBack,
+            }
+          )
+          .animateTo(
+            { height: keyType === "black" ? height * 0.66 : height },
+            {
+              at: timeReleased,
+              duration: keyAnimationDuration,
+              delay: 100,
+              easing: easeOutBack,
+            }
+          );
       });
-    }
-  );
+    });
+  });
 };

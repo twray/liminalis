@@ -61,41 +61,43 @@ createVisualisation
     // Render content on a per-frame basis that is not managed by
     // the visualisation
 
-    onEachFrame(({ background, rect, line, withStyles, translate, circle }) => {
+    onEachFrame(({ draw, center }) => {
       const windowBorderRadius = 30;
       const buttonColors = ["#FF605C", "#FFBD44", "#00CA4E"];
       const buttonRadius = 15;
 
-      background({ color: "#F7F2E7" });
+      draw(({ background, rect, line, withStyles, translate, circle }) => {
+        background({ color: "#F7F2E7" });
 
-      withStyles({ strokeStyle: "#666", strokeWidth: 3 }, () => {
-        translate({ x: windowOrigin.x, y: windowOrigin.y }, () => {
-          rect({
-            width: windowDimensions.width,
-            height: windowDimensions.height,
-            cornerRadius: windowBorderRadius,
-          });
-
-          line({
-            start: { y: titleBarHeight },
-            end: {
-              x: windowDimensions.width,
-              y: titleBarHeight,
-            },
-          });
-
-          for (let i = 0; i < buttonColors.length; i++) {
-            const cx = titleBarHeight / 2;
-            const cy = titleBarHeight / 2;
-
-            circle({
-              cx: cx + i * (buttonRadius * 3),
-              cy,
-              radius: 15,
-              fillStyle: buttonColors[i],
-              strokeStyle: buttonColors[i],
+        withStyles({ strokeStyle: "#666", strokeWidth: 3 }, () => {
+          translate({ x: windowOrigin.x, y: windowOrigin.y }, () => {
+            rect({
+              width: windowDimensions.width,
+              height: windowDimensions.height,
+              cornerRadius: windowBorderRadius,
             });
-          }
+
+            line({
+              start: { y: titleBarHeight },
+              end: {
+                x: windowDimensions.width,
+                y: titleBarHeight,
+              },
+            });
+
+            for (let i = 0; i < buttonColors.length; i++) {
+              const cx = titleBarHeight / 2;
+              const cy = titleBarHeight / 2;
+
+              circle({
+                cx: cx + i * (buttonRadius * 3),
+                cy,
+                radius: 15,
+                fillStyle: buttonColors[i],
+                strokeStyle: buttonColors[i],
+              });
+            }
+          });
         });
       });
     });

@@ -8,37 +8,23 @@ export const springRectangle = () => {
     width: number;
     height: number;
     fill: string;
-  }>().withRenderer(({ props, attackValue, releaseFactor, rect, animate }) => {
+  }>().withRenderer(({ props, draw, releaseFactor, timeAttacked }) => {
     const { x, y, width, height, fill } = props;
 
     const opacity = easeInCubic(releaseFactor);
 
-    const renderedHeight = animate({
-      from: 0,
-      to: height * attackValue,
-      duration: 1000 - attackValue * 1000,
-      easing: easeOutBack,
-    });
-
-    const verticalMovementDistance = 100;
-    const yOffset = height - renderedHeight;
-
-    rect({
-      x,
-      y:
-        y +
-        yOffset -
-        animate({
-          duration: 1000 * attackValue,
-          from: -verticalMovementDistance,
-          to:
-            -verticalMovementDistance + attackValue * verticalMovementDistance,
-          easing: easeOutBack,
-        }),
-      width,
-      height: renderedHeight,
-      fillStyle: fill,
-      opacity,
+    draw(({ rect }) => {
+      rect({
+        x,
+        y: y + height - 100,
+        width,
+        height: 0,
+        fillStyle: fill,
+        opacity,
+      }).animateTo(
+        { height: height, y: y },
+        { at: timeAttacked, duration: 1000, easing: easeOutBack }
+      );
     });
   });
 };

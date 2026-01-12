@@ -6,6 +6,7 @@ import type {
   Point2D,
 } from "../types";
 import { isCorners, isNormalizedFloat } from "../util";
+import Animatable from "./Animatable";
 
 const DEFAULT_BACKGROUND_COLOR = "#fff";
 const DEFAULT_FILL_STYLE = "transparent";
@@ -24,8 +25,6 @@ interface StrokeStyles {
 interface WithOpacity {
   opacity?: number;
 }
-
-type SomeStyles = Partial<FillStyles & StrokeStyles & WithOpacity>;
 
 export interface BackgroundProps {
   color: string;
@@ -72,9 +71,9 @@ export interface DrawMethods {
   background: (props: BackgroundProps) => void;
   center: Point2D;
   centerOf: (props: Dimensions2D) => Point2D;
-  rect: (props: RectProps) => void;
-  circle: (props: CircleProps) => void;
-  line: (props: LineProps) => void;
+  rect: (props: RectProps) => Animatable<RectProps>;
+  circle: (props: CircleProps) => Animatable<CircleProps>;
+  line: (props: LineProps) => Animatable<LineProps>;
 }
 
 const getColorWithOpacity = (color: string, opacity: number) => {
@@ -278,49 +277,176 @@ const scale = (
   }
 };
 
-export const getDrawMethods = (
-  context: CanvasRenderingContext2D,
-  width: number,
-  height: number
-): DrawMethods => {
-  let appliedStyles: SomeStyles = {
-    fillStyle: DEFAULT_FILL_STYLE,
-    strokeStyle: DEFAULT_STROKE_STYLE,
-    strokeWidth: DEFAULT_STROKE_WIDTH,
-  };
+interface PendingAnimatable {
+  animatable: Animatable<any>;
+  mergedStyles: any;
+  renderFn: (props: any) => void;
+}
 
-  const mergeStyles = <T extends SomeStyles>(props: T): T & SomeStyles =>
-    ({
-      ...appliedStyles,
-      ...props,
-    } as T & SomeStyles);
+/**
+ * Entry in the shape registry.
+ * Stores the Animatable instance directly, preserving all state across frames.
+ */
+interface ShapeRegistryEntry {
+  animatable: Animatable<any>;
+  lastSeenFrame: number;
+}
 
-  const withStyles = (styles: SomeStyles, callback: () => void): void => {
-    const previousStyles = appliedStyles;
-    appliedStyles = { ...appliedStyles, ...styles };
+/**
+ * Draw context with encapsulated state for shape timestamp tracking
+ */
+export interface DrawContext {
+  executeDrawCallback: (
+    callback: (methods: DrawMethods) => void,
+    context: CanvasRenderingContext2D,
+    width: number,
+    height: number,
+    timeInMs: number
+  ) => void;
+}
 
-    try {
-      return callback();
-    } finally {
-      appliedStyles = previousStyles;
+/**
+ * Creates a draw context with its own encapsulated shape registry.
+ *
+ * Each consumer (VisualisationAnimationLoopHandler, MidiVisual, etc.) should
+ * create its own draw context to maintain isolated state.
+ *
+ * The registry stores Animatable instances directly, preserving all animation
+ * state across frames. Each frame, segments are cleared and rebuilt (since
+ * animations may be defined dynamically), but internal state is preserved.
+ */
+export const createDrawContext = (): DrawContext => {
+  const shapeRegistry = new Map<string, ShapeRegistryEntry>();
+  let frameCount = 0;
+
+  const executeDrawCallback = (
+    callback: (methods: DrawMethods) => void,
+    context: CanvasRenderingContext2D,
+    width: number,
+    height: number,
+    timeInMs: number
+  ): void => {
+    frameCount++;
+    let callIndex = 0;
+
+    /**
+     * Get or create the Animatable for a shape from the registry.
+     * If existing, clears segments for fresh definition this frame.
+     */
+    const getOrCreateAnimatable = <T extends Record<string, any>>(
+      shapeType: string,
+      props: T
+    ): Animatable<T> => {
+      const shapeId = `${shapeType}:${callIndex++}`;
+
+      const existing = shapeRegistry.get(shapeId);
+      if (existing) {
+        existing.lastSeenFrame = frameCount;
+        // Update props and clear segments for fresh definition this frame
+        existing.animatable.updateInitialProps(props);
+        existing.animatable.clearSegments();
+        return existing.animatable as Animatable<T>;
+      }
+
+      // Create new Animatable
+      const animatable = new Animatable<T>(props, timeInMs);
+      shapeRegistry.set(shapeId, {
+        animatable,
+        lastSeenFrame: frameCount,
+      });
+      return animatable;
+    };
+
+    // Queue of shapes pending render
+    const pendingAnimatable: PendingAnimatable[] = [];
+
+    let appliedStyles: PartialDrawStyles = {
+      fillStyle: DEFAULT_FILL_STYLE,
+      strokeStyle: DEFAULT_STROKE_STYLE,
+      strokeWidth: DEFAULT_STROKE_WIDTH,
+    };
+
+    const mergeStyles = <T extends PartialDrawStyles>(
+      props: T
+    ): T & PartialDrawStyles =>
+      ({
+        ...appliedStyles,
+        ...props,
+      } as T & PartialDrawStyles);
+
+    const withStyles = (
+      styles: PartialDrawStyles,
+      callback: () => void
+    ): void => {
+      const previousStyles = appliedStyles;
+      appliedStyles = { ...appliedStyles, ...styles };
+
+      try {
+        return callback();
+      } finally {
+        appliedStyles = previousStyles;
+      }
+    };
+
+    /**
+     * Queue a shape for deferred rendering and return its Animatable
+     */
+    const queueAnimatableForRendering = <T extends PartialDrawStyles>(
+      shapeType: string,
+      props: T,
+      renderFn: (props: T) => void
+    ): Animatable<T> => {
+      const mergedStyles = mergeStyles(props);
+      const animatable = getOrCreateAnimatable(shapeType, props);
+
+      pendingAnimatable.push({
+        animatable,
+        mergedStyles,
+        renderFn: renderFn as (props: any) => void,
+      });
+
+      return animatable;
+    };
+
+    // Build the draw methods
+    const methods: DrawMethods = {
+      width,
+      height,
+      withStyles,
+      translate: (props: Point2D, cb: () => void) =>
+        translate(context, props, cb),
+      rotate: (props: RotateProps, cb: () => void): void =>
+        rotate(context, props, cb),
+      scale: (props: ScaleProps, cb: () => void): void =>
+        scale(context, props, cb),
+      background: (props: BackgroundProps) => background(context, props),
+      center: { x: width / 2, y: height / 2 },
+      centerOf,
+      rect: (props: RectProps) =>
+        queueAnimatableForRendering("rect", props, (p) => rect(context, p)),
+      circle: (props: CircleProps) =>
+        queueAnimatableForRendering("circle", props, (p) => circle(context, p)),
+      line: (props: LineProps) =>
+        queueAnimatableForRendering("line", props, (p) => line(context, p)),
+    };
+
+    // Execute the user's callback (queues shapes and their .to() animations)
+    callback(methods);
+
+    // Flush - render all queued shapes with their animated values
+    for (const pending of pendingAnimatable) {
+      const animatedProps = pending.animatable.getCurrentProps(timeInMs);
+      const finalProps = { ...pending.mergedStyles, ...animatedProps };
+      pending.renderFn(finalProps);
+    }
+
+    // Cleanup stale shapes not seen in this frame
+    for (const [key, entry] of shapeRegistry) {
+      if (entry.lastSeenFrame !== frameCount) {
+        shapeRegistry.delete(key);
+      }
     }
   };
 
-  return {
-    width,
-    height,
-    withStyles,
-    translate: (props: Point2D, callback: () => void) =>
-      translate(context, props, callback),
-    rotate: (props: RotateProps, callback: () => void): void =>
-      rotate(context, props, callback),
-    scale: (props: ScaleProps, callback: () => void): void =>
-      scale(context, props, callback),
-    background: (props: BackgroundProps) => background(context, props),
-    center: { x: width / 2, y: height / 2 },
-    centerOf,
-    rect: (props: RectProps) => rect(context, mergeStyles(props)),
-    circle: (props: CircleProps) => circle(context, mergeStyles(props)),
-    line: (props: LineProps) => line(context, mergeStyles(props)),
-  };
+  return { executeDrawCallback };
 };

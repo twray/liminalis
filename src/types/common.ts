@@ -16,3 +16,4 @@ export interface Named {
 
 export type NormalizedFloat = number & { readonly __brand: "NormalizedFloat" };
 export type TimeExpression = string & { readonly __brand: "TimeExpression" };
+export type EasingFunction = (t: number) => number;

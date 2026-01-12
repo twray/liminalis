@@ -23,7 +23,10 @@ const cuboid = (isometricView: IsometricView, props: IsometricCuboid) => {
   isometricView.addCuboidAt(props);
 };
 
-export const getRenderIsometricMethods = (isometricView: IsometricView) => {
+export const getRenderIsometricMethods = (
+  isometricView: IsometricView,
+  _timeInMs: number
+) => {
   let appliedStyles: PartialIsometricStyles = {
     fillStyle: DEFAULT_FILL_STYLE,
     strokeStyle: DEFAULT_STROKE_STYLE,

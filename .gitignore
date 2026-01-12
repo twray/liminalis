@@ -138,5 +138,8 @@ output/
 # Test apps directory for library development
 test-apps/
 
+# Project specs: let's not commit those
+spec/
+
 # .vscode file
 .vscode/

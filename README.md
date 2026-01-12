@@ -19,7 +19,7 @@ A creative coding framework for building real-time music visualizations in TypeS
   - [MIDI Event Handling](#midi-event-handling)
   - [Animatable Objects & Lifecycle](#animatable-objects--lifecycle)
   - [Rendering Strategies](#rendering-strategies)
-  - [Timeline Animations](#timeline-animations)
+  - [Shape Animations with .animateTo()](#shape-animations-with-animateto)
 - [Examples](#examples)
 - [API Reference](#api-reference)
 - [Development](#development)
@@ -81,32 +81,21 @@ createVisualisation
     atStart(({ visualisation }) => {
       visualisation.addPermanently(
         "circle",
-        midiVisual().withRenderer(
-          ({ draw, animate, timeAttacked, timeReleased }) => {
-            draw(({ circle, center }) => {
-              circle({
-                cx: center.x,
-                cy: center.y,
-                radius: animate([
-                  {
-                    startTime: timeAttacked,
-                    from: 50,
-                    to: 150,
-                    duration: 1000,
-                    easing: easeOutBounce,
-                  },
-                  {
-                    startTime: timeReleased,
-                    from: 150,
-                    to: 50,
-                    duration: 1000,
-                  },
-                ]),
-                strokeStyle: "#666",
-              });
-            });
-          }
-        )
+        midiVisual().withRenderer(({ draw, timeAttacked, timeReleased }) => {
+          draw(({ circle, center }) => {
+            circle({
+              cx: center.x,
+              cy: center.y,
+              radius: 50,
+              strokeStyle: "#666",
+            })
+              .animateTo(
+                { radius: 150 },
+                { at: timeAttacked, duration: 1000, easing: easeOutBounce }
+              )
+              .animateTo({ radius: 50 }, { at: timeReleased, duration: 1000 });
+          });
+        })
       );
     });
 
@@ -668,77 +657,257 @@ createVisualisation
   .render();
 ```
 
-    onNoteUp(({ visualisation, note }) => {
-      visualisation.get(note)?.release(1000);
-    });
+### Shape Animations with `.animateTo()`
 
-})
-.render();
-
-````
-
-### Timeline Animations
-
-Liminalis features a powerful timeline animation system that supports:
+Liminalis features a powerful declarative animation system for shape primitives. The `.animateTo()` method (internally powered by the `Animatable` class) creates smooth, timeline-based animations with support for:
 
 - **Event-based timing** using `timeAttacked`, `timeReleased`, `timeFirstRender`
 - **Smooth overlapping** - animations blend seamlessly when events occur rapidly
-- **Cumulative properties** - timeline segments inherit properties from previous segments
+- **Sequential or parallel** - chain animations or animate multiple properties at once
+- **Reusable options** - apply default timing/easing to multiple segments with `withOptions()`
+- **Type-safe** - only numeric properties can be animated (enforced at compile time)
 
-#### Single Animation
+Shape primitives (`rect`, `circle`, `line`) return `AnimatableShape` instances that support declarative timeline animations using the `.animateTo()` method. This allows you to create smooth, chained animations on any numeric properties.
+
+#### Basic Animation
 
 ```typescript
-animate({
-  from: 0,
-  to: 100,
-  duration: 1000,
-  easing: easeOutBounce,
-  delay: 200,
+onRender(({ draw }) => {
+  draw(({ rect }) => {
+    // Animate from x:0 to x:100 over 1 second
+    rect({
+      x: 0,
+      y: 50,
+      width: 20,
+      height: 20,
+      fillStyle: "#ff0000",
+    }).animateTo({ x: 100 }, { duration: 1000 });
+  });
 });
-````
-
-#### Timeline Array (Attack → Release)
-
-```typescript
-animate([
-  {
-    startTime: timeAttacked, // Event-based timing
-    from: 50,
-    to: 100,
-    duration: 1000,
-  },
-  {
-    startTime: timeReleased,
-    from: 100, // Explicit from value
-    to: 50,
-    duration: 1000,
-  },
-]);
 ```
 
-#### Smooth Overlap Handling
+#### Sequential Animations
 
-When `timeReleased` occurs before the attack animation completes, Liminalis automatically:
-
-1. Detects the overlap
-2. Calculates the interpolated value at the moment of release
-3. Uses that value as the starting point for the release animation
-
-**Example**: If attack animates 50→100 over 1000ms, but release occurs at 200ms (when value is ~60), the release animation smoothly continues from 60→50.
-
-#### Animation Options
+Chain multiple `.animateTo()` calls - each starts after the previous completes:
 
 ```typescript
-interface AnimationOptions {
-  from: number; // Start value
-  to: number; // End value
-  startTime?: number | null; // When to start (ms or event time)
+rect({ x: 0, y: 50, width: 20, height: 20, fillStyle: "#00ff00" })
+  .animateTo({ x: 100 }, { duration: 1000 }) // 0-1000ms: move right
+  .animateTo({ y: 150 }, { duration: 500 }); // 1000-1500ms: move down
+```
+
+#### Parallel Animations
+
+Animate multiple properties simultaneously by including them in one `.animateTo()`:
+
+```typescript
+rect({ x: 0, y: 50, width: 20, height: 20, fillStyle: "#0000ff" }).animateTo(
+  { x: 100, y: 150 },
+  { duration: 1000 }
+); // Both x and y animate together
+```
+
+#### Explicit Timing with `at`
+
+Use the `at` property to start animations at specific times:
+
+```typescript
+rect({ x: 0, y: 50, width: 20, height: 20, fillStyle: "#ff00ff" })
+  .animateTo({ x: 100 }, { at: 500, duration: 1000 }) // Starts at 500ms
+  .animateTo({ y: 150 }, { at: 1000, duration: 500 }); // Starts at 1000ms
+```
+
+#### Event-Based Timing with `at: null`
+
+Use `null` for `at` to wait for a dynamic event time. This is the foundation for MIDI-responsive animations:
+
+```typescript
+midiVisual().withRenderer(({ draw, timeAttacked, timeReleased }) => {
+  draw(({ rect }) => {
+    rect({ x: 0, y: 50, width: 20, height: 20, fillStyle: "#ffff00" })
+      .animateTo({ x: 100 }, { at: timeAttacked, duration: 500 })
+      .animateTo({ x: 0 }, { at: timeReleased, duration: 300 });
+  });
+});
+```
+
+When `timeAttacked` or `timeReleased` is `null`, the animation waits until the event occurs.
+
+#### Applying Default Options with `withOptions()`
+
+Use `.withOptions()` to apply default options to all subsequent `.animateTo()` calls. This keeps your animation code DRY:
+
+```typescript
+circle({ cx: 100, cy: 100, radius: 50 })
+  .withOptions({ duration: 500, easing: easeOutBounce })
+  .animateTo({ radius: 100 }) // Uses duration: 500, easing: easeOutBounce
+  .animateTo({ radius: 150 }) // Uses duration: 500, easing: easeOutBounce
+  .animateTo({ radius: 200 }, { duration: 1000 }); // Override: duration: 1000
+```
+
+**Key behaviors:**
+
+- Options stack with multiple `withOptions()` calls
+- Per-segment options override `withOptions()` defaults
+- Chainable with both `withOptions()` and `to()`
+
+```typescript
+// Stacking options
+circle({ cx: 100, cy: 100, radius: 50 })
+  .withOptions({ duration: 500 })
+  .withOptions({ delay: 100 }) // Now has both duration: 500 and delay: 100
+  .animateTo({ radius: 100 });
+```
+
+#### Easing Functions
+
+Add natural motion with easing:
+
+```typescript
+rect({ x: 0, y: 50, width: 20, height: 20, fillStyle: "#00ffff" }).animateTo(
+  { x: 100 },
+  {
+    duration: 1000,
+    easing: (t) => (t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2),
+  }
+);
+```
+
+Or use easing libraries:
+
+```typescript
+import { easeOutBounce, easeOutBack, easeInCubic } from "easing-utils";
+
+rect({ x: 0, y: 50, width: 20, height: 20, fillStyle: "#ff8800" }).animateTo(
+  { x: 100 },
+  { duration: 1000, easing: easeOutBounce }
+);
+```
+
+#### Reverse Animations
+
+The `reverse` option inverts the animation direction:
+
+```typescript
+// Starts at target value and animates backward to initial
+circle({ cx: 100, cy: 100, radius: 50 }).animateTo(
+  { radius: 100 },
+  { duration: 1000, reverse: true }
+);
+// At t=0: radius=100, at t=1000: radius=50
+```
+
+This is useful for "reveal" effects where you want to animate from a final state back to an initial state.
+
+#### Overlapping Animations (Superseding)
+
+When a new animation starts on a property that's already animating, the new segment **supersedes** the old one, capturing the current interpolated value as its starting point:
+
+```typescript
+midiVisual().withRenderer(({ draw, timeAttacked, timeReleased }) => {
+  draw(({ circle, center }) => {
+    circle({ cx: center.x, cy: center.y, radius: 50 })
+      .animateTo({ radius: 150 }, { at: timeAttacked, duration: 1000 })
+      .animateTo({ radius: 50 }, { at: timeReleased, duration: 500 });
+  });
+});
+```
+
+**Superseding behavior:**
+
+1. **Attack starts**: radius animates from 50 → 150 over 1000ms
+2. **Quick release at 400ms** (radius is now ~90):
+   - Release animation captures current value (90)
+   - Animates 90 → 50 over 500ms
+3. **Result**: Smooth transition without jarring jumps
+
+This enables natural, responsive animations for rapid MIDI input.
+
+#### Multi-Property Independence
+
+When animations overlap, only the affected properties are superseded:
+
+```typescript
+circle({ cx: 0, cy: 0, radius: 50 })
+  .animateTo({ cx: 100, cy: 100 }, { at: 0, duration: 1000 })
+  .animateTo({ cx: 0 }, { at: 500, duration: 500 }); // Only supersedes cx
+// cy continues its original animation unaffected
+```
+
+#### Animation Segment Options
+
+```typescript
+interface AnimationSegmentOptions {
+  at?: number | null; // Start time (ms) or null for event-based
   duration?: number; // Duration in ms
   endTime?: number; // Alternative: absolute end time
-  delay?: number; // Delay before starting
+  delay?: number; // Delay before starting (added to 'at')
   easing?: (t: number) => number; // Easing function (0→1)
-  reverse?: boolean; // Reverse the animation
+  reverse?: boolean; // Reverse animation direction
 }
+```
+
+#### Key Behaviors
+
+| Behavior                        | Description                                                     |
+| ------------------------------- | --------------------------------------------------------------- |
+| **Sequential by default**       | Segments without `at` start after the previous completes        |
+| **Event-based with `at: null`** | Segment waits until the time value becomes non-null             |
+| **Overlapping supersedes**      | Later segments capture current value as their start             |
+| **Property independence**       | Each property is animated independently                         |
+| **Value persistence**           | Properties stay at their final values after animation completes |
+| **Type-safe**                   | Only numeric properties can be animated                         |
+
+#### Complete MIDI Animation Example
+
+Here's a complete example showing attack/release animation with overlapping handling:
+
+```typescript
+import { easeOutBounce, easeOutCubic } from "easing-utils";
+
+createVisualisation
+  .setup(({ atStart, onNoteDown, onNoteUp }) => {
+    atStart(({ visualisation }) => {
+      visualisation.addPermanently(
+        "circle",
+        midiVisual().withRenderer(
+          ({ draw, timeAttacked, timeReleased, releasePeriod }) => {
+            draw(({ circle, center }) => {
+              circle({
+                cx: center.x,
+                cy: center.y,
+                radius: 50,
+                strokeStyle: "#666",
+                strokeWidth: 2,
+              })
+                .withOptions({ duration: 500 })
+                .animateTo(
+                  { radius: 150 },
+                  { at: timeAttacked, easing: easeOutBounce }
+                )
+                .animateTo(
+                  { radius: 50 },
+                  {
+                    at: timeReleased,
+                    easing: easeOutCubic,
+                    duration: releasePeriod,
+                  }
+                );
+            });
+          }
+        )
+      );
+    });
+
+    onNoteDown(({ visualisation }) => {
+      visualisation.get("circle")?.attack(1);
+    });
+
+    onNoteUp(({ visualisation }) => {
+      visualisation.get("circle")?.release();
+    });
+  })
+  .render();
 ```
 
 ## Examples
@@ -766,19 +935,17 @@ createVisualisation
     });
 
     // Static animated circles
-    onRender(({ draw, animate }) => {
-      draw(({ circle, center }) => {
+    onRender(({ draw, center }) => {
+      draw(({ circle }) => {
         for (let i = 0; i < 3; i++) {
           circle({
             cx: center.x + i * 40 - 40,
-            cy: animate({
-              from: center.y - 200,
-              to: center.y - 100,
-              duration: 1000,
-              delay: 500 + i * 250,
-            }),
+            cy: center.y - 200,
             radius: 10,
-          });
+          }).animateTo(
+            { cy: center.y - 100 },
+            { duration: 1000, delay: 500 + i * 250 }
+          );
         }
       });
     });
@@ -992,13 +1159,13 @@ const myObject = midiVisual<{ color: string; size: number }>().withRenderer(
 Define how the object should be drawn:
 
 ```typescript
-.withRenderer((context) => {
+.withRenderer(({ draw, renderIsometric }) => {
   // Access rendering methods via draw() and renderIsometric()
-  context.draw(({ circle, rect, background }) => {
+  draw(({ circle, rect, background }) => {
     // 2D canvas primitives
   });
 
-  context.renderIsometric(({ cuboid, tile }) => {
+  renderIsometric(({ cuboid, tile }) => {
     // Isometric 3D objects
   });
 })
@@ -1145,50 +1312,69 @@ scale({ x: 2, y: 2 }, () => {
 
 ### Animation System
 
-#### `animate(options | options[])`
+#### `.animateTo(targetProps, options)`
 
-Animate a value over time:
+Animate shape properties over time. Available on `rect()`, `circle()`, and `line()` primitives:
 
-**Single Animation:**
+**Basic Usage:**
 
 ```typescript
-const radius = animate({
-  from: 0,
-  to: 100,
-  duration: 1000,
-  easing: easeOutBounce,
-});
+rect({ x: 0, y: 50, width: 20, height: 20, fillStyle: "#ff0000" }).animateTo(
+  { x: 100 },
+  { duration: 1000 }
+);
 ```
 
-**Timeline (Array):**
+**Sequential Animations:**
 
 ```typescript
-const radius = animate([
-  {
-    startTime: timeAttacked,
-    from: 50,
-    to: 100,
-    duration: 1000,
-  },
-  {
-    startTime: timeReleased,
-    from: 100,
-    to: 50,
-    duration: 1000,
-  },
-]);
+rect({ x: 0, y: 50, width: 20, height: 20, fillStyle: "#00ff00" })
+  .animateTo({ x: 100 }, { duration: 1000 }) // 0-1s: move right
+  .animateTo({ y: 150 }, { duration: 500 }); // 1-1.5s: move down
+```
+
+**Event-Based Timing:**
+
+```typescript
+circle({ cx: 50, cy: 50, radius: 50 })
+  .animateTo(
+    { radius: 100 },
+    { at: timeAttacked, duration: 1000, easing: easeOutBounce }
+  )
+  .animateTo({ radius: 50 }, { at: timeReleased, duration: 1000 });
 ```
 
 **Options:**
 
-- `from` - Start value
-- `to` - End value
-- `startTime` - When to start (ms, or `null` to skip)
-- `duration` - Duration in milliseconds
-- `endTime` - Alternative to duration (absolute time)
-- `delay` - Delay before starting
-- `easing` - Easing function `(t: number) => number`
-- `reverse` - Reverse the animation
+| Option     | Type                    | Description                                 |
+| ---------- | ----------------------- | ------------------------------------------- |
+| `at`       | `number \| null`        | Start time (ms) or `null` for event-based   |
+| `duration` | `number`                | Duration in milliseconds                    |
+| `endTime`  | `number`                | Alternative to duration (absolute end time) |
+| `delay`    | `number`                | Delay before starting (added to `at`)       |
+| `easing`   | `(t: number) => number` | Easing function                             |
+| `reverse`  | `boolean`               | Reverse the animation direction             |
+
+#### `.withOptions(options)`
+
+Apply default options to all subsequent `.animateTo()` calls:
+
+```typescript
+circle({ cx: 100, cy: 100, radius: 50 })
+  .withOptions({ duration: 500, easing: easeOutBounce })
+  .animateTo({ radius: 100 }) // Uses defaults
+  .animateTo({ radius: 150 }) // Uses defaults
+  .animateTo({ radius: 200 }, { duration: 1000 }); // Override duration
+```
+
+**Stacking Options:**
+
+```typescript
+circle({ cx: 100, cy: 100, radius: 50 })
+  .withOptions({ duration: 500 })
+  .withOptions({ delay: 100 }) // Now has both duration and delay
+  .animateTo({ radius: 100 });
+```
 
 **Common Easing Functions** (via `easing-utils`):
 
@@ -1364,3 +1550,7 @@ For browsers without WebMIDI support, use a polyfill like [webmidi](https://www.
 ## License
 
 MIT © Tim Wray
+
+```
+
+```

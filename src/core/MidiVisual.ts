@@ -1,13 +1,11 @@
 import {
-  AnimationOptions,
   DrawCallback,
   NormalizedFloat,
   RenderIsometricCallback,
   RenderProps,
 } from "../types";
 import IsometricView from "../views/IsometricView";
-import { getAnimatedValueForCurrentTime } from "./animation";
-import { getDrawMethods } from "./drawMethods";
+import { createDrawContext } from "./drawMethods";
 import { getRenderIsometricMethods } from "./renderIsometricMethods";
 
 import { toNormalizedFloat } from "../util";
@@ -23,7 +21,6 @@ interface MidiVisualRenderProps<TProps> extends RenderProps {
   timeFirstRender: number | null;
   timeAttacked: number | null;
   timeReleased: number | null;
-  animate: (options: AnimationOptions | AnimationOptions[]) => number;
 }
 
 class MidiVisual<TProps = {}> {
@@ -48,6 +45,8 @@ class MidiVisual<TProps = {}> {
 
   public renderer: (params: MidiVisualRenderProps<TProps>) => void = () => {};
 
+  private drawContext = createDrawContext();
+
   constructor() {}
 
   withRenderer(renderer: (params: MidiVisualRenderProps<TProps>) => void) {
@@ -69,7 +68,8 @@ class MidiVisual<TProps = {}> {
   renderIn(
     context: CanvasRenderingContext2D,
     width: number,
-    height: number
+    height: number,
+    timeInMs: number
   ): this {
     const {
       props,
@@ -87,6 +87,8 @@ class MidiVisual<TProps = {}> {
     let status: MidiVisualStatus = "idle";
     if (isSustaining) status = "sustained";
     if (isReleasing) status = "releasing";
+
+    const timeSinceFirstRender = this.getMsSince(this.timeFirstRender);
 
     // Callbacks for calls to draw() and renderIsometric() methods
 
@@ -107,6 +109,7 @@ class MidiVisual<TProps = {}> {
       width,
       height,
       center,
+      time: timeSinceFirstRender,
       status,
       attackValue,
       releaseFactor,
@@ -116,20 +119,23 @@ class MidiVisual<TProps = {}> {
       timeReleased,
       draw,
       renderIsometric,
-      animate: (options: AnimationOptions | AnimationOptions[]) =>
-        getAnimatedValueForCurrentTime(
-          this.getMsSince(this.timeFirstRender),
-          options
-        ),
     });
 
     drawCallbacks.forEach((drawCallback) => {
-      drawCallback(getDrawMethods(context, width, height));
+      this.drawContext.executeDrawCallback(
+        drawCallback,
+        context,
+        width,
+        height,
+        timeSinceFirstRender
+      );
     });
 
     renderIsometricCallbacks.forEach((renderIsometricCallback) => {
       const isometricView = new IsometricView(context, width, height);
-      renderIsometricCallback(getRenderIsometricMethods(isometricView));
+      renderIsometricCallback(
+        getRenderIsometricMethods(isometricView, timeInMs)
+      );
       isometricView.render();
     });
 

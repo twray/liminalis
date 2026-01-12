@@ -8,8 +8,10 @@ createVisualisation
   .setup(({ onNoteDown, onNoteUp, onRender: onEachFrame, state }) => {
     const numCircles = 7;
 
-    onEachFrame(({ background }) => {
-      background({ color: "beige" });
+    onEachFrame(({ draw }) => {
+      draw(({ background }) => {
+        background({ color: "beige" });
+      });
     });
 
     onNoteDown(({ visualisation, note, attack }) => {

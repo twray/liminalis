@@ -3,21 +3,21 @@ import { midiVisual } from "../../../core";
 
 export const springCircle = () => {
   return midiVisual<{ xOffset: number }>().withRenderer(
-    ({ props, circle, center, releaseFactor, attackValue, animate }) => {
+    ({ props, draw, center, releaseFactor, timeAttacked }) => {
       const { xOffset = 0 } = props;
       const { x: cx, y: cy } = center;
 
-      circle({
-        cx: cx + xOffset,
-        cy,
-        radius: animate({
-          from: 0,
-          to: 100 * attackValue,
-          duration: 1000 * attackValue,
-          easing: easeOutBounce,
-        }),
-        strokeStyle: "#666",
-        opacity: releaseFactor,
+      draw(({ circle }) => {
+        circle({
+          cx: cx + xOffset,
+          cy,
+          radius: 0,
+          strokeStyle: "#666",
+          opacity: releaseFactor,
+        }).animateTo(
+          { radius: 100 },
+          { at: timeAttacked, duration: 1000, easing: easeOutBounce }
+        );
       });
     }
   );
