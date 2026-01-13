@@ -835,6 +835,41 @@ interface AnimationSegmentOptions {
 | **Value persistence**           | Properties stay at their final values after animation completes |
 | **Type-safe**                   | Only numeric properties can be animated                         |
 
+#### ⚠️ Combining `delay` with `at`
+
+When using `delay` in combination with `at`, the effective start time is calculated as `at + delay`. This can lead to unexpected timing if not used carefully.
+
+**Problematic pattern:**
+
+```typescript
+circle({ cx, cy, radius: 0 })
+  .animateTo({ radius: 100 }, { at: 500, delay: 500, duration: 500 })
+  .animateTo({ radius: 0 }, { at: 1000, duration: 500 }); // No delay!
+```
+
+Here, the first segment has an effective start time of 1000ms (500 + 500), while the second also starts at 1000ms. Both segments start simultaneously, causing only the second to play.
+
+**Recommended patterns:**
+
+1. **Apply delay globally via `withOptions()`:**
+
+```typescript
+circle({ cx, cy, radius: 0 })
+  .withOptions({ delay: 500, duration: 500 })
+  .animateTo({ radius: 100 }, { at: 500 })
+  .animateTo({ radius: 0 }, { at: 1100 });
+```
+
+2. **Explicitly set delay on all `at` segments:**
+
+```typescript
+circle({ cx, cy, radius: 0 })
+  .animateTo({ radius: 100 }, { at: 500, delay: 500, duration: 500 })
+  .animateTo({ radius: 0 }, { at: 1100, delay: 500, duration: 500 });
+```
+
+A console warning will appear if you mix `at` segments where some have `delay` and others don't, helping you catch potential timing issues during development.
+
 #### Complete MIDI Animation Example
 
 Here's a complete example showing attack/release animation with overlapping handling:

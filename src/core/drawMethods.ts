@@ -342,6 +342,9 @@ export const createDrawContext = (): DrawContext => {
       const existing = shapeRegistry.get(shapeId);
       if (existing) {
         existing.lastSeenFrame = frameCount;
+        // Capture current animated state before rebuilding segments
+        // This enables smooth transitions when re-attacking during release
+        existing.animatable.captureCurrentProps(timeInMs);
         // Update props and clear segments for fresh definition this frame
         existing.animatable.updateInitialProps(props);
         existing.animatable.clearSegments();

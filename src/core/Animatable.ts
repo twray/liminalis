@@ -1,5 +1,4 @@
 import {
-  AnimationSegment,
   AnimationSegmentOptions,
   PartialNumericProps,
 } from "../types/animatable";
@@ -7,15 +6,18 @@ import { eventTimeToMs } from "../util";
 
 const DEFAULT_EASING = (n: number): number => n;
 
+interface Segment<TProps> {
+  targetProps: PartialNumericProps<TProps>;
+  options: AnimationSegmentOptions;
+}
+
 class Animatable<TProps extends Record<string, any>> {
   #initialProps: TProps;
   #firstInvokedTime: number;
-  #segments: AnimationSegment<TProps>[] = [];
+  #segments: Segment<TProps>[] = [];
   #appliedOptions: Partial<AnimationSegmentOptions> = {};
-
-  // Captured start props for each segment, keyed by a
-  // hash of the segment definition
-  #segmentStartPropsCache: Map<string, Record<string, any>> = new Map();
+  #propsSnapshot: Partial<TProps> | null = null;
+  #hasWarnedAboutDelayWithAt = false;
 
   constructor(props: TProps, firstInvokedTime: number) {
     this.#initialProps = { ...props };
@@ -26,441 +28,326 @@ class Animatable<TProps extends Record<string, any>> {
     this.#initialProps = { ...props };
   }
 
+  captureCurrentProps(timeInMs: number): void {
+    this.#propsSnapshot = this.getCurrentProps(timeInMs);
+  }
+
   clearSegments(): void {
     this.#segments = [];
+  }
+
+  clearSnapshot(): void {
+    this.#propsSnapshot = null;
   }
 
   animateTo(
     targetProps: PartialNumericProps<TProps>,
     options: AnimationSegmentOptions = {}
   ): this {
-    const appliedOptions = this.#appliedOptions;
-
-    // Note: startProps will be captured at render time when the segment starts,
-    // not at definition time. This ensures animations chain correctly.
     this.#segments.push({
       targetProps,
-      options: { ...appliedOptions, ...options },
-      startProps: null, // Will be captured when segment becomes active
-      effectiveStartTime: null, // Will be calculated during rendering
+      options: { ...this.#appliedOptions, ...options },
     });
-
     return this;
   }
 
-  withOptions(options: Partial<AnimationSegmentOptions>) {
+  withOptions(options: Partial<AnimationSegmentOptions>): this {
     this.#appliedOptions = { ...this.#appliedOptions, ...options };
-
     return this;
+  }
+
+  #validateDelayWithAtUsage(): void {
+    // Only warn once per Animatable instance
+    if (this.#hasWarnedAboutDelayWithAt) return;
+
+    const segmentsWithAt = this.#segments.filter(
+      (s) => s.options.at !== undefined && s.options.at !== null
+    );
+
+    if (segmentsWithAt.length === 0) return;
+
+    // Check if delay was applied globally via withOptions
+    const globalDelayApplied = this.#appliedOptions.delay !== undefined;
+
+    // Find segments with 'at' that have explicit delay
+    const segmentsWithAtAndDelay = segmentsWithAt.filter(
+      (s) => s.options.delay !== undefined
+    );
+
+    // Find segments with 'at' that don't have delay (and no global delay)
+    const segmentsWithAtWithoutDelay = segmentsWithAt.filter(
+      (s) => s.options.delay === undefined && !globalDelayApplied
+    );
+
+    // Warn if there's a mix: some 'at' segments have delay, others don't
+    if (
+      segmentsWithAtAndDelay.length > 0 &&
+      segmentsWithAtWithoutDelay.length > 0
+    ) {
+      this.#hasWarnedAboutDelayWithAt = true;
+      console.warn(
+        `[Animatable] Warning: Animation has segments with 'at' property where some have 'delay' and others do not. ` +
+          `This may result in unexpected timing. Consider either:\n` +
+          `  1. Apply 'delay' to all segments using withOptions({ delay: ... })\n` +
+          `  2. Explicitly set 'delay' on each segment that uses 'at'\n` +
+          `Segments with 'at' and 'delay': ${segmentsWithAtAndDelay.length}, ` +
+          `Segments with 'at' but no 'delay': ${segmentsWithAtWithoutDelay.length}`
+      );
+    }
   }
 
   getCurrentProps(timeInMs: number): TProps {
-    // Calculate relative time (time since this shape was first rendered)
     const relativeTime = timeInMs - this.#firstInvokedTime;
 
-    // Calculate effective start times
-    this.#calculateEffectiveStartTimes();
+    // Validate delay usage with 'at' segments (warns once per instance)
+    this.#validateDelayWithAtUsage();
 
-    // Calculate start props for each segment, using persisted state when available
-    this.#calculateStartProps(relativeTime);
+    // Build timeline: calculate effective start times for all segments
+    const timeline = this.#buildTimeline();
 
-    const sortedSegments = this.#getSortedSegments();
+    // Start with initial props (merged with snapshot if available)
+    const baseProps = this.#propsSnapshot
+      ? { ...this.#initialProps, ...this.#propsSnapshot }
+      : { ...this.#initialProps };
 
-    // Find active segments and apply animations
-    const activeSegments = this.#getActiveSegments(
-      sortedSegments,
-      relativeTime
-    );
-
-    if (activeSegments.length === 0) {
-      // No active segments - return value based on completed segments
-      return this.#getPropsAtTime(sortedSegments, relativeTime);
-    }
-
-    // Start with props at current time (accounting for completed segments)
-    let animatedProps = this.#getPropsAtTime(sortedSegments, relativeTime);
-
-    // Apply each active segment's interpolation
-    for (const segment of activeSegments) {
-      const interpolatedProps = this.#interpolateSegment(segment, relativeTime);
-      animatedProps = { ...animatedProps, ...interpolatedProps };
-    }
-
-    return animatedProps;
+    // For each property, find the value at the current time
+    return this.#evaluatePropsAtTime(timeline, baseProps, relativeTime);
   }
 
-  #applyProgressModifiers(
-    rawProgress: number,
-    options: AnimationSegmentOptions
-  ): number {
-    const easing = options.easing ?? DEFAULT_EASING;
-    let progress = easing(rawProgress);
+  #buildTimeline(): Array<{
+    segment: Segment<TProps>;
+    startTime: number | null;
+    duration: number;
+  }> {
+    const timeline: Array<{
+      segment: Segment<TProps>;
+      startTime: number | null;
+      duration: number;
+    }> = [];
 
-    if (options.reverse) {
-      progress = 1 - progress;
-    }
-
-    return progress;
-  }
-
-  #getSegmentHash(segment: AnimationSegment<TProps>, index: number): string {
-    const { targetProps, options } = segment;
-    const propsKey = Object.entries(targetProps)
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([k, v]) => `${k}:${v}`)
-      .join(",");
-    // Use index + duration + target props to identify segment, not `at` value
-    const optionsKey = `idx:${index},dur:${
-      options.duration ?? options.endTime ?? 0
-    }`;
-    return `${propsKey}|${optionsKey}`;
-  }
-
-  #calculateStartProps(relativeTime: number): void {
-    const sortedSegments = this.#getSortedSegments();
-
-    for (let i = 0; i < this.#segments.length; i++) {
-      const segment = this.#segments[i];
-      const { effectiveStartTime } = segment;
-
-      if (effectiveStartTime === null) continue;
-
-      // Generate a hash for this segment to look up cached start props
-      const segmentHash = this.#getSegmentHash(segment, i);
-
-      // Check if this segment has already activated (cached from previous frame)
-      const cachedStartProps = this.#segmentStartPropsCache.get(segmentHash);
-
-      if (cachedStartProps) {
-        // Use the cached start props from when this segment first activated
-        segment.startProps = cachedStartProps as Partial<TProps>;
-      } else if (relativeTime >= effectiveStartTime) {
-        // Segment is activating NOW - calculate start props based on what
-        // previous segments would have produced at this segment's start time
-        const startProps = this.#getInterpolatedPropsAtTime(
-          sortedSegments,
-          segment,
-          effectiveStartTime
-        );
-        segment.startProps = startProps;
-
-        // Cache for future frames
-        this.#segmentStartPropsCache.set(segmentHash, { ...startProps });
-      } else {
-        // Segment hasn't activated yet - calculate what props should be
-        // This is used for segments that will activate in the future
-        segment.startProps = this.#getInterpolatedPropsAtTime(
-          sortedSegments,
-          segment,
-          effectiveStartTime
-        );
-      }
-    }
-  }
-
-  #getInterpolatedPropsAtTime(
-    sortedSegments: AnimationSegment<TProps>[],
-    excludeSegment: AnimationSegment<TProps>,
-    timeInMs: number
-  ): Partial<TProps> {
-    let props = { ...this.#initialProps } as Partial<TProps>;
-
-    for (const segment of sortedSegments) {
-      // Don't include the segment we're calculating start props for
-      if (segment === excludeSegment) continue;
-
-      const { effectiveStartTime, targetProps, options } = segment;
-      if (effectiveStartTime === null) continue;
-
-      // Skip segments that haven't started yet at this time
-      if (timeInMs < effectiveStartTime) continue;
-
-      const duration = this.#getSegmentDuration(segment);
-      const endTime = effectiveStartTime + duration;
-
-      if (timeInMs >= endTime) {
-        // Segment has completed - apply target values
-        props = { ...props, ...targetProps };
-      } else {
-        // Segment is in progress - interpolate
-        // We need the start props for this segment to interpolate correctly
-        // Use recursive approach: get what props were at this segment's start
-        const segmentStartProps = this.#getBasePropsForSegment(
-          sortedSegments,
-          segment
-        );
-
-        const elapsed = timeInMs - effectiveStartTime;
-        // Handle zero duration by jumping to complete (progress = 1)
-        const rawProgress =
-          duration === 0 ? 1 : Math.max(0, Math.min(1, elapsed / duration));
-        const progress = this.#applyProgressModifiers(rawProgress, options);
-
-        // Interpolate each property
-        for (const key in targetProps) {
-          const targetValue = targetProps[
-            key as keyof typeof targetProps
-          ] as number;
-          const startValue = (
-            segmentStartProps[key] !== undefined ? segmentStartProps[key] : 0
-          ) as number;
-
-          (props as any)[key] =
-            startValue + (targetValue - startValue) * progress;
-        }
-      }
-    }
-
-    return props;
-  }
-
-  #getBasePropsForSegment(
-    sortedSegments: AnimationSegment<TProps>[],
-    targetSegment: AnimationSegment<TProps>
-  ): Partial<TProps> {
-    let props = { ...this.#initialProps } as Partial<TProps>;
-    const targetStartTime = targetSegment.effectiveStartTime;
-
-    if (targetStartTime === null) return props;
-
-    for (const segment of sortedSegments) {
-      if (segment === targetSegment) break; // Stop before the target segment
-
-      const { effectiveStartTime, targetProps } = segment;
-      if (effectiveStartTime === null) continue;
-
-      const duration = this.#getSegmentDuration(segment);
-      const endTime = effectiveStartTime + duration;
-
-      // Only apply segments that have completed before this segment starts
-      if (endTime <= targetStartTime) {
-        props = { ...props, ...targetProps };
-      }
-    }
-
-    return props;
-  }
-
-  #getPropsAtTime(
-    sortedSegments: AnimationSegment<TProps>[],
-    timeInMs: number
-  ): TProps {
-    let props = { ...this.#initialProps };
-
-    // For each property, find the "owning" segment (the latest segment that has started)
-    const propertyOwnerIndex = new Map<string, number>();
-
-    // Iterate from end to find the owning segment for each property
-    for (let i = sortedSegments.length - 1; i >= 0; i--) {
-      const segment = sortedSegments[i];
-      const { effectiveStartTime } = segment;
-      if (effectiveStartTime === null) continue;
-
-      // If this segment has started, it owns its properties (unless already owned by later)
-      if (timeInMs >= effectiveStartTime) {
-        const segmentProps = Object.keys(segment.targetProps);
-        segmentProps.forEach((prop) => {
-          if (!propertyOwnerIndex.has(prop)) {
-            propertyOwnerIndex.set(prop, i);
-          }
-        });
-      }
-    }
-
-    // Apply completed segment values
-    // For properties where the owner is still running, apply the previous completed segment's value
-    // For properties where the owner has completed, apply the owner's target value
-    for (let i = 0; i < sortedSegments.length; i++) {
-      const segment = sortedSegments[i];
-      const { effectiveStartTime, targetProps } = segment;
-      if (effectiveStartTime === null) continue;
-
-      const duration = this.#getSegmentDuration(segment);
-      const endTime = effectiveStartTime + duration;
-
-      // Only consider completed segments
-      if (timeInMs >= endTime) {
-        for (const key of Object.keys(targetProps)) {
-          const ownerIndex = propertyOwnerIndex.get(key);
-
-          // Apply this segment's value if:
-          // 1. This segment is the owner, OR
-          // 2. The owner is a later segment that hasn't completed yet
-          //    (we need this as the base value for interpolation)
-          if (ownerIndex !== undefined) {
-            const ownerSegment = sortedSegments[ownerIndex];
-            const ownerEndTime =
-              ownerSegment.effectiveStartTime! +
-              this.#getSegmentDuration(ownerSegment);
-
-            // Apply if this is the owner OR if owner is still running and this
-            // is an earlier completed segment
-            if (
-              ownerIndex === i ||
-              (timeInMs < ownerEndTime && i < ownerIndex)
-            ) {
-              (props as any)[key] = (targetProps as any)[key];
-            }
-          }
-        }
-      }
-    }
-
-    return props;
-  }
-
-  #calculateEffectiveStartTimes(): void {
-    let lastExplicitEndTime = 0;
+    let cumulativeEnd = 0;
 
     for (let i = 0; i < this.#segments.length; i++) {
       const segment = this.#segments[i];
       const { at, duration, endTime, delay = 0 } = segment.options;
 
+      let startTime: number | null;
+      let segmentDuration: number;
+
       if (at !== undefined) {
-        // Explicit start time
         if (at === null) {
-          segment.effectiveStartTime = null;
+          startTime = null;
+          segmentDuration = duration ?? 0;
         } else {
-          const atInMs = eventTimeToMs(at);
-
-          segment.effectiveStartTime = atInMs + delay;
-
-          // Calculate when this segment ends
-          const segmentDuration = duration ?? (endTime ? endTime - atInMs : 0);
-          lastExplicitEndTime = segment.effectiveStartTime + segmentDuration;
+          const atMs = eventTimeToMs(at);
+          startTime = atMs + delay;
+          segmentDuration =
+            duration ?? (endTime !== undefined ? endTime - atMs : 0);
         }
       } else {
-        // Sequential: start after previous segment
+        // Sequential
         if (i === 0) {
-          // First segment with no 'at' starts at 0
-          segment.effectiveStartTime = delay;
-          const segmentDuration = duration ?? (endTime ? endTime - 0 : 0);
-          lastExplicitEndTime = segment.effectiveStartTime + segmentDuration;
+          startTime = delay;
+          segmentDuration = duration ?? (endTime !== undefined ? endTime : 0);
         } else {
-          // Start after previous segment completes
-          const prevSegment = this.#segments[i - 1];
-
-          if (prevSegment.effectiveStartTime === null) {
-            // Previous segment hasn't started, so this one can't either
-            segment.effectiveStartTime = null;
+          const prev = timeline[i - 1];
+          if (prev.startTime === null) {
+            startTime = null;
+            segmentDuration = duration ?? 0;
           } else {
-            segment.effectiveStartTime = lastExplicitEndTime + delay;
-
-            const segmentDuration =
-              duration ?? (endTime ? endTime - segment.effectiveStartTime : 0);
-            lastExplicitEndTime = segment.effectiveStartTime + segmentDuration;
+            startTime = cumulativeEnd + delay;
+            segmentDuration =
+              duration ?? (endTime !== undefined ? endTime - startTime : 0);
           }
         }
       }
+
+      if (startTime !== null) {
+        cumulativeEnd = startTime + segmentDuration;
+      }
+
+      timeline.push({ segment, startTime, duration: segmentDuration });
     }
+
+    return timeline;
   }
 
-  #getSortedSegments(): AnimationSegment<TProps>[] {
-    return [...this.#segments]
-      .filter((s) => s.effectiveStartTime !== null)
-      .sort((a, b) => a.effectiveStartTime! - b.effectiveStartTime!);
-  }
+  #evaluatePropsAtTime(
+    timeline: Array<{
+      segment: Segment<TProps>;
+      startTime: number | null;
+      duration: number;
+    }>,
+    baseProps: TProps,
+    time: number
+  ): TProps {
+    const result = { ...baseProps };
 
-  #getActiveSegments(
-    sortedSegments: AnimationSegment<TProps>[],
-    timeInMs: number
-  ): AnimationSegment<TProps>[] {
-    const active: AnimationSegment<TProps>[] = [];
+    // Sort by start time for proper evaluation order
+    const sortedEntries = timeline
+      .filter((e) => e.startTime !== null)
+      .sort((a, b) => a.startTime! - b.startTime!);
 
-    // Track which properties have been claimed by segments that have started
-    // (not just currently animating, but have started at any point)
-    const propertiesClaimedByLaterSegments = new Set<string>();
+    // For each property, we need to find the "active" segment (the latest one that has started)
+    // and interpolate or use completed value
+    const propertyStates = new Map<
+      string,
+      { value: number; endTime: number }
+    >();
 
-    // Iterate from end (most recent segments have priority)
-    // This determines which properties are "owned" by later segments
-    for (let i = sortedSegments.length - 1; i >= 0; i--) {
-      const segment = sortedSegments[i];
-      const { effectiveStartTime } = segment;
+    // First pass: apply all completed segments to get base state
+    for (const entry of sortedEntries) {
+      const { segment, startTime, duration } = entry;
+      if (startTime === null) continue;
 
-      if (effectiveStartTime === null) continue;
+      const endTime = startTime + duration;
 
-      // Skip segments that haven't started yet
-      if (timeInMs < effectiveStartTime) continue;
-
-      const duration = this.#getSegmentDuration(segment);
-      const endTime = effectiveStartTime + duration;
-      const segmentProps = Object.keys(segment.targetProps);
-
-      // Check which properties this segment can still animate
-      // (not claimed by a later segment that has started)
-      const availableProps = segmentProps.filter(
-        (prop) => !propertiesClaimedByLaterSegments.has(prop)
-      );
-
-      if (availableProps.length > 0) {
-        // This segment owns these properties - mark them as claimed
-        availableProps.forEach((prop) =>
-          propertiesClaimedByLaterSegments.add(prop)
-        );
-
-        // Only add to active if segment is still animating
-        if (timeInMs <= endTime) {
-          active.unshift(segment);
+      for (const key of Object.keys(segment.targetProps)) {
+        if (time >= endTime) {
+          // Segment completed - record its final value
+          propertyStates.set(key, {
+            value: (segment.targetProps as any)[key],
+            endTime,
+          });
         }
       }
     }
 
-    return active;
-  }
-
-  #interpolateSegment(
-    segment: AnimationSegment<TProps>,
-    timeInMs: number
-  ): Partial<TProps> {
-    const { targetProps, options, startProps, effectiveStartTime } = segment;
-
-    if (effectiveStartTime === null || startProps === null) {
-      return {};
+    // Apply completed values to result
+    for (const [key, state] of propertyStates) {
+      (result as any)[key] = state.value;
     }
 
-    const duration = this.#getSegmentDuration(segment);
-    const elapsed = timeInMs - effectiveStartTime;
+    // Second pass: for each property, find if there's an active (in-progress) segment
+    // that supersedes everything else
+    for (const entry of sortedEntries) {
+      const { segment, startTime, duration } = entry;
+      if (startTime === null) continue;
 
-    // Calculate progress (0 to 1)
-    // Handle zero duration by jumping to complete (progress = 1)
-    const rawProgress =
-      duration === 0 ? 1 : Math.max(0, Math.min(1, elapsed / duration));
-    const progress = this.#applyProgressModifiers(rawProgress, options);
+      const endTime = startTime + duration;
 
-    // Interpolate each property
-    const result = {} as Partial<TProps>;
+      // Only process segments that have started but not completed
+      if (time < startTime || time > endTime) continue;
 
-    for (const key in targetProps) {
-      const targetValue = targetProps[
-        key as keyof typeof targetProps
-      ] as number;
+      for (const key of Object.keys(segment.targetProps)) {
+        // Check if a later segment for this property has started
+        const laterSegmentStarted = sortedEntries.some((other) => {
+          if (other === entry || other.startTime === null) return false;
+          if (other.startTime <= startTime!) return false;
+          if (time < other.startTime) return false;
+          return key in other.segment.targetProps;
+        });
 
-      // Determine start value: use value from startProps, or default to 0
-      const actualStartValue = (
-        startProps[key] !== undefined ? startProps[key] : 0
-      ) as number;
+        if (laterSegmentStarted) continue; // This property is owned by a later segment
 
-      // Linear interpolation with type assertion
-      (result as any)[key] =
-        actualStartValue + (targetValue - actualStartValue) * progress;
+        // Calculate the start value for this segment
+        const startValue = this.#getPropertyValueAtTime(
+          sortedEntries,
+          entry,
+          key,
+          startTime,
+          baseProps
+        );
+
+        const targetValue = (segment.targetProps as any)[key] as number;
+        const elapsed = time - startTime;
+        const rawProgress =
+          duration === 0 ? 1 : Math.max(0, Math.min(1, elapsed / duration));
+        const progress = this.#applyProgress(rawProgress, segment.options);
+
+        (result as any)[key] =
+          startValue + (targetValue - startValue) * progress;
+      }
     }
 
     return result;
   }
 
-  #getSegmentDuration(segment: AnimationSegment<TProps>): number {
-    const { duration, endTime } = segment.options;
-    const { effectiveStartTime } = segment;
+  #getPropertyValueAtTime(
+    sortedEntries: Array<{
+      segment: Segment<TProps>;
+      startTime: number | null;
+      duration: number;
+    }>,
+    excludeEntry: {
+      segment: Segment<TProps>;
+      startTime: number | null;
+      duration: number;
+    },
+    key: string,
+    atTime: number,
+    baseProps: TProps
+  ): number {
+    // Start with base value (which already includes snapshot if available)
+    let value = (baseProps as any)[key] ?? 0;
 
-    if (duration !== undefined) {
-      return duration;
+    // If we have a snapshot, it represents the "ground truth" at the moment it was captured.
+    // For segments that supersede other segments, we should use the snapshot value
+    // rather than recalculating from earlier segments that may have been rebuilt.
+    // This handles the case where we re-attack during a release - the snapshot
+    // captures where we actually were, not where the rebuilt segments would calculate.
+    if (this.#propsSnapshot !== null && key in this.#propsSnapshot) {
+      // Check if this is the "superseding" segment (the one with the latest start time that contains this key)
+      const isSupersedingSegment = !sortedEntries.some((other) => {
+        if (other === excludeEntry || other.startTime === null) return false;
+        if (!(key in other.segment.targetProps)) return false;
+        // There's another segment for this property that starts later
+        return other.startTime > excludeEntry.startTime!;
+      });
+
+      // If this is the superseding segment, use snapshot value directly
+      if (isSupersedingSegment) {
+        return (this.#propsSnapshot as any)[key] ?? value;
+      }
     }
 
-    if (endTime !== undefined && effectiveStartTime !== null) {
-      return endTime - effectiveStartTime;
+    for (const entry of sortedEntries) {
+      if (entry === excludeEntry) continue;
+      if (entry.startTime === null) continue;
+      if (!(key in entry.segment.targetProps)) continue;
+
+      const { startTime, duration } = entry;
+      const endTime = startTime + duration;
+
+      if (atTime < startTime) continue;
+
+      if (atTime >= endTime) {
+        // Segment completed before our target time
+        value = (entry.segment.targetProps as any)[key];
+      } else {
+        // Segment in progress at our target time
+        const prevValue = this.#getPropertyValueAtTime(
+          sortedEntries,
+          entry,
+          key,
+          startTime,
+          baseProps
+        );
+        const targetValue = (entry.segment.targetProps as any)[key] as number;
+        const elapsed = atTime - startTime;
+        const rawProgress =
+          duration === 0 ? 1 : Math.max(0, Math.min(1, elapsed / duration));
+        const progress = this.#applyProgress(
+          rawProgress,
+          entry.segment.options
+        );
+        value = prevValue + (targetValue - prevValue) * progress;
+      }
     }
 
-    return 0;
+    return value;
+  }
+
+  #applyProgress(
+    rawProgress: number,
+    options: AnimationSegmentOptions
+  ): number {
+    const easing = options.easing ?? DEFAULT_EASING;
+    let progress = easing(rawProgress);
+    if (options.reverse) {
+      progress = 1 - progress;
+    }
+    return progress;
   }
 
   reset(): void {

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import Animatable from "./Animatable";
 
 function simulateFrames<T extends Record<string, any>>(
@@ -526,6 +526,160 @@ describe("Event-Driven Animations", () => {
 
       expect(results[4].radius).toBe(10); // t=600
     });
+
+    it("handles multiple attack/release cycles on persistent object", () => {
+      // This tests the bug scenario where a persistent object's cache
+      // doesn't invalidate when `at` values change on subsequent cycles.
+      //
+      // The EXPECTED behavior based on drawMethods.ts:
+      // - Each frame, updateInitialProps() is called with current user props
+      // - Each frame, clearSegments() is called and segments are rebuilt
+      // - Animation should start from initialProps, not from "where we left off"
+
+      const anim = new Animatable({ radius: 0 }, 0);
+
+      // ===== FIRST CYCLE: Attack at t=0, release at t=500 =====
+      anim.clearSegments();
+      anim
+        .animateTo({ radius: 100 }, { at: 0, duration: 500 })
+        .animateTo({ radius: 0 }, { at: 500, duration: 500 });
+
+      // Render frames in first cycle
+      expect(anim.getCurrentProps(0).radius).toBe(0); // Attack starts at initialProps
+      expect(anim.getCurrentProps(250).radius).toBe(50); // 50% attack
+      expect(anim.getCurrentProps(500).radius).toBe(100); // Attack done, release starts
+      expect(anim.getCurrentProps(750).radius).toBe(50); // 50% release
+      expect(anim.getCurrentProps(1000).radius).toBe(0); // Release complete
+
+      // Gap period - at rest
+      expect(anim.getCurrentProps(1500).radius).toBe(0);
+
+      // ===== SECOND CYCLE: Attack at t=2000, release at t=2500 =====
+      // In browser, segments are rebuilt with NEW at values
+      // Animation should restart from initialProps (0), NOT from previous animation end
+      anim.clearSegments();
+      anim
+        .animateTo({ radius: 100 }, { at: 2000, duration: 500 })
+        .animateTo({ radius: 0 }, { at: 2500, duration: 500 });
+
+      // Second attack should start from initialProps (0)
+      expect(anim.getCurrentProps(2000).radius).toBe(0); // Start from initialProps
+      expect(anim.getCurrentProps(2250).radius).toBe(50); // 50% of 0→100
+      expect(anim.getCurrentProps(2500).radius).toBe(100); // Second attack done
+      expect(anim.getCurrentProps(2750).radius).toBe(50); // 50% of 100→0
+      expect(anim.getCurrentProps(3000).radius).toBe(0); // Second release complete
+    });
+
+    it("handles rapid re-attacks during ongoing animation", () => {
+      // Test scenario: user attacks, then attacks again mid-animation
+      // This can happen with rapid MIDI inputs
+      const anim = new Animatable({ radius: 0 }, 0);
+
+      // First attack at t=0
+      anim.clearSegments();
+      anim
+        .animateTo({ radius: 100 }, { at: 0, duration: 500 })
+        .animateTo({ radius: 0 }, { at: null, duration: 500 }); // Not released yet
+
+      // Render mid-attack at t=250 (radius should be 50)
+      expect(anim.getCurrentProps(250).radius).toBe(50);
+
+      // Rapid re-attack at t=300! New cycle starts before first completes
+      anim.clearSegments();
+      anim
+        .animateTo({ radius: 100 }, { at: 300, duration: 500 })
+        .animateTo({ radius: 0 }, { at: null, duration: 500 }); // Not released yet
+
+      // At t=300, new attack starts from initialProps (0)
+      expect(anim.getCurrentProps(300).radius).toBe(0);
+      // At t=550, 50% through new attack
+      expect(anim.getCurrentProps(550).radius).toBe(50);
+      // At t=800, new attack complete
+      expect(anim.getCurrentProps(800).radius).toBe(100);
+    });
+
+    it("uses updated initialProps for subsequent cycles", () => {
+      // This tests that when initialProps changes between cycles,
+      // the cache doesn't return stale start props
+      const anim = new Animatable({ radius: 0 }, 0);
+
+      // First cycle: animate from 0 to 100
+      anim.clearSegments();
+      anim.animateTo({ radius: 100 }, { at: 0, duration: 500 });
+
+      expect(anim.getCurrentProps(0).radius).toBe(0);
+      expect(anim.getCurrentProps(250).radius).toBe(50);
+      expect(anim.getCurrentProps(500).radius).toBe(100);
+
+      // Update initialProps to 50 (simulating user changing base value)
+      anim.updateInitialProps({ radius: 50 });
+
+      // Second cycle with new initialProps
+      anim.clearSegments();
+      anim.animateTo({ radius: 100 }, { at: 1000, duration: 500 });
+
+      // Should start from new initialProps (50), not cached value (0)
+      expect(anim.getCurrentProps(1000).radius).toBe(50); // Start from updated initialProps
+      expect(anim.getCurrentProps(1250).radius).toBe(75); // 50% of 50→100
+      expect(anim.getCurrentProps(1500).radius).toBe(100); // Complete
+    });
+
+    it("re-attack during release starts from current interpolated position", () => {
+      // Scenario 3: attack > release (mid-attack) > re-attack (mid-release)
+      // The re-attack should start from the current position of the release animation,
+      // not from initialProps (0)
+      //
+      // Timeline:
+      // t=0: Attack starts (0 → 100 over 500ms)
+      // t=250: Release starts mid-attack (current value ~50, animate to 0 over 500ms)
+      // t=400: Re-attack starts mid-release (should start from current value ~35)
+
+      const anim = new Animatable({ radius: 0 }, 0);
+
+      // === Phase 1: Initial attack at t=0 ===
+      anim.clearSegments();
+      anim
+        .animateTo({ radius: 100 }, { at: 0, duration: 500 })
+        .animateTo({ radius: 0 }, { at: null, duration: 500 }); // Release not triggered yet
+
+      // Verify attack is animating
+      expect(anim.getCurrentProps(0).radius).toBe(0);
+      expect(anim.getCurrentProps(250).radius).toBe(50);
+
+      // === Phase 2: Release at t=250 (mid-attack) ===
+      // At t=250, the attack animation has reached radius=50
+      // Now release is triggered, should animate from 50 → 0
+      anim.captureCurrentProps(250); // Capture current state before rebuilding
+      anim.clearSegments();
+      anim
+        .animateTo({ radius: 100 }, { at: 0, duration: 500 })
+        .animateTo({ radius: 0 }, { at: 250, duration: 500 });
+
+      // At t=250, release just started, so we're at the attack's current value
+      // The attack was at 50% (radius=50), release starts from there
+      expect(anim.getCurrentProps(250).radius).toBe(50);
+      // At t=400, we're 150ms into release (30% of 500ms)
+      // Release goes from 50 → 0, so at 30%: 50 - (50 * 0.3) = 35
+      expect(anim.getCurrentProps(400).radius).toBe(35);
+
+      // === Phase 3: Re-attack at t=400 (mid-release) ===
+      // At t=400, the release animation is at radius=35
+      // New attack should start FROM 35 and animate TO 100
+      const valueAtReattack = anim.getCurrentProps(400).radius; // Should be 35
+
+      anim.captureCurrentProps(400); // Capture current state before rebuilding
+      anim.clearSegments();
+      anim
+        .animateTo({ radius: 100 }, { at: 400, duration: 500 })
+        .animateTo({ radius: 0 }, { at: null, duration: 500 }); // Release not triggered yet
+
+      // At t=400, re-attack starts - should be at the PREVIOUS position (35), not 0
+      expect(anim.getCurrentProps(400).radius).toBe(valueAtReattack);
+      // At t=650, 50% through re-attack: 35 + (100-35)*0.5 = 35 + 32.5 = 67.5
+      expect(anim.getCurrentProps(650).radius).toBe(35 + (100 - 35) * 0.5);
+      // At t=900, re-attack complete
+      expect(anim.getCurrentProps(900).radius).toBe(100);
+    });
   });
 });
 
@@ -886,6 +1040,149 @@ describe("Edge Cases", () => {
       expect(props.x).toBe(50); // 50% of 1000
       expect(props.y).toBe(200); // 100% of 500
       expect(props.scale).toBe(1.25); // 25% of 2000
+    });
+  });
+});
+
+describe("Delay with At Warning", () => {
+  describe("console.warn behavior", () => {
+    it("warns when some 'at' segments have delay and others do not", () => {
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+      const anim = new Animatable({ radius: 0 }, 0);
+      anim
+        .animateTo({ radius: 100 }, { at: 500, delay: 500, duration: 500 })
+        .animateTo({ radius: 0 }, { at: 1000, duration: 500 }); // No delay
+
+      anim.getCurrentProps(0);
+
+      expect(warnSpy).toHaveBeenCalledOnce();
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining(
+          "Animation has segments with 'at' property where some have 'delay' and others do not"
+        )
+      );
+
+      warnSpy.mockRestore();
+    });
+
+    it("does not warn when all 'at' segments have delay", () => {
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+      const anim = new Animatable({ radius: 0 }, 0);
+      anim
+        .animateTo({ radius: 100 }, { at: 500, delay: 500, duration: 500 })
+        .animateTo({ radius: 0 }, { at: 1000, delay: 500, duration: 500 });
+
+      anim.getCurrentProps(0);
+
+      expect(warnSpy).not.toHaveBeenCalled();
+
+      warnSpy.mockRestore();
+    });
+
+    it("does not warn when delay is applied via withOptions", () => {
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+      const anim = new Animatable({ radius: 0 }, 0);
+      anim
+        .withOptions({ delay: 500 })
+        .animateTo({ radius: 100 }, { at: 500, duration: 500 })
+        .animateTo({ radius: 0 }, { at: 1000, duration: 500 });
+
+      anim.getCurrentProps(0);
+
+      expect(warnSpy).not.toHaveBeenCalled();
+
+      warnSpy.mockRestore();
+    });
+
+    it("does not warn when no segments have 'at' property", () => {
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+      const anim = new Animatable({ radius: 0 }, 0);
+      anim
+        .animateTo({ radius: 100 }, { delay: 500, duration: 500 })
+        .animateTo({ radius: 0 }, { duration: 500 });
+
+      anim.getCurrentProps(0);
+
+      expect(warnSpy).not.toHaveBeenCalled();
+
+      warnSpy.mockRestore();
+    });
+
+    it("does not warn when no 'at' segments have delay", () => {
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+      const anim = new Animatable({ radius: 0 }, 0);
+      anim
+        .animateTo({ radius: 100 }, { at: 500, duration: 500 })
+        .animateTo({ radius: 0 }, { at: 1000, duration: 500 });
+
+      anim.getCurrentProps(0);
+
+      expect(warnSpy).not.toHaveBeenCalled();
+
+      warnSpy.mockRestore();
+    });
+
+    it("warns only once per instance even with multiple getCurrentProps calls", () => {
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+      const anim = new Animatable({ radius: 0 }, 0);
+      anim
+        .animateTo({ radius: 100 }, { at: 500, delay: 500, duration: 500 })
+        .animateTo({ radius: 0 }, { at: 1000, duration: 500 });
+
+      // Call multiple times
+      anim.getCurrentProps(0);
+      anim.getCurrentProps(100);
+      anim.getCurrentProps(200);
+
+      expect(warnSpy).toHaveBeenCalledOnce();
+
+      warnSpy.mockRestore();
+    });
+
+    it("warns only once per instance even after clearSegments", () => {
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+      const anim = new Animatable({ radius: 0 }, 0);
+      anim
+        .animateTo({ radius: 100 }, { at: 500, delay: 500, duration: 500 })
+        .animateTo({ radius: 0 }, { at: 1000, duration: 500 });
+
+      anim.getCurrentProps(0);
+
+      // Clear and rebuild with same problematic pattern
+      anim.clearSegments();
+      anim
+        .animateTo({ radius: 100 }, { at: 500, delay: 500, duration: 500 })
+        .animateTo({ radius: 0 }, { at: 1000, duration: 500 });
+
+      anim.getCurrentProps(0);
+
+      // Should still only have warned once (per instance lifetime)
+      expect(warnSpy).toHaveBeenCalledOnce();
+
+      warnSpy.mockRestore();
+    });
+
+    it("ignores segments with at: null when checking for warnings", () => {
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+      const anim = new Animatable({ radius: 0 }, 0);
+      anim
+        .animateTo({ radius: 100 }, { at: 500, delay: 500, duration: 500 })
+        .animateTo({ radius: 0 }, { at: null, duration: 500 }); // at: null is ignored
+
+      anim.getCurrentProps(0);
+
+      // Should not warn because at: null segments are excluded
+      expect(warnSpy).not.toHaveBeenCalled();
+
+      warnSpy.mockRestore();
     });
   });
 });
