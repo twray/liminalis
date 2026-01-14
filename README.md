@@ -1195,7 +1195,7 @@ Define how the object should be drawn:
 
 - **Canvas**: `context`, `width`, `height`, `center`
 - **Primitives**: `background`, `rect`, `circle`, `line`
-- **Styling**: `withStyles`, `translate`, `rotate`, `scale`
+- **Styling**: `withStyles`
 
 **Render Isometric Callback (3D Projection):**
 
@@ -1292,33 +1292,91 @@ withStyles({ strokeStyle: "#666", strokeWidth: 3 }, () => {
 // Styles automatically restored after callback
 ```
 
-#### `translate(offset, callback)`
+#### Transform Props
 
-Translate origin within a scope:
+All shape primitives (`rect`, `circle`, `line`) support transform properties that are applied at render time:
+
+**Rotation:**
 
 ```typescript
-translate({ x: 100, y: 50 }, () => {
-  circle({ cx: 0, cy: 0, radius: 50 }); // Drawn at (100, 50)
+rect({
+  x: 100,
+  y: 100,
+  width: 200,
+  height: 100,
+  rotate: 45, // Rotate 45 degrees
+  rotateOrigin: "center", // "center" (default) or local {x, y} coordinates
 });
 ```
 
-#### `rotate(angle, callback)`
-
-Rotate canvas (angle in radians):
+**Scale:**
 
 ```typescript
-rotate(Math.PI / 4, () => {
-  rect({ x: 0, y: 0, width: 100, height: 100 });
+circle({
+  cx: 200,
+  cy: 200,
+  radius: 50,
+  scale: 1.5, // Uniform scale (150%)
+  scaleOrigin: "center", // "center" (default) or local {x, y} coordinates
+});
+
+rect({
+  x: 0,
+  y: 0,
+  width: 100,
+  height: 100,
+  scaleX: 2, // Stretch horizontally
+  scaleY: 0.5, // Compress vertically
 });
 ```
 
-#### `scale(factor, callback)`
+**Local Coordinate System for Transform Origins:**
 
-Scale canvas:
+When specifying a `Point2D` for `rotateOrigin` or `scaleOrigin`, coordinates are relative to the shape's local coordinate system (top-left of the shape is `{x: 0, y: 0}`):
 
 ```typescript
-scale({ x: 2, y: 2 }, () => {
-  circle({ cx: 50, cy: 50, radius: 25 }); // Drawn twice as large
+// Rotate around the shape's top-left corner
+rect({
+  x: 200,
+  y: 200,
+  width: 200,
+  height: 200,
+  rotate: 45,
+  rotateOrigin: { x: 0, y: 0 }, // Local top-left = world (200, 200)
+});
+
+// Rotate around the shape's top-right corner
+rect({
+  x: 200,
+  y: 200,
+  width: 200,
+  height: 200,
+  rotate: 45,
+  rotateOrigin: { x: 200, y: 0 }, // Local top-right = world (400, 200)
+});
+
+// Rotate around the shape's center (same as "center")
+rect({
+  x: 200,
+  y: 200,
+  width: 200,
+  height: 200,
+  rotate: 45,
+  rotateOrigin: { x: 100, y: 100 }, // Local center = world (300, 300)
+});
+```
+
+**Combined Transforms:**
+
+```typescript
+rect({
+  x: 100,
+  y: 100,
+  width: 100,
+  height: 100,
+  rotate: 30,
+  scale: 1.2,
+  rotateOrigin: { x: 50, y: 50 }, // Rotate around local center
 });
 ```
 

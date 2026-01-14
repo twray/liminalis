@@ -31,13 +31,28 @@ export interface BackgroundProps {
   color: string;
 }
 
-export interface CircleProps extends FillStyles, StrokeStyles, WithOpacity {
+export type TransformOrigin = "center" | Point2D;
+
+export interface TransformProps {
+  rotate?: number;
+  rotateOrigin?: TransformOrigin;
+  scale?: number;
+  scaleX?: number;
+  scaleY?: number;
+  scaleOrigin?: TransformOrigin;
+}
+
+export interface CircleProps
+  extends FillStyles,
+    StrokeStyles,
+    WithOpacity,
+    TransformProps {
   cx?: number;
   cy?: number;
   radius: number;
 }
 
-export interface LineProps extends StrokeStyles, WithOpacity {
+export interface LineProps extends StrokeStyles, WithOpacity, TransformProps {
   start: Partial<Point2D>;
   end: Partial<Point2D>;
 }
@@ -47,28 +62,15 @@ export interface RectProps
     Dimensions2D,
     FillStyles,
     StrokeStyles,
-    WithOpacity {
+    WithOpacity,
+    TransformProps {
   cornerRadius?: Corners | number;
-}
-
-export interface RotateProps {
-  degrees: number;
-  origin?: Point2D;
-}
-
-export interface ScaleProps {
-  sx: number;
-  sy: number;
-  origin?: Point2D;
 }
 
 export interface DrawMethods {
   width: number;
   height: number;
   withStyles: (styles: PartialDrawStyles, callback: () => void) => void;
-  translate: (props: Point2D, callback: () => void) => void;
-  rotate: (props: RotateProps, callback: () => void) => void;
-  scale: (props: ScaleProps, callback: () => void) => void;
   background: (props: BackgroundProps) => void;
   center: Point2D;
   centerOf: (props: Dimensions2D) => Point2D;
@@ -122,6 +124,60 @@ const centerOf = (dimensions: Dimensions2D): Point2D => {
   return { x: width / 2, y: height / 2 };
 };
 
+const resolveTransformOrigin = (
+  origin: TransformOrigin | undefined,
+  bounds: { x: number; y: number; width: number; height: number }
+): Point2D => {
+  if (!origin || origin === "center") {
+    return { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 };
+  }
+  // It's a Point2D in local coordinates - add to bounds position
+  return { x: bounds.x + origin.x, y: bounds.y + origin.y };
+};
+
+const renderWithTransform = (
+  context: CanvasRenderingContext2D,
+  props: TransformProps,
+  bounds: { x: number; y: number; width: number; height: number },
+  renderShape: () => void
+): void => {
+  const { rotate, rotateOrigin, scale, scaleX, scaleY, scaleOrigin } = props;
+
+  const hasRotate = rotate !== undefined && rotate !== 0;
+  const effectiveScaleX = scaleX ?? scale ?? 1;
+  const effectiveScaleY = scaleY ?? scale ?? 1;
+  const hasScale = effectiveScaleX !== 1 || effectiveScaleY !== 1;
+
+  if (!hasRotate && !hasScale) {
+    // No transforms, just render directly
+    renderShape();
+    return;
+  }
+
+  context.save();
+
+  // Apply scale first (so rotation happens in scaled space)
+  if (hasScale) {
+    const origin = resolveTransformOrigin(scaleOrigin, bounds);
+    context.translate(origin.x, origin.y);
+    context.scale(effectiveScaleX, effectiveScaleY);
+    context.translate(-origin.x, -origin.y);
+  }
+
+  // Apply rotation
+  if (hasRotate) {
+    const origin = resolveTransformOrigin(rotateOrigin, bounds);
+    const radians = (rotate * Math.PI) / 180;
+    context.translate(origin.x, origin.y);
+    context.rotate(radians);
+    context.translate(-origin.x, -origin.y);
+  }
+
+  renderShape();
+
+  context.restore();
+};
+
 const circle = (context: CanvasRenderingContext2D, props: CircleProps) => {
   const {
     cx = 0,
@@ -135,20 +191,29 @@ const circle = (context: CanvasRenderingContext2D, props: CircleProps) => {
 
   const validatedRadius = radius >= 0 ? radius : 0;
 
-  context.save();
+  // Calculate bounds for transform origin (bounding box of the circle)
+  const bounds = {
+    x: cx - validatedRadius,
+    y: cy - validatedRadius,
+    width: validatedRadius * 2,
+    height: validatedRadius * 2,
+  };
 
-  context.fillStyle = getColorWithOpacity(fillStyle, opacity);
-  context.strokeStyle = getColorWithOpacity(strokeStyle, opacity);
-  context.lineWidth = strokeWidth;
+  renderWithTransform(context, props, bounds, () => {
+    context.save();
 
-  context.beginPath();
+    context.fillStyle = getColorWithOpacity(fillStyle, opacity);
+    context.strokeStyle = getColorWithOpacity(strokeStyle, opacity);
+    context.lineWidth = strokeWidth;
 
-  context.arc(cx, cy, validatedRadius, 0, Math.PI * 2);
+    context.beginPath();
+    context.arc(cx, cy, validatedRadius, 0, Math.PI * 2);
 
-  context.fill();
-  context.stroke();
+    context.fill();
+    context.stroke();
 
-  context.restore();
+    context.restore();
+  });
 };
 
 const rect = (context: CanvasRenderingContext2D, props: RectProps) => {
@@ -176,20 +241,24 @@ const rect = (context: CanvasRenderingContext2D, props: RectProps) => {
       ]
     : cornerRadius;
 
-  context.save();
+  // Bounds for transform origin
+  const bounds = { x, y, width, height };
 
-  context.fillStyle = getColorWithOpacity(fillColor, opacity);
-  context.strokeStyle = getColorWithOpacity(strokeColor, opacity);
-  context.lineWidth = strokeWidth;
+  renderWithTransform(context, props, bounds, () => {
+    context.save();
 
-  context.beginPath();
+    context.fillStyle = getColorWithOpacity(fillColor, opacity);
+    context.strokeStyle = getColorWithOpacity(strokeColor, opacity);
+    context.lineWidth = strokeWidth;
 
-  context.roundRect(x, y, width, height, cornerRadiusForRoundRect);
+    context.beginPath();
+    context.roundRect(x, y, width, height, cornerRadiusForRoundRect);
 
-  context.fill();
-  context.stroke();
+    context.fill();
+    context.stroke();
 
-  context.restore();
+    context.restore();
+  });
 };
 
 const line = (context: CanvasRenderingContext2D, props: LineProps) => {
@@ -201,89 +270,32 @@ const line = (context: CanvasRenderingContext2D, props: LineProps) => {
     opacity = 1,
   } = props;
 
-  context.save();
+  // Bounds for transform origin (bounding box of the line)
+  const minX = Math.min(startX, endX);
+  const minY = Math.min(startY, endY);
+  const bounds = {
+    x: minX,
+    y: minY,
+    width: Math.abs(endX - startX),
+    height: Math.abs(endY - startY),
+  };
 
-  context.strokeStyle = getColorWithOpacity(strokeColor, opacity);
-  context.lineWidth = strokeWidth;
+  renderWithTransform(context, props, bounds, () => {
+    context.save();
 
-  context.beginPath();
-  context.moveTo(startX, startY);
-  context.lineTo(endX, endY);
+    context.strokeStyle = getColorWithOpacity(strokeColor, opacity);
+    context.lineWidth = strokeWidth;
 
-  context.stroke();
+    context.beginPath();
+    context.moveTo(startX, startY);
+    context.lineTo(endX, endY);
 
-  context.restore();
-};
+    context.stroke();
 
-const translate = (
-  context: CanvasRenderingContext2D,
-  props: Point2D,
-  callback: () => void
-) => {
-  const { x, y } = props;
-
-  context.save();
-  context.translate(x, y);
-
-  try {
-    return callback();
-  } finally {
     context.restore();
-  }
+  });
 };
 
-const rotate = (
-  context: CanvasRenderingContext2D,
-  props: RotateProps,
-  callback: () => void
-): void => {
-  const { degrees, origin } = props;
-  const radians = (degrees * Math.PI) / 180;
-
-  context.save();
-
-  if (origin) {
-    context.translate(origin.x, origin.y);
-    context.rotate(radians);
-    context.translate(-origin.x, -origin.y);
-  } else {
-    context.rotate(radians);
-  }
-
-  try {
-    return callback();
-  } finally {
-    context.restore();
-  }
-};
-
-const scale = (
-  context: CanvasRenderingContext2D,
-  props: ScaleProps,
-  callback: () => void
-): void => {
-  const { sx, sy, origin } = props;
-
-  context.save();
-
-  if (origin) {
-    context.translate(origin.x, origin.y);
-    context.scale(sx, sy);
-    context.translate(-origin.x, -origin.y);
-  } else {
-    context.scale(sx, sy);
-  }
-
-  try {
-    return callback();
-  } finally {
-    context.restore();
-  }
-};
-
-/**
- * Draw context with encapsulated state for shape timestamp tracking
- */
 export interface DrawContext {
   executeDrawCallback: (
     callback: (methods: DrawMethods) => void,
@@ -339,12 +351,6 @@ export const createDrawContext = (): DrawContext => {
       width,
       height,
       withStyles,
-      translate: (props: Point2D, cb: () => void) =>
-        translate(context, props, cb),
-      rotate: (props: RotateProps, cb: () => void): void =>
-        rotate(context, props, cb),
-      scale: (props: ScaleProps, cb: () => void): void =>
-        scale(context, props, cb),
       background: (props: BackgroundProps) => background(context, props),
       center: { x: width / 2, y: height / 2 },
       centerOf,

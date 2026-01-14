@@ -2,6 +2,13 @@
 export { createVisualisation, logMessage, midiVisual } from "./core";
 export { default as Animatable } from "./core/Animatable";
 export type {
+  CircleProps,
+  LineProps,
+  RectProps,
+  TransformOrigin,
+  TransformProps,
+} from "./core/drawMethods";
+export type {
   AnimationSegment,
   AnimationSegmentOptions,
   AppSettings,
