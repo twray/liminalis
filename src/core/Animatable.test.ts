@@ -1228,3 +1228,164 @@ describe("Delay with At Warning", () => {
     });
   });
 });
+
+describe("Missing Duration Warning", () => {
+  describe("console.warn behavior", () => {
+    it("warns when segments have no explicit duration or endTime", () => {
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+      const anim = new Animatable({ radius: 0 }, 0);
+      anim.animateTo({ radius: 100 }); // No duration or endTime
+
+      anim.validate();
+
+      expect(warnSpy).toHaveBeenCalledOnce();
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining(
+          "1 animation segment(s) have no explicit 'duration' or 'endTime'"
+        )
+      );
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining("Using default duration of 500ms")
+      );
+
+      warnSpy.mockRestore();
+    });
+
+    it("warns with correct count for multiple segments without duration", () => {
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+      const anim = new Animatable({ radius: 0 }, 0);
+      anim
+        .animateTo({ radius: 100 }) // No duration
+        .animateTo({ radius: 50 }) // No duration
+        .animateTo({ radius: 0 }); // No duration
+
+      anim.validate();
+
+      expect(warnSpy).toHaveBeenCalledOnce();
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining("3 animation segment(s)")
+      );
+
+      warnSpy.mockRestore();
+    });
+
+    it("does not warn when all segments have explicit duration", () => {
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+      const anim = new Animatable({ radius: 0 }, 0);
+      anim
+        .animateTo({ radius: 100 }, { duration: 500 })
+        .animateTo({ radius: 0 }, { duration: 300 });
+
+      anim.validate();
+
+      expect(warnSpy).not.toHaveBeenCalled();
+
+      warnSpy.mockRestore();
+    });
+
+    it("does not warn when all segments have explicit endTime", () => {
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+      const anim = new Animatable({ radius: 0 }, 0);
+      anim
+        .animateTo({ radius: 100 }, { at: 0, endTime: 500 })
+        .animateTo({ radius: 0 }, { at: 500, endTime: 1000 });
+
+      anim.validate();
+
+      expect(warnSpy).not.toHaveBeenCalled();
+
+      warnSpy.mockRestore();
+    });
+
+    it("does not warn when duration is applied via withOptions", () => {
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+      const anim = new Animatable({ radius: 0 }, 0);
+      anim
+        .withOptions({ duration: 500 })
+        .animateTo({ radius: 100 })
+        .animateTo({ radius: 0 });
+
+      anim.validate();
+
+      expect(warnSpy).not.toHaveBeenCalled();
+
+      warnSpy.mockRestore();
+    });
+
+    it("warns only once per instance even with multiple validate calls", () => {
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+      const anim = new Animatable({ radius: 0 }, 0);
+      anim.animateTo({ radius: 100 }); // No duration
+
+      anim.validate();
+      anim.validate();
+      anim.validate();
+
+      expect(warnSpy).toHaveBeenCalledOnce();
+
+      warnSpy.mockRestore();
+    });
+
+    it("warns only once per instance even after clearSegments", () => {
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+      const anim = new Animatable({ radius: 0 }, 0);
+      anim.animateTo({ radius: 100 }); // No duration
+
+      anim.validate();
+
+      // Clear and rebuild with same pattern
+      anim.clearSegments();
+      anim.animateTo({ radius: 50 }); // No duration
+
+      anim.validate();
+
+      // Should still only have warned once
+      expect(warnSpy).toHaveBeenCalledOnce();
+
+      warnSpy.mockRestore();
+    });
+
+    it("only counts segments without duration when some have it", () => {
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+      const anim = new Animatable({ radius: 0 }, 0);
+      anim
+        .animateTo({ radius: 100 }, { duration: 500 }) // Has duration
+        .animateTo({ radius: 50 }) // No duration
+        .animateTo({ radius: 0 }, { endTime: 2000 }); // Has endTime
+
+      anim.validate();
+
+      expect(warnSpy).toHaveBeenCalledOnce();
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining("1 animation segment(s)")
+      );
+
+      warnSpy.mockRestore();
+    });
+
+    it("uses default duration of 500ms for segments without explicit duration", () => {
+      const anim = new Animatable({ radius: 0 }, 0);
+      anim.animateTo({ radius: 100 }); // No duration - should default to 500ms
+
+      // At 0ms, animation hasn't started
+      expect(anim.getCurrentProps(0).radius).toBe(0);
+
+      // At 250ms, should be at 50% (halfway through 500ms default)
+      expect(anim.getCurrentProps(250).radius).toBe(50);
+
+      // At 500ms, should be complete
+      expect(anim.getCurrentProps(500).radius).toBe(100);
+
+      // After 500ms, should remain at target
+      expect(anim.getCurrentProps(1000).radius).toBe(100);
+    });
+  });
+});

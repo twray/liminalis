@@ -11,6 +11,7 @@ interface Segment<TProps> {
 
 class Animatable<TProps extends object> {
   static #DEFAULT_EASING = (n: number): number => n;
+  static #DEFAULT_DURATION = 500;
 
   static #PROPERTY_DEFAULTS: Record<string, number> = {
     opacity: 1,
@@ -25,6 +26,7 @@ class Animatable<TProps extends object> {
   #appliedOptions: Partial<AnimationSegmentOptions> = {};
   #propsSnapshot: Partial<TProps> | null = null;
   #hasWarnedAboutDelayWithAt = false;
+  #hasWarnedAboutMissingDuration = false;
 
   constructor(props: TProps, firstInvokedTime: number) {
     this.#initialProps = { ...props };
@@ -101,27 +103,39 @@ class Animatable<TProps extends object> {
       if (at !== undefined) {
         if (at === null) {
           startTime = null;
-          segmentDuration = duration ?? 0;
+          segmentDuration =
+            duration ??
+            (endTime !== undefined ? endTime : Animatable.#DEFAULT_DURATION);
         } else {
           const atMs = eventTimeToMs(at);
           startTime = atMs + delay;
           segmentDuration =
-            duration ?? (endTime !== undefined ? endTime - atMs : 0);
+            duration ??
+            (endTime !== undefined
+              ? endTime - atMs
+              : Animatable.#DEFAULT_DURATION);
         }
       } else {
         // Sequential
         if (i === 0) {
           startTime = delay;
-          segmentDuration = duration ?? (endTime !== undefined ? endTime : 0);
+          segmentDuration =
+            duration ??
+            (endTime !== undefined ? endTime : Animatable.#DEFAULT_DURATION);
         } else {
           const prev = timeline[i - 1];
           if (prev.startTime === null) {
             startTime = null;
-            segmentDuration = duration ?? 0;
+            segmentDuration =
+              duration ??
+              (endTime !== undefined ? endTime : Animatable.#DEFAULT_DURATION);
           } else {
             startTime = cumulativeEnd + delay;
             segmentDuration =
-              duration ?? (endTime !== undefined ? endTime - startTime : 0);
+              duration ??
+              (endTime !== undefined
+                ? endTime - startTime
+                : Animatable.#DEFAULT_DURATION);
           }
         }
       }
@@ -328,6 +342,7 @@ class Animatable<TProps extends object> {
    */
   validate(): void {
     this.#validateDelayWithAtUsage();
+    this.#validateMissingDuration();
   }
 
   #validateDelayWithAtUsage(): void {
@@ -364,6 +379,29 @@ class Animatable<TProps extends object> {
           `This may result in unexpected timing. Consider either:\n` +
           `  1. Apply 'delay' to all segments using withOptions({ delay: ... })\n` +
           `  2. Explicitly set 'delay' on each segment that uses 'at`
+      );
+    }
+  }
+
+  #validateMissingDuration(): void {
+    // Only warn once per Animatable instance
+    if (this.#hasWarnedAboutMissingDuration) return;
+
+    // Check if duration was applied globally via withOptions
+    const globalDurationApplied = this.#appliedOptions.duration !== undefined;
+    if (globalDurationApplied) return;
+
+    // Find segments without explicit duration or endTime
+    const segmentsWithoutDuration = this.#segments.filter(
+      (s) => s.options.duration === undefined && s.options.endTime === undefined
+    );
+
+    if (segmentsWithoutDuration.length > 0) {
+      this.#hasWarnedAboutMissingDuration = true;
+      console.warn(
+        `[Animatable] Warning: ${segmentsWithoutDuration.length} animation segment(s) have no explicit 'duration' or 'endTime'. ` +
+          `Using default duration of ${Animatable.#DEFAULT_DURATION}ms. ` +
+          `Consider specifying duration explicitly or using withOptions({ duration: ... }).`
       );
     }
   }
