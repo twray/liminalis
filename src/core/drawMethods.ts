@@ -1,11 +1,10 @@
-import { color as colorUtil } from "canvas-sketch-util";
 import type {
   Corners,
   Dimensions2D,
   PartialDrawStyles,
   Point2D,
 } from "../types";
-import { isCorners, isNormalizedFloat } from "../util";
+import { isCorners } from "../util";
 import type Animatable from "./Animatable";
 import AnimatableRegistry from "./AnimatableRegistry";
 
@@ -33,6 +32,8 @@ export interface BackgroundProps {
 
 export type TransformOrigin = "center" | Point2D;
 
+export type StrokeAlignment = "center" | "inside" | "outside";
+
 export interface TransformProps {
   rotate?: number;
   rotateOrigin?: TransformOrigin;
@@ -50,6 +51,7 @@ export interface CircleProps
   cx?: number;
   cy?: number;
   radius: number;
+  strokeAlignment?: StrokeAlignment;
 }
 
 export interface LineProps extends StrokeStyles, WithOpacity, TransformProps {
@@ -65,6 +67,7 @@ export interface RectProps
     WithOpacity,
     TransformProps {
   cornerRadius?: Corners | number;
+  strokeAlignment?: StrokeAlignment;
 }
 
 export interface DrawMethods {
@@ -78,26 +81,6 @@ export interface DrawMethods {
   circle: (props: CircleProps) => Animatable<CircleProps>;
   line: (props: LineProps) => Animatable<LineProps>;
 }
-
-const getColorWithOpacity = (color: string, opacity: number) => {
-  let validatedOpacity = 1;
-
-  if (color === "transparent") return color;
-
-  if (!isNormalizedFloat(opacity)) {
-    console.warn("Opacity value must be between 0 and 1");
-  } else {
-    validatedOpacity = opacity;
-  }
-
-  try {
-    const [r, g, b, a] = colorUtil.parse(color).rgba;
-    return `rgba(${r}, ${g}, ${b}, ${a < 1 ? a : validatedOpacity})`;
-  } catch {
-    console.warn(`Invalid color: ${color}`);
-    return DEFAULT_STROKE_STYLE;
-  }
-};
 
 const background = (
   context: CanvasRenderingContext2D,
@@ -178,6 +161,42 @@ const renderWithTransform = (
   context.restore();
 };
 
+const line = (context: CanvasRenderingContext2D, props: LineProps) => {
+  const {
+    start: { x: startX = 0, y: startY = 0 },
+    end: { x: endX = 0, y: endY = 0 },
+    strokeStyle = DEFAULT_STROKE_STYLE,
+    strokeWidth = DEFAULT_STROKE_WIDTH,
+    opacity = 1,
+  } = props;
+
+  // Bounds for transform origin (bounding box of the line)
+  const minX = Math.min(startX, endX);
+  const minY = Math.min(startY, endY);
+  const bounds = {
+    x: minX,
+    y: minY,
+    width: Math.abs(endX - startX),
+    height: Math.abs(endY - startY),
+  };
+
+  renderWithTransform(context, props, bounds, () => {
+    context.save();
+
+    context.globalAlpha = opacity;
+    context.strokeStyle = strokeStyle;
+    context.lineWidth = strokeWidth;
+
+    context.beginPath();
+    context.moveTo(startX, startY);
+    context.lineTo(endX, endY);
+
+    context.stroke();
+
+    context.restore();
+  });
+};
+
 const circle = (context: CanvasRenderingContext2D, props: CircleProps) => {
   const {
     cx = 0,
@@ -186,6 +205,7 @@ const circle = (context: CanvasRenderingContext2D, props: CircleProps) => {
     fillStyle = DEFAULT_FILL_STYLE,
     strokeStyle = DEFAULT_STROKE_STYLE,
     strokeWidth = DEFAULT_STROKE_WIDTH,
+    strokeAlignment = "center",
     opacity = 1,
   } = props;
 
@@ -202,15 +222,38 @@ const circle = (context: CanvasRenderingContext2D, props: CircleProps) => {
   renderWithTransform(context, props, bounds, () => {
     context.save();
 
-    context.fillStyle = getColorWithOpacity(fillStyle, opacity);
-    context.strokeStyle = getColorWithOpacity(strokeStyle, opacity);
-    context.lineWidth = strokeWidth;
+    context.globalAlpha = opacity;
 
-    context.beginPath();
-    context.arc(cx, cy, validatedRadius, 0, Math.PI * 2);
+    // Draw fill
+    if (fillStyle !== "transparent") {
+      context.fillStyle = fillStyle;
+      context.beginPath();
+      context.arc(cx, cy, validatedRadius, 0, Math.PI * 2);
+      context.fill();
+    }
 
-    context.fill();
-    context.stroke();
+    // Draw stroke with alignment
+    if (strokeStyle !== "transparent" && strokeWidth > 0) {
+      context.strokeStyle = strokeStyle;
+      context.lineWidth = strokeWidth;
+
+      let strokeRadius = validatedRadius;
+
+      if (strokeAlignment === "inside") {
+        // Inset the stroke by half its width
+        strokeRadius = validatedRadius - strokeWidth / 2;
+      } else if (strokeAlignment === "outside") {
+        // Outset the stroke by half its width
+        strokeRadius = validatedRadius + strokeWidth / 2;
+      }
+      // For "center", use the original radius (default canvas behavior)
+
+      if (strokeRadius > 0) {
+        context.beginPath();
+        context.arc(cx, cy, strokeRadius, 0, Math.PI * 2);
+        context.stroke();
+      }
+    }
 
     context.restore();
   });
@@ -222,9 +265,10 @@ const rect = (context: CanvasRenderingContext2D, props: RectProps) => {
     y = 0,
     width,
     height,
-    fillStyle: fillColor = DEFAULT_FILL_STYLE,
-    strokeStyle: strokeColor = DEFAULT_STROKE_STYLE,
+    fillStyle = DEFAULT_FILL_STYLE,
+    strokeStyle = DEFAULT_STROKE_STYLE,
     strokeWidth = DEFAULT_STROKE_WIDTH,
+    strokeAlignment = "center",
     opacity = 1,
     cornerRadius = 0,
   } = props;
@@ -247,50 +291,55 @@ const rect = (context: CanvasRenderingContext2D, props: RectProps) => {
   renderWithTransform(context, props, bounds, () => {
     context.save();
 
-    context.fillStyle = getColorWithOpacity(fillColor, opacity);
-    context.strokeStyle = getColorWithOpacity(strokeColor, opacity);
-    context.lineWidth = strokeWidth;
+    context.globalAlpha = opacity;
 
-    context.beginPath();
-    context.roundRect(x, y, width, height, cornerRadiusForRoundRect);
+    // Draw fill
+    if (fillStyle !== "transparent") {
+      context.fillStyle = fillStyle;
+      context.beginPath();
+      context.roundRect(x, y, width, height, cornerRadiusForRoundRect);
+      context.fill();
+    }
 
-    context.fill();
-    context.stroke();
+    // Draw stroke with alignment
+    if (strokeStyle !== "transparent" && strokeWidth > 0) {
+      context.strokeStyle = strokeStyle;
+      context.lineWidth = strokeWidth;
 
-    context.restore();
-  });
-};
+      let strokeX = x;
+      let strokeY = y;
+      let strokeWidth_dim = width;
+      let strokeHeight = height;
 
-const line = (context: CanvasRenderingContext2D, props: LineProps) => {
-  const {
-    start: { x: startX = 0, y: startY = 0 },
-    end: { x: endX = 0, y: endY = 0 },
-    strokeStyle: strokeColor = DEFAULT_STROKE_STYLE,
-    strokeWidth = DEFAULT_STROKE_WIDTH,
-    opacity = 1,
-  } = props;
+      if (strokeAlignment === "inside") {
+        // Inset the stroke by half its width
+        const inset = strokeWidth / 2;
+        strokeX = x + inset;
+        strokeY = y + inset;
+        strokeWidth_dim = width - strokeWidth;
+        strokeHeight = height - strokeWidth;
+      } else if (strokeAlignment === "outside") {
+        // Outset the stroke by half its width
+        const outset = strokeWidth / 2;
+        strokeX = x - outset;
+        strokeY = y - outset;
+        strokeWidth_dim = width + strokeWidth;
+        strokeHeight = height + strokeWidth;
+      }
+      // For "center", use the original bounds (default canvas behavior)
 
-  // Bounds for transform origin (bounding box of the line)
-  const minX = Math.min(startX, endX);
-  const minY = Math.min(startY, endY);
-  const bounds = {
-    x: minX,
-    y: minY,
-    width: Math.abs(endX - startX),
-    height: Math.abs(endY - startY),
-  };
-
-  renderWithTransform(context, props, bounds, () => {
-    context.save();
-
-    context.strokeStyle = getColorWithOpacity(strokeColor, opacity);
-    context.lineWidth = strokeWidth;
-
-    context.beginPath();
-    context.moveTo(startX, startY);
-    context.lineTo(endX, endY);
-
-    context.stroke();
+      if (strokeWidth_dim > 0 && strokeHeight > 0) {
+        context.beginPath();
+        context.roundRect(
+          strokeX,
+          strokeY,
+          strokeWidth_dim,
+          strokeHeight,
+          cornerRadiusForRoundRect
+        );
+        context.stroke();
+      }
+    }
 
     context.restore();
   });

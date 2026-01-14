@@ -379,4 +379,199 @@ describe("drawMethods transform props", () => {
       expect(mockContext.translate).toHaveBeenCalledWith(-50, -50);
     });
   });
+
+  describe("strokeAlignment for rect", () => {
+    it("draws stroke at original bounds when strokeAlignment is 'center' (default)", async () => {
+      const { createDrawContext } = await import("./drawMethods");
+      const drawContext = createDrawContext();
+
+      drawContext.executeDrawCallback(
+        (d) => {
+          d.rect({
+            x: 100,
+            y: 100,
+            width: 200,
+            height: 100,
+            strokeWidth: 10,
+            strokeAlignment: "center",
+          });
+        },
+        mockContext,
+        800,
+        600,
+        0
+      );
+
+      // Stroke should use original bounds (100, 100, 200, 100)
+      expect(mockContext.roundRect).toHaveBeenCalledWith(100, 100, 200, 100, 0);
+    });
+
+    it("draws stroke inset when strokeAlignment is 'inside'", async () => {
+      const { createDrawContext } = await import("./drawMethods");
+      const drawContext = createDrawContext();
+
+      drawContext.executeDrawCallback(
+        (d) => {
+          d.rect({
+            x: 100,
+            y: 100,
+            width: 200,
+            height: 100,
+            fillStyle: "#333",
+            strokeWidth: 10,
+            strokeAlignment: "inside",
+          });
+        },
+        mockContext,
+        800,
+        600,
+        0
+      );
+
+      // Fill uses original bounds
+      expect(mockContext.roundRect).toHaveBeenCalledWith(100, 100, 200, 100, 0);
+      // Stroke should be inset by strokeWidth/2 = 5
+      // x+5, y+5, width-10, height-10
+      expect(mockContext.roundRect).toHaveBeenCalledWith(105, 105, 190, 90, 0);
+    });
+
+    it("draws stroke outset when strokeAlignment is 'outside'", async () => {
+      const { createDrawContext } = await import("./drawMethods");
+      const drawContext = createDrawContext();
+
+      drawContext.executeDrawCallback(
+        (d) => {
+          d.rect({
+            x: 100,
+            y: 100,
+            width: 200,
+            height: 100,
+            fillStyle: "#333",
+            strokeWidth: 10,
+            strokeAlignment: "outside",
+          });
+        },
+        mockContext,
+        800,
+        600,
+        0
+      );
+
+      // Fill uses original bounds
+      expect(mockContext.roundRect).toHaveBeenCalledWith(100, 100, 200, 100, 0);
+      // Stroke should be outset by strokeWidth/2 = 5
+      // x-5, y-5, width+10, height+10
+      expect(mockContext.roundRect).toHaveBeenCalledWith(95, 95, 210, 110, 0);
+    });
+  });
+
+  describe("strokeAlignment for circle", () => {
+    it("draws stroke at original radius when strokeAlignment is 'center' (default)", async () => {
+      const { createDrawContext } = await import("./drawMethods");
+      const drawContext = createDrawContext();
+
+      drawContext.executeDrawCallback(
+        (d) => {
+          d.circle({
+            cx: 200,
+            cy: 200,
+            radius: 50,
+            strokeWidth: 10,
+            strokeAlignment: "center",
+          });
+        },
+        mockContext,
+        800,
+        600,
+        0
+      );
+
+      // Both fill and stroke should use original radius (50)
+      expect(mockContext.arc).toHaveBeenCalledWith(
+        200,
+        200,
+        50,
+        0,
+        Math.PI * 2
+      );
+    });
+
+    it("draws stroke with reduced radius when strokeAlignment is 'inside'", async () => {
+      const { createDrawContext } = await import("./drawMethods");
+      const drawContext = createDrawContext();
+
+      drawContext.executeDrawCallback(
+        (d) => {
+          d.circle({
+            cx: 200,
+            cy: 200,
+            radius: 50,
+            fillStyle: "#333",
+            strokeWidth: 10,
+            strokeAlignment: "inside",
+          });
+        },
+        mockContext,
+        800,
+        600,
+        0
+      );
+
+      // Fill uses original radius (50)
+      expect(mockContext.arc).toHaveBeenCalledWith(
+        200,
+        200,
+        50,
+        0,
+        Math.PI * 2
+      );
+      // Stroke should use radius - strokeWidth/2 = 50 - 5 = 45
+      expect(mockContext.arc).toHaveBeenCalledWith(
+        200,
+        200,
+        45,
+        0,
+        Math.PI * 2
+      );
+    });
+
+    it("draws stroke with increased radius when strokeAlignment is 'outside'", async () => {
+      const { createDrawContext } = await import("./drawMethods");
+      const drawContext = createDrawContext();
+
+      drawContext.executeDrawCallback(
+        (d) => {
+          d.circle({
+            cx: 200,
+            cy: 200,
+            radius: 50,
+            fillStyle: "#333",
+            strokeWidth: 10,
+            strokeAlignment: "outside",
+          });
+        },
+        mockContext,
+        800,
+        600,
+        0
+      );
+
+      // Fill uses original radius (50)
+      expect(mockContext.arc).toHaveBeenCalledWith(
+        200,
+        200,
+        50,
+        0,
+        Math.PI * 2
+      );
+      // Stroke should use radius + strokeWidth/2 = 50 + 5 = 55
+      expect(mockContext.arc).toHaveBeenCalledWith(
+        200,
+        200,
+        55,
+        0,
+        Math.PI * 2
+      );
+    });
+  });
 });

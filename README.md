@@ -1237,7 +1237,7 @@ background({ color: "#F7F2E7" });
 background({ color: "beige" });
 ```
 
-#### `rect({ x?, y?, width, height, fillStyle?, strokeStyle?, cornerRadius?, opacity? })`
+#### `rect({ x?, y?, width, height, fillStyle?, strokeStyle?, cornerRadius?, opacity?, strokeAlignment? })`
 
 ```typescript
 rect({
@@ -1250,10 +1250,11 @@ rect({
   strokeStyle: "#666",
   strokeWidth: 3,
   opacity: 0.8,
+  strokeAlignment: "center", // "center" (default), "inside", or "outside"
 });
 ```
 
-#### `circle({ cx, cy, radius, fillStyle?, strokeStyle?, strokeWidth?, opacity? })`
+#### `circle({ cx, cy, radius, fillStyle?, strokeStyle?, strokeWidth?, opacity?, strokeAlignment? })`
 
 ```typescript
 circle({
@@ -1264,6 +1265,7 @@ circle({
   strokeStyle: "#666",
   strokeWidth: 2,
   opacity: 1,
+  strokeAlignment: "center", // "center" (default), "inside", or "outside"
 });
 ```
 
@@ -1377,6 +1379,90 @@ rect({
   rotate: 30,
   scale: 1.2,
   rotateOrigin: { x: 50, y: 50 }, // Rotate around local center
+});
+```
+
+#### Stroke Alignment
+
+The `strokeAlignment` property controls where the stroke is drawn relative to the shape's path. This matches the behavior of professional design tools like Figma and Sketch.
+
+**Options:**
+
+| Value       | Description                                                        |
+| ----------- | ------------------------------------------------------------------ |
+| `"center"`  | Stroke is centered on the path (default, standard canvas behavior) |
+| `"inside"`  | Stroke is drawn entirely inside the shape bounds                   |
+| `"outside"` | Stroke is drawn entirely outside the shape bounds                  |
+
+**Usage:**
+
+```typescript
+// Default: stroke centered on the path
+rect({ x: 100, y: 100, width: 200, height: 100, strokeWidth: 10 });
+
+// Stroke inside the bounds
+rect({
+  x: 100,
+  y: 100,
+  width: 200,
+  height: 100,
+  strokeWidth: 10,
+  strokeAlignment: "inside",
+});
+
+// Stroke outside the bounds
+rect({
+  x: 100,
+  y: 100,
+  width: 200,
+  height: 100,
+  strokeWidth: 10,
+  strokeAlignment: "outside",
+});
+
+// Works the same for circles
+circle({
+  cx: 200,
+  cy: 200,
+  radius: 50,
+  strokeWidth: 10,
+  strokeAlignment: "inside",
+});
+```
+
+**⚠️ Transparency Caveat:**
+
+When using semi-transparent shapes (via the `opacity` property) with strokes, be mindful of how `strokeAlignment` affects the visual result:
+
+- **`"center"` (default):** The stroke overlaps the fill by half its width. With transparency, this creates a visible "double opacity" effect where the stroke and fill overlap, making the edge appear darker than intended.
+
+- **`"inside"` or `"outside"`:** The stroke and fill do not overlap, so transparency renders uniformly across the entire shape.
+
+**Recommended:** If you're using transparency (`opacity < 1`) with strokes, prefer `strokeAlignment: "inside"` or `strokeAlignment: "outside"` to avoid the double-opacity overlap effect:
+
+```typescript
+// ❌ May produce unexpected darker edges with transparency
+rect({
+  x: 100,
+  y: 100,
+  width: 200,
+  height: 100,
+  fillStyle: "#333",
+  strokeWidth: 10,
+  opacity: 0.5,
+  strokeAlignment: "center", // Stroke overlaps fill
+});
+
+// ✅ Clean transparency - stroke doesn't overlap fill
+rect({
+  x: 100,
+  y: 100,
+  width: 200,
+  height: 100,
+  fillStyle: "#333",
+  strokeWidth: 10,
+  opacity: 0.5,
+  strokeAlignment: "inside", // No overlap
 });
 ```
 
