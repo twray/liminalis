@@ -4,14 +4,21 @@ import {
 } from "../types/animatable";
 import { eventTimeToMs } from "../util";
 
-const DEFAULT_EASING = (n: number): number => n;
-
 interface Segment<TProps> {
   targetProps: PartialNumericProps<TProps>;
   options: AnimationSegmentOptions;
 }
 
 class Animatable<TProps extends object> {
+  static #DEFAULT_EASING = (n: number): number => n;
+
+  static #PROPERTY_DEFAULTS: Record<string, number> = {
+    opacity: 1,
+    scale: 1,
+    scaleX: 1,
+    scaleY: 1,
+  };
+
   #initialProps: TProps;
   #firstInvokedTime: number;
   #segments: Segment<TProps>[] = [];
@@ -236,7 +243,9 @@ class Animatable<TProps extends object> {
     baseProps: TProps
   ): number {
     // Start with base value (which already includes snapshot if available)
-    let value = (baseProps as any)[key] ?? 0;
+    // Use property-specific defaults for certain properties (e.g., opacity, scale default to 1)
+    const defaultValue = Animatable.#PROPERTY_DEFAULTS[key] ?? 0;
+    let value = (baseProps as any)[key] ?? defaultValue;
 
     // If we have a snapshot, it represents the "ground truth" at the moment it was captured.
     // For segments that supersede other segments, we should use the snapshot value
@@ -280,6 +289,7 @@ class Animatable<TProps extends object> {
           startTime,
           baseProps
         );
+
         const targetValue = (entry.segment.targetProps as any)[key] as number;
         const elapsed = atTime - startTime;
         const rawProgress =
@@ -299,7 +309,7 @@ class Animatable<TProps extends object> {
     rawProgress: number,
     options: AnimationSegmentOptions
   ): number {
-    const easing = options.easing ?? DEFAULT_EASING;
+    const easing = options.easing ?? Animatable.#DEFAULT_EASING;
     let progress = easing(rawProgress);
     if (options.reverse) {
       progress = 1 - progress;

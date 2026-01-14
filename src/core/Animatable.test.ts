@@ -84,10 +84,6 @@ describe("Animatable", () => {
   });
 });
 
-// =============================================================================
-// Single Animation Segment
-// =============================================================================
-
 describe("Single Animation Segment", () => {
   describe("basic interpolation", () => {
     it("animates from initial to target over duration", () => {
@@ -102,23 +98,6 @@ describe("Single Animation Segment", () => {
       expect(anim.getCurrentProps(500).radius).toBe(75);
       expect(anim.getCurrentProps(750).radius).toBe(87.5);
       expect(anim.getCurrentProps(1000).radius).toBe(100);
-    });
-
-    it("uses 0 as default for properties not in initial props", () => {
-      // Per spec: "we can assume that the default initial value of that
-      // property would be 0"
-      const anim = new Animatable<
-        Partial<{
-          width: number;
-          height: number;
-          x: number;
-        }>
-      >({ width: 200, height: 200 }, 0);
-      anim.animateTo({ x: 20 }, { duration: 1000 });
-
-      expect(anim.getCurrentProps(0).x).toBe(0);
-      expect(anim.getCurrentProps(500).x).toBe(10);
-      expect(anim.getCurrentProps(1000).x).toBe(20);
     });
 
     it("clamps progress before animation starts", () => {
@@ -182,6 +161,73 @@ describe("Single Animation Segment", () => {
       expect(anim.getCurrentProps(0).x).toBe(100);
       expect(anim.getCurrentProps(100).x).toBe(100);
     });
+  });
+});
+
+describe("Handling of Default Values", () => {
+  it("uses 0 as default for properties not in initial props", () => {
+    const anim = new Animatable<
+      Partial<{
+        width: number;
+        height: number;
+        x: number;
+      }>
+    >({ width: 200, height: 200 }, 0);
+    anim.animateTo({ x: 20 }, { duration: 1000 });
+
+    expect(anim.getCurrentProps(0).x).toBe(0);
+    expect(anim.getCurrentProps(500).x).toBe(10);
+    expect(anim.getCurrentProps(1000).x).toBe(20);
+  });
+
+  it("opacity animates from a default of 1 if not specified in initial props", () => {
+    const anim = new Animatable<
+      Partial<{
+        width: number;
+        height: number;
+        opacity: number;
+      }>
+    >({ width: 200, height: 200 }, 0);
+    anim.animateTo({ opacity: 0.5 }, { duration: 1000 });
+
+    expect(anim.getCurrentProps(0).opacity).toBe(1);
+    expect(anim.getCurrentProps(500).opacity).toBe(0.75);
+    expect(anim.getCurrentProps(1000).opacity).toBe(0.5);
+  });
+
+  it("scale property animates from a default of 1 if not specified in initial props", () => {
+    const anim = new Animatable<
+      Partial<{
+        width: number;
+        height: number;
+        scale: number;
+      }>
+    >({ width: 200, height: 200 }, 0);
+    anim.animateTo({ scale: 0.5 }, { duration: 1000 });
+
+    expect(anim.getCurrentProps(0).scale).toBe(1);
+    expect(anim.getCurrentProps(500).scale).toBe(0.75);
+    expect(anim.getCurrentProps(1000).scale).toBe(0.5);
+  });
+
+  it("scaleX and scaleY properties animate from a default of 1 if not specified in initial props", () => {
+    const anim = new Animatable<
+      Partial<{
+        width: number;
+        height: number;
+        scaleX: number;
+        scaleY: number;
+      }>
+    >({ width: 200, height: 200 }, 0);
+    anim.animateTo({ scaleX: 0.5, scaleY: 0.5 }, { duration: 1000 });
+
+    expect(anim.getCurrentProps(0).scaleX).toBe(1);
+    expect(anim.getCurrentProps(500).scaleX).toBe(0.75);
+    expect(anim.getCurrentProps(1000).scaleX).toBe(0.5);
+
+    expect(anim.getCurrentProps(0).scaleY).toBe(1);
+    expect(anim.getCurrentProps(500).scaleY).toBe(0.75);
+    expect(anim.getCurrentProps(1000).scaleY).toBe(0.5);
   });
 });
 
@@ -363,10 +409,6 @@ describe("Out-of-Order Timelines", () => {
     });
   });
 });
-
-// =============================================================================
-// Overlapping Animations
-// =============================================================================
 
 describe("Overlapping Animations", () => {
   describe("superseding behavior", () => {
