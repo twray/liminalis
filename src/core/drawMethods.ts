@@ -6,7 +6,8 @@ import type {
   Point2D,
 } from "../types";
 import { isCorners, isNormalizedFloat } from "../util";
-import Animatable from "./Animatable";
+import type Animatable from "./Animatable";
+import AnimatableRegistry from "./AnimatableRegistry";
 
 const DEFAULT_BACKGROUND_COLOR = "#fff";
 const DEFAULT_FILL_STYLE = "transparent";
@@ -163,6 +164,9 @@ const rect = (context: CanvasRenderingContext2D, props: RectProps) => {
     cornerRadius = 0,
   } = props;
 
+  // If width or height is zero, or rounds to zero, then render nothing
+  if (width < 0.5 || height < 0.5) return;
+
   const cornerRadiusForRoundRect = isCorners(cornerRadius)
     ? [
         cornerRadius.topLeft,
@@ -277,21 +281,6 @@ const scale = (
   }
 };
 
-interface PendingAnimatable {
-  animatable: Animatable<any>;
-  mergedStyles: any;
-  renderFn: (props: any) => void;
-}
-
-/**
- * Entry in the shape registry.
- * Stores the Animatable instance directly, preserving all state across frames.
- */
-interface ShapeRegistryEntry {
-  animatable: Animatable<any>;
-  lastSeenFrame: number;
-}
-
 /**
  * Draw context with encapsulated state for shape timestamp tracking
  */
@@ -305,19 +294,8 @@ export interface DrawContext {
   ) => void;
 }
 
-/**
- * Creates a draw context with its own encapsulated shape registry.
- *
- * Each consumer (VisualisationAnimationLoopHandler, MidiVisual, etc.) should
- * create its own draw context to maintain isolated state.
- *
- * The registry stores Animatable instances directly, preserving all animation
- * state across frames. Each frame, segments are cleared and rebuilt (since
- * animations may be defined dynamically), but internal state is preserved.
- */
 export const createDrawContext = (): DrawContext => {
-  const shapeRegistry = new Map<string, ShapeRegistryEntry>();
-  let frameCount = 0;
+  const registry = new AnimatableRegistry();
 
   const executeDrawCallback = (
     callback: (methods: DrawMethods) => void,
@@ -326,42 +304,7 @@ export const createDrawContext = (): DrawContext => {
     height: number,
     timeInMs: number
   ): void => {
-    frameCount++;
-    let callIndex = 0;
-
-    /**
-     * Get or create the Animatable for a shape from the registry.
-     * If existing, clears segments for fresh definition this frame.
-     */
-    const getOrCreateAnimatable = <T extends Record<string, any>>(
-      shapeType: string,
-      props: T
-    ): Animatable<T> => {
-      const shapeId = `${shapeType}:${callIndex++}`;
-
-      const existing = shapeRegistry.get(shapeId);
-      if (existing) {
-        existing.lastSeenFrame = frameCount;
-        // Capture current animated state before rebuilding segments
-        // This enables smooth transitions when re-attacking during release
-        existing.animatable.captureCurrentProps(timeInMs);
-        // Update props and clear segments for fresh definition this frame
-        existing.animatable.updateInitialProps(props);
-        existing.animatable.clearSegments();
-        return existing.animatable as Animatable<T>;
-      }
-
-      // Create new Animatable
-      const animatable = new Animatable<T>(props, timeInMs);
-      shapeRegistry.set(shapeId, {
-        animatable,
-        lastSeenFrame: frameCount,
-      });
-      return animatable;
-    };
-
-    // Queue of shapes pending render
-    const pendingAnimatable: PendingAnimatable[] = [];
+    registry.beginFrame(timeInMs);
 
     let appliedStyles: PartialDrawStyles = {
       fillStyle: DEFAULT_FILL_STYLE,
@@ -391,26 +334,6 @@ export const createDrawContext = (): DrawContext => {
       }
     };
 
-    /**
-     * Queue a shape for deferred rendering and return its Animatable
-     */
-    const queueAnimatableForRendering = <T extends PartialDrawStyles>(
-      shapeType: string,
-      props: T,
-      renderFn: (props: T) => void
-    ): Animatable<T> => {
-      const mergedStyles = mergeStyles(props);
-      const animatable = getOrCreateAnimatable(shapeType, props);
-
-      pendingAnimatable.push({
-        animatable,
-        mergedStyles,
-        renderFn: renderFn as (props: any) => void,
-      });
-
-      return animatable;
-    };
-
     // Build the draw methods
     const methods: DrawMethods = {
       width,
@@ -426,29 +349,17 @@ export const createDrawContext = (): DrawContext => {
       center: { x: width / 2, y: height / 2 },
       centerOf,
       rect: (props: RectProps) =>
-        queueAnimatableForRendering("rect", props, (p) => rect(context, p)),
+        registry.queue(mergeStyles(props), (p) => rect(context, p)),
       circle: (props: CircleProps) =>
-        queueAnimatableForRendering("circle", props, (p) => circle(context, p)),
+        registry.queue(mergeStyles(props), (p) => circle(context, p)),
       line: (props: LineProps) =>
-        queueAnimatableForRendering("line", props, (p) => line(context, p)),
+        registry.queue(mergeStyles(props), (p) => line(context, p)),
     };
 
     // Execute the user's callback (queues shapes and their .to() animations)
     callback(methods);
-
-    // Flush - render all queued shapes with their animated values
-    for (const pending of pendingAnimatable) {
-      const animatedProps = pending.animatable.getCurrentProps(timeInMs);
-      const finalProps = { ...pending.mergedStyles, ...animatedProps };
-      pending.renderFn(finalProps);
-    }
-
-    // Cleanup stale shapes not seen in this frame
-    for (const [key, entry] of shapeRegistry) {
-      if (entry.lastSeenFrame !== frameCount) {
-        shapeRegistry.delete(key);
-      }
-    }
+    registry.flush();
+    registry.endFrame();
   };
 
   return { executeDrawCallback };

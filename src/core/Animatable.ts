@@ -11,7 +11,7 @@ interface Segment<TProps> {
   options: AnimationSegmentOptions;
 }
 
-class Animatable<TProps extends Record<string, any>> {
+class Animatable<TProps extends object> {
   #initialProps: TProps;
   #firstInvokedTime: number;
   #segments: Segment<TProps>[] = [];
@@ -56,51 +56,8 @@ class Animatable<TProps extends Record<string, any>> {
     return this;
   }
 
-  #validateDelayWithAtUsage(): void {
-    // Only warn once per Animatable instance
-    if (this.#hasWarnedAboutDelayWithAt) return;
-
-    const segmentsWithAt = this.#segments.filter(
-      (s) => s.options.at !== undefined && s.options.at !== null
-    );
-
-    if (segmentsWithAt.length === 0) return;
-
-    // Check if delay was applied globally via withOptions
-    const globalDelayApplied = this.#appliedOptions.delay !== undefined;
-
-    // Find segments with 'at' that have explicit delay
-    const segmentsWithAtAndDelay = segmentsWithAt.filter(
-      (s) => s.options.delay !== undefined
-    );
-
-    // Find segments with 'at' that don't have delay (and no global delay)
-    const segmentsWithAtWithoutDelay = segmentsWithAt.filter(
-      (s) => s.options.delay === undefined && !globalDelayApplied
-    );
-
-    // Warn if there's a mix: some 'at' segments have delay, others don't
-    if (
-      segmentsWithAtAndDelay.length > 0 &&
-      segmentsWithAtWithoutDelay.length > 0
-    ) {
-      this.#hasWarnedAboutDelayWithAt = true;
-      console.warn(
-        `[Animatable] Warning: Animation has segments with 'at' property where some have 'delay' and others do not. ` +
-          `This may result in unexpected timing. Consider either:\n` +
-          `  1. Apply 'delay' to all segments using withOptions({ delay: ... })\n` +
-          `  2. Explicitly set 'delay' on each segment that uses 'at'\n` +
-          `Segments with 'at' and 'delay': ${segmentsWithAtAndDelay.length}, ` +
-          `Segments with 'at' but no 'delay': ${segmentsWithAtWithoutDelay.length}`
-      );
-    }
-  }
-
   getCurrentProps(timeInMs: number): TProps {
     const relativeTime = timeInMs - this.#firstInvokedTime;
-
-    // Validate delay usage with 'at' segments (warns once per instance)
-    this.#validateDelayWithAtUsage();
 
     // Build timeline: calculate effective start times for all segments
     const timeline = this.#buildTimeline();
@@ -352,6 +309,53 @@ class Animatable<TProps extends Record<string, any>> {
 
   reset(): void {
     this.#segments = [];
+  }
+
+  /**
+   * Validate animation configuration and warn about potential issues.
+   * This should be called once after all animations are defined,
+   * typically by AnimatableRegistry before rendering.
+   */
+  validate(): void {
+    this.#validateDelayWithAtUsage();
+  }
+
+  #validateDelayWithAtUsage(): void {
+    // Only warn once per Animatable instance
+    if (this.#hasWarnedAboutDelayWithAt) return;
+
+    const segmentsWithAt = this.#segments.filter(
+      (s) => s.options.at !== undefined && s.options.at !== null
+    );
+
+    if (segmentsWithAt.length === 0) return;
+
+    // Check if delay was applied globally via withOptions
+    const globalDelayApplied = this.#appliedOptions.delay !== undefined;
+
+    // Find segments with 'at' that have explicit delay
+    const segmentsWithAtAndDelay = segmentsWithAt.filter(
+      (s) => s.options.delay !== undefined
+    );
+
+    // Find segments with 'at' that don't have delay (and no global delay)
+    const segmentsWithAtWithoutDelay = segmentsWithAt.filter(
+      (s) => s.options.delay === undefined && !globalDelayApplied
+    );
+
+    // Warn if there's a mix: some 'at' segments have delay, others don't
+    if (
+      segmentsWithAtAndDelay.length > 0 &&
+      segmentsWithAtWithoutDelay.length > 0
+    ) {
+      this.#hasWarnedAboutDelayWithAt = true;
+      console.warn(
+        `[Animatable] Warning: Animation has segments with 'at' property where some have 'delay' and others do not. ` +
+          `This may result in unexpected timing. Consider either:\n` +
+          `  1. Apply 'delay' to all segments using withOptions({ delay: ... })\n` +
+          `  2. Explicitly set 'delay' on each segment that uses 'at`
+      );
+    }
   }
 }
 

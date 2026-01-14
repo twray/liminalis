@@ -1054,7 +1054,7 @@ describe("Delay with At Warning", () => {
         .animateTo({ radius: 100 }, { at: 500, delay: 500, duration: 500 })
         .animateTo({ radius: 0 }, { at: 1000, duration: 500 }); // No delay
 
-      anim.getCurrentProps(0);
+      anim.validate();
 
       expect(warnSpy).toHaveBeenCalledOnce();
       expect(warnSpy).toHaveBeenCalledWith(
@@ -1074,7 +1074,7 @@ describe("Delay with At Warning", () => {
         .animateTo({ radius: 100 }, { at: 500, delay: 500, duration: 500 })
         .animateTo({ radius: 0 }, { at: 1000, delay: 500, duration: 500 });
 
-      anim.getCurrentProps(0);
+      anim.validate();
 
       expect(warnSpy).not.toHaveBeenCalled();
 
@@ -1090,7 +1090,7 @@ describe("Delay with At Warning", () => {
         .animateTo({ radius: 100 }, { at: 500, duration: 500 })
         .animateTo({ radius: 0 }, { at: 1000, duration: 500 });
 
-      anim.getCurrentProps(0);
+      anim.validate();
 
       expect(warnSpy).not.toHaveBeenCalled();
 
@@ -1105,7 +1105,7 @@ describe("Delay with At Warning", () => {
         .animateTo({ radius: 100 }, { delay: 500, duration: 500 })
         .animateTo({ radius: 0 }, { duration: 500 });
 
-      anim.getCurrentProps(0);
+      anim.validate();
 
       expect(warnSpy).not.toHaveBeenCalled();
 
@@ -1120,14 +1120,14 @@ describe("Delay with At Warning", () => {
         .animateTo({ radius: 100 }, { at: 500, duration: 500 })
         .animateTo({ radius: 0 }, { at: 1000, duration: 500 });
 
-      anim.getCurrentProps(0);
+      anim.validate();
 
       expect(warnSpy).not.toHaveBeenCalled();
 
       warnSpy.mockRestore();
     });
 
-    it("warns only once per instance even with multiple getCurrentProps calls", () => {
+    it("warns only once per instance even with multiple validate calls", () => {
       const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 
       const anim = new Animatable({ radius: 0 }, 0);
@@ -1136,9 +1136,9 @@ describe("Delay with At Warning", () => {
         .animateTo({ radius: 0 }, { at: 1000, duration: 500 });
 
       // Call multiple times
-      anim.getCurrentProps(0);
-      anim.getCurrentProps(100);
-      anim.getCurrentProps(200);
+      anim.validate();
+      anim.validate();
+      anim.validate();
 
       expect(warnSpy).toHaveBeenCalledOnce();
 
@@ -1153,7 +1153,7 @@ describe("Delay with At Warning", () => {
         .animateTo({ radius: 100 }, { at: 500, delay: 500, duration: 500 })
         .animateTo({ radius: 0 }, { at: 1000, duration: 500 });
 
-      anim.getCurrentProps(0);
+      anim.validate();
 
       // Clear and rebuild with same problematic pattern
       anim.clearSegments();
@@ -1161,7 +1161,7 @@ describe("Delay with At Warning", () => {
         .animateTo({ radius: 100 }, { at: 500, delay: 500, duration: 500 })
         .animateTo({ radius: 0 }, { at: 1000, duration: 500 });
 
-      anim.getCurrentProps(0);
+      anim.validate();
 
       // Should still only have warned once (per instance lifetime)
       expect(warnSpy).toHaveBeenCalledOnce();
@@ -1177,7 +1177,7 @@ describe("Delay with At Warning", () => {
         .animateTo({ radius: 100 }, { at: 500, delay: 500, duration: 500 })
         .animateTo({ radius: 0 }, { at: null, duration: 500 }); // at: null is ignored
 
-      anim.getCurrentProps(0);
+      anim.validate();
 
       // Should not warn because at: null segments are excluded
       expect(warnSpy).not.toHaveBeenCalled();
