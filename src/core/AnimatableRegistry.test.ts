@@ -44,12 +44,13 @@ describe("AnimatableRegistry", () => {
       registry.endFrame();
 
       // Frame 2: same animation definition at t=500
-      // The snapshot captured x=50, so animation continues from there
+      // Snapshot should not rebase a segment that started at t=0.
+      // The animation should remain on its original timeline.
       registry.beginFrame(500);
       const anim2 = registry.getOrCreate({ x: 0 }, 500);
       anim2.animateTo({ x: 100 }, { at: 0, duration: 1000 });
-      // At t=500, with snapshot=50, animating to 100 at 50% progress: 50 + 0.5*(100-50) = 75
-      expect(anim2.getCurrentProps(500).x).toBe(75);
+      // At t=500, progress is exactly 50%
+      expect(anim2.getCurrentProps(500).x).toBe(50);
       registry.endFrame();
 
       // Frame 3: at t=1000, animation complete (target is 100)
@@ -281,16 +282,14 @@ describe("AnimatableRegistry", () => {
       expect(renderFn).toHaveBeenCalledWith({ x: 0 });
 
       // Frame 2 at t=500
-      // Snapshot captures x=50 from previous frame's animation state
-      // New animation continues from snapshot (50) to target (100)
-      // At 50% progress: 50 + 0.5*(100-50) = 75
+      // At t=500 the animation should be halfway to 100.
       renderFn.mockClear();
       registry.beginFrame(500);
       const anim2 = registry.queue({ x: 0 }, renderFn);
       anim2.animateTo({ x: 100 }, { duration: 1000 });
       registry.flush();
 
-      expect(renderFn).toHaveBeenCalledWith({ x: 75 });
+      expect(renderFn).toHaveBeenCalledWith({ x: 50 });
     });
   });
 
@@ -315,26 +314,25 @@ describe("AnimatableRegistry", () => {
       registry.beginFrame(0);
       const anim = registry.queue(
         { x: 0, fillStyle: "red", strokeStyle: "blue" },
-        renderFn
+        renderFn,
       );
       anim.animateTo({ x: 100 }, { duration: 1000 });
       registry.flush();
       registry.endFrame();
 
       // Frame 2 at t=500
-      // Snapshot captures x=50, animation continues from there
-      // At 50% progress: 50 + 0.5*(100-50) = 75
+      // At t=500, x should be halfway to 100.
       renderFn.mockClear();
       registry.beginFrame(500);
       const anim2 = registry.queue(
         { x: 0, fillStyle: "red", strokeStyle: "blue" },
-        renderFn
+        renderFn,
       );
       anim2.animateTo({ x: 100 }, { duration: 1000 });
       registry.flush();
 
       expect(renderFn).toHaveBeenCalledWith({
-        x: 75,
+        x: 50,
         fillStyle: "red",
         strokeStyle: "blue",
       });

@@ -5,7 +5,7 @@ function simulateFrames<T extends Record<string, any>>(
   initialProps: T,
   firstInvokedTime: number,
   addSegments: (anim: Animatable<T>, context: { time: number }) => void,
-  times: number[]
+  times: number[],
 ): T[] {
   const results: T[] = [];
   let anim: Animatable<T> | null = null;
@@ -21,6 +21,32 @@ function simulateFrames<T extends Record<string, any>>(
     addSegments(anim, { time });
     const props = anim.getCurrentProps(time);
     results.push(props);
+  }
+
+  return results;
+}
+
+function simulateRegistryStyleFrames<T extends Record<string, any>>(
+  initialProps: T,
+  firstInvokedTime: number,
+  addSegments: (anim: Animatable<T>, context: { time: number }) => void,
+  times: number[],
+): T[] {
+  const results: T[] = [];
+  let anim: Animatable<T> | null = null;
+
+  for (const time of times) {
+    if (anim === null) {
+      anim = new Animatable<T>(initialProps, firstInvokedTime);
+    } else {
+      // Mimic AnimatableRegistry lifecycle used in runtime rendering.
+      anim.captureCurrentProps(time);
+      anim.updateInitialProps(initialProps);
+      anim.clearSegments();
+    }
+
+    addSegments(anim, { time });
+    results.push(anim.getCurrentProps(time));
   }
 
   return results;
@@ -89,7 +115,7 @@ describe("Single Animation Segment", () => {
     it("animates from initial to target over duration", () => {
       const anim = new Animatable<Partial<{ radius: number }>>(
         { radius: 50 },
-        0
+        0,
       );
       anim.animateTo({ radius: 100 }, { duration: 1000 });
 
@@ -276,7 +302,7 @@ describe("Sequential Timelines", () => {
             .animateTo({ radius: 100 }, { duration: 1000 })
             .animateTo({ radius: 150 }, { duration: 1000 });
         },
-        [0, 500, 1000, 1500, 2000]
+        [0, 500, 1000, 1500, 2000],
       );
 
       expect(results[0].radius).toBe(50); // t=0
@@ -366,7 +392,7 @@ describe("Explicit 'at' Timing", () => {
             .animateTo({ radius: 100 }, { at: 0, duration: 500 })
             .animateTo({ radius: 50 }, { at: 1000, duration: 500 });
         },
-        [0, 250, 500, 750, 1000, 1250, 1500]
+        [0, 250, 500, 750, 1000, 1250, 1500],
       );
 
       expect(results[0].radius).toBe(50); // t=0
@@ -423,7 +449,7 @@ describe("Overlapping Animations", () => {
             .animateTo({ radius: 100 }, { at: 0, duration: 1000 })
             .animateTo({ radius: 50 }, { at: 500, duration: 500 });
         },
-        [0, 250, 500, 750, 1000, 1100]
+        [0, 250, 500, 750, 1000, 1100],
       );
 
       // First segment only
@@ -452,7 +478,7 @@ describe("Overlapping Animations", () => {
             .animateTo({ radius: 100 }, { at: 0, duration: 1000 })
             .animateTo({ radius: 0 }, { at: 400, duration: 600 });
         },
-        [0, 200, 400, 700, 1000]
+        [0, 200, 400, 700, 1000],
       );
 
       expect(results[0].radius).toBe(50); // t=0
@@ -479,7 +505,7 @@ describe("Overlapping Animations", () => {
             .animateTo({ x: 100, y: 100 }, { at: 0, duration: 1000 })
             .animateTo({ x: 0 }, { at: 500, duration: 500 }); // Only x
         },
-        [0, 500, 750, 1000]
+        [0, 500, 750, 1000],
       );
 
       // t=0
@@ -521,7 +547,7 @@ describe("Event-Driven Animations", () => {
             .animateTo({ radius: 100 }, { at: 0, duration: 500 })
             .animateTo({ radius: 10 }, { at: releaseTime, duration: 500 });
         },
-        [0, 250, 500, 750, 1000]
+        [0, 250, 500, 750, 1000],
       );
 
       // Before release, first segment animating
@@ -553,7 +579,7 @@ describe("Event-Driven Animations", () => {
             .animateTo({ radius: 100 }, { at: attackTime, duration: 1000 })
             .animateTo({ radius: 10 }, { at: releaseTime, duration: 500 });
         },
-        [0, 50, 100, 350, 600]
+        [0, 50, 100, 350, 600],
       );
 
       expect(results[0].radius).toBe(10); // t=0
@@ -752,7 +778,7 @@ describe("firstInvokedTime Offset", () => {
         (anim) => {
           anim.animateTo({ radius: 150 }, { duration: 1000 });
         },
-        [2000, 2500, 3000, 3500]
+        [2000, 2500, 3000, 3500],
       );
 
       expect(results[0].radius).toBe(100); // t=2000 (relative: 0)
@@ -769,7 +795,7 @@ describe("firstInvokedTime Offset", () => {
           // at: 500 means "500ms after shape appeared"
           anim.animateTo({ radius: 150 }, { at: 500, duration: 1000 });
         },
-        [2000, 2250, 2500, 3000, 3500]
+        [2000, 2250, 2500, 3000, 3500],
       );
 
       expect(results[0].radius).toBe(100); // t=2000, before animation
@@ -915,7 +941,7 @@ describe("Reverse Option", () => {
       const anim = new Animatable({ x: 0 }, 0);
       anim.animateTo(
         { x: 100 },
-        { duration: 1000, easing: easeInQuad, reverse: true }
+        { duration: 1000, easing: easeInQuad, reverse: true },
       );
 
       // At t=500: raw=0.5, eased=0.25, reversed=0.75
@@ -987,6 +1013,132 @@ describe("Complex Multi-Frame Scenarios", () => {
     });
   });
 
+  describe("registry-style rebuild behavior", () => {
+    it("keeps fixed-duration timing correct for at-based linear animations", () => {
+      const linear = (t: number) => t;
+
+      const circleResults = simulateRegistryStyleFrames(
+        { radius: 200 },
+        0,
+        (anim) => {
+          anim.animateTo(
+            { radius: 300 },
+            { at: 0, duration: 1000, easing: linear },
+          );
+        },
+        [0, 250, 500, 750, 1000, 1250],
+      );
+
+      expect(circleResults[0].radius).toBe(200);
+      expect(circleResults[1].radius).toBe(225);
+      expect(circleResults[2].radius).toBe(250);
+      expect(circleResults[3].radius).toBe(275);
+      expect(circleResults[4].radius).toBe(300);
+      expect(circleResults[5].radius).toBe(300);
+
+      const arcResults = simulateRegistryStyleFrames(
+        { end: 0 },
+        0,
+        (anim) => {
+          anim.animateTo(
+            { end: 180 },
+            { at: 1000, duration: 1000, easing: linear },
+          );
+        },
+        [0, 500, 1000, 1100, 1500, 2000],
+      );
+
+      expect(arcResults[0].end).toBe(0);
+      expect(arcResults[1].end).toBe(0);
+      expect(arcResults[2].end).toBe(0);
+      expect(arcResults[3].end).toBeCloseTo(18);
+      expect(arcResults[4].end).toBe(90);
+      expect(arcResults[5].end).toBe(180);
+    });
+
+    it("preserves attack -> release -> re-attack continuity under frame rebuilds", () => {
+      const linear = (t: number) => t;
+      let attackTime = 0;
+      let releaseTime: number | null = null;
+
+      const results = simulateRegistryStyleFrames(
+        { radius: 20 },
+        0,
+        (anim, { time }) => {
+          if (time >= 250 && releaseTime === null) {
+            releaseTime = 250;
+          }
+
+          if (time >= 400 && attackTime === 0) {
+            attackTime = 400;
+            releaseTime = null;
+          }
+
+          anim
+            .animateTo(
+              { radius: 100 },
+              { at: attackTime, duration: 500, easing: linear },
+            )
+            .animateTo(
+              { radius: 20 },
+              { at: releaseTime, duration: 500, easing: linear },
+            );
+        },
+        [0, 125, 250, 325, 400, 525, 650, 900],
+      );
+
+      expect(results[0].radius).toBe(20);
+      expect(results[1].radius).toBe(40);
+      expect(results[2].radius).toBeCloseTo(60);
+      expect(results[3].radius).toBeCloseTo(54);
+      expect(results[4].radius).toBeCloseTo(48);
+      expect(results[5].radius).toBeCloseTo(61);
+      expect(results[6].radius).toBeCloseTo(74);
+      expect(results[7].radius).toBe(100);
+    });
+
+    it("starts quick re-attack from current release interpolation when release time is still set", () => {
+      const linear = (t: number) => t;
+      let attackTime = 0;
+      let releaseTime: number | null = null;
+
+      const results = simulateRegistryStyleFrames(
+        { radius: 20 },
+        0,
+        (anim, { time }) => {
+          if (time >= 250 && releaseTime === null) {
+            releaseTime = 250;
+          }
+
+          if (time >= 300 && attackTime === 0) {
+            // Keep previous release time to mimic renderer behavior where
+            // the last release timestamp can still be present.
+            attackTime = 300;
+          }
+
+          anim
+            .animateTo(
+              { radius: 100 },
+              { at: attackTime, duration: 500, easing: linear },
+            )
+            .animateTo(
+              { radius: 20 },
+              { at: releaseTime, duration: 500, easing: linear },
+            );
+        },
+        [0, 125, 250, 275, 300, 350, 425],
+      );
+
+      expect(results[0].radius).toBe(20);
+      expect(results[1].radius).toBe(40);
+      expect(results[2].radius).toBeCloseTo(60);
+      expect(results[3].radius).toBeCloseTo(58);
+      expect(results[4].radius).toBeCloseTo(56);
+      expect(results[5].radius).toBeCloseTo(60.4);
+      expect(results[6].radius).toBeCloseTo(67);
+    });
+  });
+
   describe("staggered animations", () => {
     it("handles staggered start times", () => {
       // Simulates the pattern from the spec's circle animation
@@ -996,7 +1148,7 @@ describe("Complex Multi-Frame Scenarios", () => {
         const anim = new Animatable({ radius: 0 }, 0);
         anim.animateTo(
           { radius: (i + 1) * 10 },
-          { delay: i * 50, duration: 250 }
+          { delay: i * 50, duration: 250 },
         );
 
         // Check at t=250 (after delays have passed for some)
@@ -1101,8 +1253,8 @@ describe("Delay with At Warning", () => {
       expect(warnSpy).toHaveBeenCalledOnce();
       expect(warnSpy).toHaveBeenCalledWith(
         expect.stringContaining(
-          "Animation has segments with 'at' property where some have 'delay' and others do not"
-        )
+          "Animation has segments with 'at' property where some have 'delay' and others do not",
+        ),
       );
 
       warnSpy.mockRestore();
@@ -1242,11 +1394,11 @@ describe("Missing Duration Warning", () => {
       expect(warnSpy).toHaveBeenCalledOnce();
       expect(warnSpy).toHaveBeenCalledWith(
         expect.stringContaining(
-          "1 animation segment(s) have no explicit 'duration' or 'endTime'"
-        )
+          "1 animation segment(s) have no explicit 'duration' or 'endTime'",
+        ),
       );
       expect(warnSpy).toHaveBeenCalledWith(
-        expect.stringContaining("Using default duration of 500ms")
+        expect.stringContaining("Using default duration of 500ms"),
       );
 
       warnSpy.mockRestore();
@@ -1265,7 +1417,7 @@ describe("Missing Duration Warning", () => {
 
       expect(warnSpy).toHaveBeenCalledOnce();
       expect(warnSpy).toHaveBeenCalledWith(
-        expect.stringContaining("3 animation segment(s)")
+        expect.stringContaining("3 animation segment(s)"),
       );
 
       warnSpy.mockRestore();
@@ -1365,7 +1517,7 @@ describe("Missing Duration Warning", () => {
 
       expect(warnSpy).toHaveBeenCalledOnce();
       expect(warnSpy).toHaveBeenCalledWith(
-        expect.stringContaining("1 animation segment(s)")
+        expect.stringContaining("1 animation segment(s)"),
       );
 
       warnSpy.mockRestore();

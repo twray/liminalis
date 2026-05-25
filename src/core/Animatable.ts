@@ -25,6 +25,7 @@ class Animatable<TProps extends object> {
   #segments: Segment<TProps>[] = [];
   #appliedOptions: Partial<AnimationSegmentOptions> = {};
   #propsSnapshot: Partial<TProps> | null = null;
+  #segmentStartValues: Map<string, number> = new Map();
   #hasWarnedAboutDelayWithAt = false;
   #hasWarnedAboutMissingDuration = false;
 
@@ -51,7 +52,7 @@ class Animatable<TProps extends object> {
 
   animateTo(
     targetProps: PartialNumericProps<TProps>,
-    options: AnimationSegmentOptions = {}
+    options: AnimationSegmentOptions = {},
   ): this {
     this.#segments.push({
       targetProps,
@@ -71,10 +72,9 @@ class Animatable<TProps extends object> {
     // Build timeline: calculate effective start times for all segments
     const timeline = this.#buildTimeline();
 
-    // Start with initial props (merged with snapshot if available)
-    const baseProps = this.#propsSnapshot
-      ? { ...this.#initialProps, ...this.#propsSnapshot }
-      : { ...this.#initialProps };
+    // Start with initial props. Snapshot is only used when a newly-introduced
+    // segment needs to inherit a live in-flight value.
+    const baseProps = { ...this.#initialProps };
 
     // For each property, find the value at the current time
     return this.#evaluatePropsAtTime(timeline, baseProps, relativeTime);
@@ -157,7 +157,7 @@ class Animatable<TProps extends object> {
       duration: number;
     }>,
     baseProps: TProps,
-    time: number
+    time: number,
   ): TProps {
     const result = { ...baseProps };
 
@@ -165,6 +165,8 @@ class Animatable<TProps extends object> {
     const sortedEntries = timeline
       .filter((e) => e.startTime !== null)
       .sort((a, b) => a.startTime! - b.startTime!);
+
+    this.#pruneSegmentStartValues(sortedEntries);
 
     // For each property, we need to find the "active" segment (the latest one that has started)
     // and interpolate or use completed value
@@ -218,14 +220,24 @@ class Animatable<TProps extends object> {
 
         if (laterSegmentStarted) continue; // This property is owned by a later segment
 
-        // Calculate the start value for this segment
-        const startValue = this.#getPropertyValueAtTime(
-          sortedEntries,
-          entry,
-          key,
-          startTime,
-          baseProps
-        );
+        const segmentStartValueKey = this.#getSegmentStartValueKey(entry, key);
+
+        const hasCachedStartValue =
+          this.#segmentStartValues.has(segmentStartValueKey);
+
+        const startValue = hasCachedStartValue
+          ? this.#segmentStartValues.get(segmentStartValueKey)!
+          : this.#computeSegmentStartValue(
+              sortedEntries,
+              entry,
+              key,
+              startTime,
+              baseProps,
+            );
+
+        if (!hasCachedStartValue) {
+          this.#segmentStartValues.set(segmentStartValueKey, startValue);
+        }
 
         const targetValue = (segment.targetProps as any)[key] as number;
         const elapsed = time - startTime;
@@ -254,31 +266,24 @@ class Animatable<TProps extends object> {
     },
     key: string,
     atTime: number,
-    baseProps: TProps
+    baseProps: TProps,
+    allowSnapshotFallback = true,
   ): number {
-    // Start with base value (which already includes snapshot if available)
+    // Start with base value.
     // Use property-specific defaults for certain properties (e.g., opacity, scale default to 1)
+
     const defaultValue = Animatable.#PROPERTY_DEFAULTS[key] ?? 0;
     let value = (baseProps as any)[key] ?? defaultValue;
 
-    // If we have a snapshot, it represents the "ground truth" at the moment it was captured.
-    // For segments that supersede other segments, we should use the snapshot value
-    // rather than recalculating from earlier segments that may have been rebuilt.
-    // This handles the case where we re-attack during a release - the snapshot
-    // captures where we actually were, not where the rebuilt segments would calculate.
-    if (this.#propsSnapshot !== null && key in this.#propsSnapshot) {
-      // Check if this is the "superseding" segment (the one with the latest start time that contains this key)
-      const isSupersedingSegment = !sortedEntries.some((other) => {
-        if (other === excludeEntry || other.startTime === null) return false;
-        if (!(key in other.segment.targetProps)) return false;
-        // There's another segment for this property that starts later
-        return other.startTime > excludeEntry.startTime!;
-      });
-
-      // If this is the superseding segment, use snapshot value directly
-      if (isSupersedingSegment) {
-        return (this.#propsSnapshot as any)[key] ?? value;
-      }
+    if (
+      allowSnapshotFallback &&
+      this.#shouldUseSnapshotFallbackForSegment(
+        sortedEntries,
+        excludeEntry,
+        key,
+      )
+    ) {
+      value = (this.#propsSnapshot as any)[key] ?? value;
     }
 
     for (const entry of sortedEntries) {
@@ -296,13 +301,25 @@ class Animatable<TProps extends object> {
         value = (entry.segment.targetProps as any)[key];
       } else {
         // Segment in progress at our target time
-        const prevValue = this.#getPropertyValueAtTime(
-          sortedEntries,
-          entry,
-          key,
-          startTime,
-          baseProps
-        );
+        const segmentStartValueKey = this.#getSegmentStartValueKey(entry, key);
+
+        const hasCachedStartValue =
+          this.#segmentStartValues.has(segmentStartValueKey);
+
+        const prevValue = hasCachedStartValue
+          ? this.#segmentStartValues.get(segmentStartValueKey)!
+          : this.#getPropertyValueAtTime(
+              sortedEntries,
+              entry,
+              key,
+              startTime,
+              baseProps,
+              allowSnapshotFallback,
+            );
+
+        if (!hasCachedStartValue) {
+          this.#segmentStartValues.set(segmentStartValueKey, prevValue);
+        }
 
         const targetValue = (entry.segment.targetProps as any)[key] as number;
         const elapsed = atTime - startTime;
@@ -310,7 +327,7 @@ class Animatable<TProps extends object> {
           duration === 0 ? 1 : Math.max(0, Math.min(1, elapsed / duration));
         const progress = this.#applyProgress(
           rawProgress,
-          entry.segment.options
+          entry.segment.options,
         );
         value = prevValue + (targetValue - prevValue) * progress;
       }
@@ -319,9 +336,107 @@ class Animatable<TProps extends object> {
     return value;
   }
 
+  #computeSegmentStartValue(
+    sortedEntries: Array<{
+      segment: Segment<TProps>;
+      startTime: number | null;
+      duration: number;
+    }>,
+    entry: {
+      segment: Segment<TProps>;
+      startTime: number | null;
+      duration: number;
+    },
+    key: string,
+    startTime: number,
+    baseProps: TProps,
+  ): number {
+    return this.#getPropertyValueAtTime(
+      sortedEntries,
+      entry,
+      key,
+      startTime,
+      baseProps,
+      true,
+    );
+  }
+
+  #shouldUseSnapshotFallbackForSegment(
+    sortedEntries: Array<{
+      segment: Segment<TProps>;
+      startTime: number | null;
+      duration: number;
+    }>,
+    excludeEntry: {
+      segment: Segment<TProps>;
+      startTime: number | null;
+      duration: number;
+    },
+    key: string,
+  ): boolean {
+    if (this.#propsSnapshot === null || !(key in this.#propsSnapshot)) {
+      return false;
+    }
+
+    if (excludeEntry.startTime === null || excludeEntry.startTime <= 0) {
+      return false;
+    }
+
+    const hasPriorSegmentForProperty = sortedEntries.some((entry) => {
+      if (entry === excludeEntry || entry.startTime === null) return false;
+      if (!(key in entry.segment.targetProps)) return false;
+
+      return entry.startTime < excludeEntry.startTime!;
+    });
+
+    return !hasPriorSegmentForProperty;
+  }
+
+  #getSegmentStartValueKey(
+    entry: {
+      segment: Segment<TProps>;
+      startTime: number | null;
+      duration: number;
+    },
+    key: string,
+  ): string {
+    const targetValue = (entry.segment.targetProps as any)[key] as number;
+    const startTime = entry.startTime ?? "null";
+
+    return `${key}|${startTime}|${entry.duration}|${targetValue}`;
+  }
+
+  #pruneSegmentStartValues(
+    sortedEntries: Array<{
+      segment: Segment<TProps>;
+      startTime: number | null;
+      duration: number;
+    }>,
+  ): void {
+    if (this.#segmentStartValues.size === 0) {
+      return;
+    }
+
+    const validKeys = new Set<string>();
+
+    for (const entry of sortedEntries) {
+      if (entry.startTime === null) continue;
+
+      for (const key of Object.keys(entry.segment.targetProps)) {
+        validKeys.add(this.#getSegmentStartValueKey(entry, key));
+      }
+    }
+
+    for (const cachedKey of this.#segmentStartValues.keys()) {
+      if (!validKeys.has(cachedKey)) {
+        this.#segmentStartValues.delete(cachedKey);
+      }
+    }
+  }
+
   #applyProgress(
     rawProgress: number,
-    options: AnimationSegmentOptions
+    options: AnimationSegmentOptions,
   ): number {
     const easing = options.easing ?? Animatable.#DEFAULT_EASING;
     let progress = easing(rawProgress);
@@ -333,6 +448,8 @@ class Animatable<TProps extends object> {
 
   reset(): void {
     this.#segments = [];
+    this.#segmentStartValues.clear();
+    this.#propsSnapshot = null;
   }
 
   /**
@@ -350,7 +467,7 @@ class Animatable<TProps extends object> {
     if (this.#hasWarnedAboutDelayWithAt) return;
 
     const segmentsWithAt = this.#segments.filter(
-      (s) => s.options.at !== undefined && s.options.at !== null
+      (s) => s.options.at !== undefined && s.options.at !== null,
     );
 
     if (segmentsWithAt.length === 0) return;
@@ -360,12 +477,12 @@ class Animatable<TProps extends object> {
 
     // Find segments with 'at' that have explicit delay
     const segmentsWithAtAndDelay = segmentsWithAt.filter(
-      (s) => s.options.delay !== undefined
+      (s) => s.options.delay !== undefined,
     );
 
     // Find segments with 'at' that don't have delay (and no global delay)
     const segmentsWithAtWithoutDelay = segmentsWithAt.filter(
-      (s) => s.options.delay === undefined && !globalDelayApplied
+      (s) => s.options.delay === undefined && !globalDelayApplied,
     );
 
     // Warn if there's a mix: some 'at' segments have delay, others don't
@@ -378,7 +495,7 @@ class Animatable<TProps extends object> {
         `[Animatable] Warning: Animation has segments with 'at' property where some have 'delay' and others do not. ` +
           `This may result in unexpected timing. Consider either:\n` +
           `  1. Apply 'delay' to all segments using withOptions({ delay: ... })\n` +
-          `  2. Explicitly set 'delay' on each segment that uses 'at`
+          `  2. Explicitly set 'delay' on each segment that uses 'at`,
       );
     }
   }
@@ -393,7 +510,8 @@ class Animatable<TProps extends object> {
 
     // Find segments without explicit duration or endTime
     const segmentsWithoutDuration = this.#segments.filter(
-      (s) => s.options.duration === undefined && s.options.endTime === undefined
+      (s) =>
+        s.options.duration === undefined && s.options.endTime === undefined,
     );
 
     if (segmentsWithoutDuration.length > 0) {
@@ -401,7 +519,7 @@ class Animatable<TProps extends object> {
       console.warn(
         `[Animatable] Warning: ${segmentsWithoutDuration.length} animation segment(s) have no explicit 'duration' or 'endTime'. ` +
           `Using default duration of ${Animatable.#DEFAULT_DURATION}ms. ` +
-          `Consider specifying duration explicitly or using withOptions({ duration: ... }).`
+          `Consider specifying duration explicitly or using withOptions({ duration: ... }).`,
       );
     }
   }
