@@ -51,7 +51,7 @@ describe("drawMethods transform props", () => {
         mockContext,
         800,
         600,
-        0
+        0,
       );
 
       // Center of rect at (100,100) with size 200x100 is (200, 150)
@@ -79,7 +79,7 @@ describe("drawMethods transform props", () => {
         mockContext,
         800,
         600,
-        0
+        0,
       );
 
       // Local (0, 0) maps to world (100, 100) - the shape's top-left
@@ -106,7 +106,7 @@ describe("drawMethods transform props", () => {
         mockContext,
         800,
         600,
-        0
+        0,
       );
 
       // Rect at (200,200) with local origin (100, 100) = world (300, 300)
@@ -133,7 +133,7 @@ describe("drawMethods transform props", () => {
         mockContext,
         800,
         600,
-        0
+        0,
       );
 
       // Rect at (200,200) with local origin (200, 0) = world (400, 200)
@@ -160,7 +160,7 @@ describe("drawMethods transform props", () => {
         mockContext,
         800,
         600,
-        0
+        0,
       );
 
       // Circle center is already (100, 100), center of bounding box is same
@@ -185,7 +185,7 @@ describe("drawMethods transform props", () => {
         mockContext,
         800,
         600,
-        0
+        0,
       );
 
       // No rotation should be applied
@@ -207,7 +207,7 @@ describe("drawMethods transform props", () => {
         mockContext,
         800,
         600,
-        0
+        0,
       );
 
       expect(mockContext.rotate).not.toHaveBeenCalled();
@@ -232,7 +232,7 @@ describe("drawMethods transform props", () => {
         mockContext,
         800,
         600,
-        0
+        0,
       );
 
       // Should scale around center (50, 50)
@@ -259,7 +259,7 @@ describe("drawMethods transform props", () => {
         mockContext,
         800,
         600,
-        0
+        0,
       );
 
       expect(mockContext.scale).toHaveBeenCalledWith(2, 0.5);
@@ -284,7 +284,7 @@ describe("drawMethods transform props", () => {
         mockContext,
         800,
         600,
-        0
+        0,
       );
 
       // scaleX/scaleY should take precedence over scale
@@ -308,7 +308,7 @@ describe("drawMethods transform props", () => {
         mockContext,
         800,
         600,
-        0
+        0,
       );
 
       expect(mockContext.scale).not.toHaveBeenCalled();
@@ -339,7 +339,7 @@ describe("drawMethods transform props", () => {
         mockContext,
         800,
         600,
-        0
+        0,
       );
 
       // Scale is applied first, then rotation
@@ -370,7 +370,7 @@ describe("drawMethods transform props", () => {
         mockContext,
         800,
         600,
-        0
+        0,
       );
 
       // Line from (0,0) to (100,100) has center at (50, 50)
@@ -399,7 +399,7 @@ describe("drawMethods transform props", () => {
         mockContext,
         800,
         600,
-        0
+        0,
       );
 
       // Stroke should use original bounds (100, 100, 200, 100)
@@ -425,7 +425,7 @@ describe("drawMethods transform props", () => {
         mockContext,
         800,
         600,
-        0
+        0,
       );
 
       // Fill uses original bounds
@@ -454,7 +454,7 @@ describe("drawMethods transform props", () => {
         mockContext,
         800,
         600,
-        0
+        0,
       );
 
       // Fill uses original bounds
@@ -483,7 +483,7 @@ describe("drawMethods transform props", () => {
         mockContext,
         800,
         600,
-        0
+        0,
       );
 
       // Both fill and stroke should use original radius (50)
@@ -491,8 +491,8 @@ describe("drawMethods transform props", () => {
         200,
         200,
         50,
-        0,
-        Math.PI * 2
+        -Math.PI / 2,
+        (Math.PI * 3) / 2,
       );
     });
 
@@ -514,7 +514,7 @@ describe("drawMethods transform props", () => {
         mockContext,
         800,
         600,
-        0
+        0,
       );
 
       // Fill uses original radius (50)
@@ -523,15 +523,15 @@ describe("drawMethods transform props", () => {
         200,
         50,
         0,
-        Math.PI * 2
+        Math.PI * 2,
       );
       // Stroke should use radius - strokeWidth/2 = 50 - 5 = 45
       expect(mockContext.arc).toHaveBeenCalledWith(
         200,
         200,
         45,
-        0,
-        Math.PI * 2
+        -Math.PI / 2,
+        (Math.PI * 3) / 2,
       );
     });
 
@@ -553,7 +553,7 @@ describe("drawMethods transform props", () => {
         mockContext,
         800,
         600,
-        0
+        0,
       );
 
       // Fill uses original radius (50)
@@ -562,15 +562,15 @@ describe("drawMethods transform props", () => {
         200,
         50,
         0,
-        Math.PI * 2
+        Math.PI * 2,
       );
       // Stroke should use radius + strokeWidth/2 = 50 + 5 = 55
       expect(mockContext.arc).toHaveBeenCalledWith(
         200,
         200,
         55,
-        0,
-        Math.PI * 2
+        -Math.PI / 2,
+        (Math.PI * 3) / 2,
       );
     });
   });

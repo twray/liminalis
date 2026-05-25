@@ -1,4 +1,5 @@
 import type { EventTime, NormalizedFloat, TimeExpression } from "../types";
+import { clampWithinRange } from "./common";
 import { isNormalizedFloat, isTimeExpression } from "./guards";
 
 export function toNormalizedFloat(value: number): NormalizedFloat {
@@ -11,7 +12,7 @@ export function toNormalizedFloat(value: number): NormalizedFloat {
 export function toTimeExpression(value: string): TimeExpression {
   if (!isTimeExpression(value)) {
     throw new Error(
-      `Value "${value}" is not a valid time format. Expected formats: "0:02", "2:00", "1:00:05"`
+      `Value "${value}" is not a valid time format. Expected formats: "0:02", "2:00", "1:00:05"`,
     );
   }
   return value as TimeExpression;
@@ -38,4 +39,9 @@ export function eventTimeToMs(eventTime: EventTime) {
   totalTimeInMs += +hours * 60 * 60 * 1000;
 
   return totalTimeInMs;
+}
+
+export function degreesToRadians(degrees: number): number {
+  const clampedDegrees = clampWithinRange(degrees, -360, 360);
+  return (clampedDegrees * Math.PI) / 180;
 }

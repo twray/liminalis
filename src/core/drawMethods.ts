@@ -4,7 +4,7 @@ import type {
   PartialDrawStyles,
   Point2D,
 } from "../types";
-import { isCorners } from "../util";
+import { clampWithinRange, degreesToRadians, isCorners } from "../util";
 import type Animatable from "./Animatable";
 import AnimatableRegistry from "./AnimatableRegistry";
 
@@ -12,6 +12,7 @@ const DEFAULT_BACKGROUND_COLOR = "#fff";
 const DEFAULT_FILL_STYLE = "transparent";
 const DEFAULT_STROKE_STYLE = "#333";
 const DEFAULT_STROKE_WIDTH = 1;
+const DEFAULT_STROKE_ALIGNMENT = "center";
 
 interface FillStyles {
   fillStyle?: string;
@@ -44,14 +45,16 @@ export interface TransformProps {
 }
 
 export interface CircleProps
-  extends FillStyles,
-    StrokeStyles,
-    WithOpacity,
-    TransformProps {
-  cx?: number;
-  cy?: number;
+  extends FillStyles, StrokeStyles, WithOpacity, TransformProps {
+  cx: number;
+  cy: number;
   radius: number;
   strokeAlignment?: StrokeAlignment;
+}
+
+export interface ArcProps extends CircleProps {
+  start: number;
+  end: number;
 }
 
 export interface LineProps extends StrokeStyles, WithOpacity, TransformProps {
@@ -60,7 +63,8 @@ export interface LineProps extends StrokeStyles, WithOpacity, TransformProps {
 }
 
 export interface RectProps
-  extends Partial<Point2D>,
+  extends
+    Partial<Point2D>,
     Dimensions2D,
     FillStyles,
     StrokeStyles,
@@ -78,13 +82,14 @@ export interface DrawMethods {
   center: Point2D;
   centerOf: (props: Dimensions2D) => Point2D;
   rect: (props: RectProps) => Animatable<RectProps>;
+  arc: (props: ArcProps) => Animatable<ArcProps>;
   circle: (props: CircleProps) => Animatable<CircleProps>;
   line: (props: LineProps) => Animatable<LineProps>;
 }
 
 const background = (
   context: CanvasRenderingContext2D,
-  props: BackgroundProps
+  props: BackgroundProps,
 ) => {
   const { color: backgroundColor = DEFAULT_BACKGROUND_COLOR } = props;
 
@@ -96,7 +101,7 @@ const background = (
     0,
     0,
     context.canvas.width * window.devicePixelRatio,
-    context.canvas.height * window.devicePixelRatio
+    context.canvas.height * window.devicePixelRatio,
   );
 
   context.restore();
@@ -109,7 +114,7 @@ const centerOf = (dimensions: Dimensions2D): Point2D => {
 
 const resolveTransformOrigin = (
   origin: TransformOrigin | undefined,
-  bounds: { x: number; y: number; width: number; height: number }
+  bounds: { x: number; y: number; width: number; height: number },
 ): Point2D => {
   if (!origin || origin === "center") {
     return { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 };
@@ -122,7 +127,7 @@ const renderWithTransform = (
   context: CanvasRenderingContext2D,
   props: TransformProps,
   bounds: { x: number; y: number; width: number; height: number },
-  renderShape: () => void
+  renderShape: () => void,
 ): void => {
   const { rotate, rotateOrigin, scale, scaleX, scaleY, scaleOrigin } = props;
 
@@ -150,7 +155,7 @@ const renderWithTransform = (
   // Apply rotation
   if (hasRotate) {
     const origin = resolveTransformOrigin(rotateOrigin, bounds);
-    const radians = (rotate * Math.PI) / 180;
+    const radians = degreesToRadians(rotate);
     context.translate(origin.x, origin.y);
     context.rotate(radians);
     context.translate(-origin.x, -origin.y);
@@ -197,26 +202,31 @@ const line = (context: CanvasRenderingContext2D, props: LineProps) => {
   });
 };
 
-const circle = (context: CanvasRenderingContext2D, props: CircleProps) => {
+const arc = (context: CanvasRenderingContext2D, props: ArcProps) => {
   const {
-    cx = 0,
-    cy = 0,
+    cx,
+    cy,
     radius,
+    start,
+    end,
     fillStyle = DEFAULT_FILL_STYLE,
     strokeStyle = DEFAULT_STROKE_STYLE,
     strokeWidth = DEFAULT_STROKE_WIDTH,
-    strokeAlignment = "center",
+    strokeAlignment = DEFAULT_STROKE_ALIGNMENT,
     opacity = 1,
   } = props;
 
-  const validatedRadius = radius >= 0 ? radius : 0;
+  const clampedRadius = radius >= 0 ? radius : 0;
+
+  const clampedStart = clampWithinRange(start, 0, 360);
+  const clampedEnd = clampWithinRange(end, 0, 360);
 
   // Calculate bounds for transform origin (bounding box of the circle)
   const bounds = {
-    x: cx - validatedRadius,
-    y: cy - validatedRadius,
-    width: validatedRadius * 2,
-    height: validatedRadius * 2,
+    x: cx - clampedRadius,
+    y: cy - clampedRadius,
+    width: clampedRadius * 2,
+    height: clampedRadius * 2,
   };
 
   renderWithTransform(context, props, bounds, () => {
@@ -228,7 +238,7 @@ const circle = (context: CanvasRenderingContext2D, props: CircleProps) => {
     if (fillStyle !== "transparent") {
       context.fillStyle = fillStyle;
       context.beginPath();
-      context.arc(cx, cy, validatedRadius, 0, Math.PI * 2);
+      context.arc(cx, cy, clampedRadius, 0, Math.PI * 2);
       context.fill();
     }
 
@@ -237,26 +247,37 @@ const circle = (context: CanvasRenderingContext2D, props: CircleProps) => {
       context.strokeStyle = strokeStyle;
       context.lineWidth = strokeWidth;
 
-      let strokeRadius = validatedRadius;
+      let strokeRadius = clampedRadius;
 
       if (strokeAlignment === "inside") {
         // Inset the stroke by half its width
-        strokeRadius = validatedRadius - strokeWidth / 2;
+        strokeRadius = clampedRadius - strokeWidth / 2;
       } else if (strokeAlignment === "outside") {
         // Outset the stroke by half its width
-        strokeRadius = validatedRadius + strokeWidth / 2;
+        strokeRadius = clampedRadius + strokeWidth / 2;
       }
+
       // For "center", use the original radius (default canvas behavior)
 
       if (strokeRadius > 0) {
         context.beginPath();
-        context.arc(cx, cy, strokeRadius, 0, Math.PI * 2);
+        context.arc(
+          cx,
+          cy,
+          strokeRadius,
+          degreesToRadians(clampedStart - 90),
+          degreesToRadians(clampedEnd - 90),
+        );
         context.stroke();
       }
     }
 
     context.restore();
   });
+};
+
+const circle = (context: CanvasRenderingContext2D, props: CircleProps) => {
+  arc(context, { ...props, start: 0, end: 360 });
 };
 
 const rect = (context: CanvasRenderingContext2D, props: RectProps) => {
@@ -335,7 +356,7 @@ const rect = (context: CanvasRenderingContext2D, props: RectProps) => {
           strokeY,
           strokeWidth_dim,
           strokeHeight,
-          cornerRadiusForRoundRect
+          cornerRadiusForRoundRect,
         );
         context.stroke();
       }
@@ -351,7 +372,7 @@ export interface DrawContext {
     context: CanvasRenderingContext2D,
     width: number,
     height: number,
-    timeInMs: number
+    timeInMs: number,
   ) => void;
 }
 
@@ -363,7 +384,7 @@ export const createDrawContext = (): DrawContext => {
     context: CanvasRenderingContext2D,
     width: number,
     height: number,
-    timeInMs: number
+    timeInMs: number,
   ): void => {
     registry.beginFrame(timeInMs);
 
@@ -374,16 +395,16 @@ export const createDrawContext = (): DrawContext => {
     };
 
     const mergeStyles = <T extends PartialDrawStyles>(
-      props: T
+      props: T,
     ): T & PartialDrawStyles =>
       ({
         ...appliedStyles,
         ...props,
-      } as T & PartialDrawStyles);
+      }) as T & PartialDrawStyles;
 
     const withStyles = (
       styles: PartialDrawStyles,
-      callback: () => void
+      callback: () => void,
     ): void => {
       const previousStyles = appliedStyles;
       appliedStyles = { ...appliedStyles, ...styles };
@@ -405,6 +426,8 @@ export const createDrawContext = (): DrawContext => {
       centerOf,
       rect: (props: RectProps) =>
         registry.queue(mergeStyles(props), (p) => rect(context, p)),
+      arc: (props: ArcProps) =>
+        registry.queue(mergeStyles(props), (p) => arc(context, p)),
       circle: (props: CircleProps) =>
         registry.queue(mergeStyles(props), (p) => circle(context, p)),
       line: (props: LineProps) =>

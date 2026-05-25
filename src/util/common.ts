@@ -4,7 +4,7 @@ export function watch<T extends object>(
     onPropertyChange?: (prop: string, newValue: any, oldValue: any) => void;
     onMethodCall?: (method: string, args: any[], result: any) => void;
     onAccess?: () => void;
-  }
+  },
 ): T {
   return new Proxy(obj, {
     get(target, property) {
@@ -51,4 +51,8 @@ export function propertyIsWritable(object: Object, property: string) {
   return (
     descriptor && (descriptor.set !== undefined || descriptor.writable === true)
   );
+}
+
+export function clampWithinRange(value: number, min: number, max: number) {
+  return Math.max(min, Math.min(value, max));
 }
