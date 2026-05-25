@@ -91,11 +91,11 @@ createVisualisation
             })
               .animateTo(
                 { radius: 150 },
-                { at: timeAttacked, duration: 1000, easing: easeOutBounce }
+                { at: timeAttacked, duration: 1000, easing: easeOutBounce },
               )
               .animateTo({ radius: 50 }, { at: timeReleased, duration: 1000 });
           });
-        })
+        }),
       );
     });
 
@@ -257,7 +257,7 @@ createVisualisation
       notes.forEach((note, index) => {
         visualisation.addPermanently(
           note,
-          pianoKey().withProps({ x: index * 60, y: 100 })
+          pianoKey().withProps({ x: index * 60, y: 100 }),
         );
       });
     });
@@ -308,11 +308,11 @@ const springCircle = () => {
         })
           .animateTo(
             { radius: 100 * attackValue }, // Scale by attack velocity
-            { at: timeAttacked, duration: 1000, easing: easeOutBounce }
+            { at: timeAttacked, duration: 1000, easing: easeOutBounce },
           )
           .animateTo({ radius: 0 }, { at: timeReleased, duration: 500 });
       });
-    }
+    },
   );
 };
 ```
@@ -357,14 +357,14 @@ const pianoKey = () => {
         })
           .animateTo(
             { height: 220 },
-            { at: timeAttacked, duration: 500, easing: easeOutBack }
+            { at: timeAttacked, duration: 500, easing: easeOutBack },
           )
           .animateTo(
             { height: 200 },
-            { at: timeReleased, duration: 500, easing: easeOutBack }
+            { at: timeReleased, duration: 500, easing: easeOutBack },
           );
       });
-    }
+    },
   );
 };
 ```
@@ -375,7 +375,7 @@ const pianoKey = () => {
 // Add an object permanently (persists across frames)
 visualisation.addPermanently(
   "my-circle",
-  springCircle().withProps({ xOffset: 50 })
+  springCircle().withProps({ xOffset: 50 }),
 );
 
 // Add an object temporarily (removed after release completes)
@@ -463,7 +463,7 @@ createVisualisation
               .animateTo({ radius: 100 }, { at: timeAttacked, duration: 1000 })
               .animateTo({ radius: 50 }, { at: timeReleased, duration: 1000 });
           });
-        })
+        }),
       );
     });
 
@@ -623,7 +623,7 @@ createVisualisation
               });
             });
           })
-          .attack(1)
+          .attack(1),
       );
     });
 
@@ -680,7 +680,7 @@ Animate multiple properties simultaneously by including them in one `.animateTo(
 ```typescript
 rect({ x: 0, y: 50, width: 20, height: 20, fillStyle: "#0000ff" }).animateTo(
   { x: 100, y: 150 },
-  { duration: 1000 }
+  { duration: 1000 },
 ); // Both x and y animate together
 ```
 
@@ -746,7 +746,7 @@ rect({ x: 0, y: 50, width: 20, height: 20, fillStyle: "#00ffff" }).animateTo(
   {
     duration: 1000,
     easing: (t) => (t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2),
-  }
+  },
 );
 ```
 
@@ -757,7 +757,7 @@ import { easeOutBounce, easeOutBack, easeInCubic } from "easing-utils";
 
 rect({ x: 0, y: 50, width: 20, height: 20, fillStyle: "#ff8800" }).animateTo(
   { x: 100 },
-  { duration: 1000, easing: easeOutBounce }
+  { duration: 1000, easing: easeOutBounce },
 );
 ```
 
@@ -769,7 +769,7 @@ The `reverse` option inverts the animation direction:
 // Starts at target value and animates backward to initial
 circle({ cx: 100, cy: 100, radius: 50 }).animateTo(
   { radius: 100 },
-  { duration: 1000, reverse: true }
+  { duration: 1000, reverse: true },
 );
 // At t=0: radius=100, at t=1000: radius=50
 ```
@@ -895,7 +895,7 @@ createVisualisation
                 .withOptions({ duration: 500 })
                 .animateTo(
                   { radius: 150 },
-                  { at: timeAttacked, easing: easeOutBounce }
+                  { at: timeAttacked, easing: easeOutBounce },
                 )
                 .animateTo(
                   { radius: 50 },
@@ -903,11 +903,11 @@ createVisualisation
                     at: timeReleased,
                     easing: easeOutCubic,
                     duration: releasePeriod,
-                  }
+                  },
                 );
             });
-          }
-        )
+          },
+        ),
       );
     });
 
@@ -942,7 +942,7 @@ createVisualisation
           draw(({ circle, center }) => {
             // ...rendering logic
           });
-        })
+        }),
       );
     });
 
@@ -956,7 +956,7 @@ createVisualisation
             radius: 10,
           }).animateTo(
             { cy: center.y - 100 },
-            { duration: 1000, delay: 500 + i * 250 }
+            { duration: 1000, delay: 500 + i * 250 },
           );
         }
       });
@@ -984,7 +984,7 @@ createVisualisation
         note,
         springCircle()
           .withProps({ xOffset: -150 + index * 50 })
-          .attack(attack)
+          .attack(attack),
       );
     });
 
@@ -1013,7 +1013,7 @@ createVisualisation
             y: 500,
             width: 80,
             height: 800,
-          })
+          }),
         );
       });
     });
@@ -1159,7 +1159,7 @@ const myObject = midiVisual<{ color: string; size: number }>().withRenderer(
         fillStyle: props.color,
       });
     });
-  }
+  },
 );
 ```
 
@@ -1477,7 +1477,7 @@ Animate shape properties over time. Available on `rect()`, `circle()`, and `line
 ```typescript
 rect({ x: 0, y: 50, width: 20, height: 20, fillStyle: "#ff0000" }).animateTo(
   { x: 100 },
-  { duration: 1000 }
+  { duration: 1000 },
 );
 ```
 
@@ -1495,7 +1495,7 @@ rect({ x: 0, y: 50, width: 20, height: 20, fillStyle: "#00ff00" })
 circle({ cx: 50, cy: 50, radius: 50 })
   .animateTo(
     { radius: 100 },
-    { at: timeAttacked, duration: 1000, easing: easeOutBounce }
+    { at: timeAttacked, duration: 1000, easing: easeOutBounce },
   )
   .animateTo({ radius: 50 }, { at: timeReleased, duration: 1000 });
 ```
@@ -1551,7 +1551,7 @@ Add object that persists until explicitly removed:
 ```typescript
 visualisation.addPermanently(
   "my-circle",
-  springCircle().withProps({ xOffset: 50 })
+  springCircle().withProps({ xOffset: 50 }),
 );
 ```
 
