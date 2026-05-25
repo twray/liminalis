@@ -36,11 +36,11 @@ interface WithVisualisationContext {
 type MidiEventCallback = (event: MidiNoteEvent) => void;
 
 type NoteDownEventCallback = (
-  params: NoteDownEvent & WithVisualisationContext
+  params: NoteDownEvent & WithVisualisationContext,
 ) => void;
 
 type NoteUpEventCallback = (
-  params: NoteUpEvent & WithVisualisationContext
+  params: NoteUpEvent & WithVisualisationContext,
 ) => void;
 
 type FrameEventCallback = (params: FrameRenderProps) => void;
@@ -91,10 +91,9 @@ interface FrameRenderProps extends RenderProps {
 const KEYBOARD_DEBUG_ATTACK_KEY_REGEX = /^[1-9]$/;
 
 const DEFAULTS = {
-  SETTINGS_WIDTH: 1080,
-  SETTINGS_HEIGHT: 1920,
-  SETTINGS_FPS: 60,
+  INTERNAL_CLOCK_MAX_FRAME_DELTA_IN_MS: 250,
   SETTINGS_COMPUTER_KEYBOARD_DEBUG_ENABLED: true,
+  SETTINGS_FPS: 60,
 };
 
 const canvas = document.createElement("canvas");
@@ -128,17 +127,25 @@ class VisualisationAnimationLoopHandler<TState> {
   #noteUpCallbacks: NoteUpEventCallback[] = [];
   #frameRenderCallbacks: FrameEventCallback[] = [];
 
+  #internalFrameIndex = 0;
+  #internalElapsedTimeInMs = 0;
+  #internalLastFrameTimestampInMs: number | null = null;
+
   #currentKeyboardDebugNumericPressedKey: string | null = null;
 
   constructor() {}
 
   withSettings({
-    width = DEFAULTS.SETTINGS_WIDTH,
-    height = DEFAULTS.SETTINGS_HEIGHT,
+    width,
+    height,
     fps = 60,
     computerKeyboardDebugEnabled = DEFAULTS.SETTINGS_COMPUTER_KEYBOARD_DEBUG_ENABLED,
   }: VisualisationSettings) {
-    this.#settings = { ...this.#settings, dimensions: [width, height], fps };
+    this.#settings = { ...this.#settings, fps };
+
+    if (width !== undefined && height !== undefined) {
+      this.#settings.dimensions = [width, height];
+    }
 
     this.#appProperties = {
       ...this.#appProperties,
@@ -149,7 +156,7 @@ class VisualisationAnimationLoopHandler<TState> {
   }
 
   withState<T extends Record<string, any>>(
-    state: T
+    state: T,
   ): VisualisationAnimationLoopHandler<T> {
     const instance = this as any as VisualisationAnimationLoopHandler<T>;
     instance.#visualisationState = state;
@@ -201,22 +208,23 @@ class VisualisationAnimationLoopHandler<TState> {
   }
 
   render() {
+    this.#resetInternalClock();
+
     // Create draw context scoped to this render lifecycle
     // This persists across frames but is isolated to this visualisation
     const drawContext = createDrawContext();
 
     const sketchFunction = () => {
       return (canvasProps: CanvasProps) => {
-        const { context, width, height, frame, time } = canvasProps;
+        const { context, width, height } = canvasProps;
 
-        // Rendering only works if animated and if there are workable frames
+        const frameIndex = this.#getNextFrameIndex();
 
-        if (!frame || !time) return;
-
-        // Computed properties of canvas centre and ms run-time
+        // Compute runtime from a monotonic internal clock so timing is
+        // independent from canvas-sketch playback settings.
 
         const center = { x: width / 2, y: height / 2 };
-        const timeInMs = Math.floor(time * 1000);
+        const timeInMs = this.#getInternalElapsedTimeInMs();
 
         // Set background color and clear the canvas for rendering
 
@@ -273,14 +281,14 @@ class VisualisationAnimationLoopHandler<TState> {
               context,
               width,
               height,
-              timeInMs
+              timeInMs,
             );
           });
 
           renderIsometricCallbacks.forEach((renderIsometricCallback) => {
             const isometricView = new IsometricView(context, width, height);
             renderIsometricCallback(
-              getRenderIsometricMethods(isometricView, timeInMs)
+              getRenderIsometricMethods(isometricView, timeInMs),
             );
             isometricView.render();
           });
@@ -291,14 +299,14 @@ class VisualisationAnimationLoopHandler<TState> {
 
         const notesPressedUpForFrame =
           this.#noteEventManager.getNewNoteEventsForFrame(
-            frame,
-            "noteup"
+            frameIndex,
+            "noteup",
           ) as NoteUpEvent[];
 
         const notesPressedDownForFrame =
           this.#noteEventManager.getNewNoteEventsForFrame(
-            frame,
-            "notedown"
+            frameIndex,
+            "notedown",
           ) as NoteDownEvent[];
 
         notesPressedDownForFrame.forEach((recentNotePressedDown) => {
@@ -322,7 +330,7 @@ class VisualisationAnimationLoopHandler<TState> {
         this.#timeCallbacks
           .filter((timeCallback) => !timeCallback.expired)
           .forEach((timeCallback) => {
-            if (timeInMs > timeCallback.time) {
+            if (timeInMs >= timeCallback.time) {
               timeCallback.callback({ visualisation: this.#visualisation });
               timeCallback.expired = true;
             }
@@ -362,7 +370,7 @@ class VisualisationAnimationLoopHandler<TState> {
         }
 
         const note = keyMappings.find(
-          (keyMapping) => event.code === keyMapping.keyCode
+          (keyMapping) => event.code === keyMapping.keyCode,
         )?.note;
 
         const simulatedAttackValue = this.#currentKeyboardDebugNumericPressedKey
@@ -374,14 +382,14 @@ class VisualisationAnimationLoopHandler<TState> {
           handleNoteOn(
             note,
             Utilities.buildNote(note).number,
-            toNormalizedFloat(simulatedAttackValue)
+            toNormalizedFloat(simulatedAttackValue),
           );
         }
       });
 
       window.addEventListener("keyup", (event) => {
         const note = keyMappings.find(
-          (keyMapping) => event.code === keyMapping.keyCode
+          (keyMapping) => event.code === keyMapping.keyCode,
         )?.note;
 
         if (event.key === this.#currentKeyboardDebugNumericPressedKey) {
@@ -403,7 +411,7 @@ class VisualisationAnimationLoopHandler<TState> {
           const midiInput = WebMidi.getInputById(firstAvailableMidiInput.id);
 
           console.log(
-            `Connected to MIDI device ${firstAvailableMidiInput.name}`
+            `Connected to MIDI device ${firstAvailableMidiInput.name}`,
           );
 
           this.#addMidiListener(midiInput, "noteon", (event) => {
@@ -423,14 +431,14 @@ class VisualisationAnimationLoopHandler<TState> {
         console.error(
           "Unable to connect to any MIDI devices. " +
             "Ensure that your browser is supported, and is " +
-            "running from localhost or a secure domain."
+            "running from localhost or a secure domain.",
         );
       });
 
     const handleNoteOn = (
       note: string,
       number: number,
-      attack: NormalizedFloat = toNormalizedFloat(1)
+      attack: NormalizedFloat = toNormalizedFloat(1),
     ) => {
       if (modeManager.modeTransitionNotes.includes(note)) {
         modeManager.transitionToNextMode();
@@ -447,9 +455,54 @@ class VisualisationAnimationLoopHandler<TState> {
   #addMidiListener = (
     input: any,
     eventType: "noteon" | "noteoff",
-    callback: MidiEventCallback
+    callback: MidiEventCallback,
   ): void => {
     input.addListener(eventType, callback);
+  };
+
+  #resetInternalClock = (): void => {
+    this.#internalFrameIndex = 0;
+    this.#internalElapsedTimeInMs = 0;
+    this.#internalLastFrameTimestampInMs = null;
+  };
+
+  #getNextFrameIndex = (): number => {
+    const frameIndex = this.#internalFrameIndex;
+    this.#internalFrameIndex += 1;
+    return frameIndex;
+  };
+
+  #getInternalElapsedTimeInMs = (): number => {
+    const nowInMs = this.#getNowInMs();
+
+    if (this.#internalLastFrameTimestampInMs === null) {
+      this.#internalLastFrameTimestampInMs = nowInMs;
+      return Math.floor(this.#internalElapsedTimeInMs);
+    }
+
+    const deltaTimeInMs = nowInMs - this.#internalLastFrameTimestampInMs;
+
+    this.#internalLastFrameTimestampInMs = nowInMs;
+
+    const clampedDeltaTimeInMs = Math.min(
+      Math.max(deltaTimeInMs, 0),
+      DEFAULTS.INTERNAL_CLOCK_MAX_FRAME_DELTA_IN_MS,
+    );
+
+    this.#internalElapsedTimeInMs += clampedDeltaTimeInMs;
+
+    return Math.floor(this.#internalElapsedTimeInMs);
+  };
+
+  #getNowInMs = (): number => {
+    if (
+      typeof performance !== "undefined" &&
+      typeof performance.now === "function"
+    ) {
+      return performance.now();
+    }
+
+    return Date.now();
   };
 }
 

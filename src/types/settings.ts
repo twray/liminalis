@@ -7,7 +7,7 @@ export interface AppSettings {
 export interface SketchSettings {
   dimensions?: [number, number];
   animate: boolean;
-  fps: number;
+  fps?: number;
   duration?: number;
   playbackRate?: "throttle" | "fixed";
   scaleToFit?: boolean;

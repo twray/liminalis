@@ -17,7 +17,7 @@ class Visualisation {
         `object with id "${id}" was requested but is not currently registered.` +
           ` It may have been removed from the visualisation already because objects are` +
           ` removed automatically when they are release. If you wish to access this object again,` +
-          ` after it is released, call its setIsPermanent(true) method when creating it.`
+          ` after it is released, call its setIsPermanent(true) method when creating it.`,
       );
     }
 
@@ -34,7 +34,7 @@ class Visualisation {
       console.warn(
         `Warning: Over ${maxAnimatableObjects} are registered. ` +
           `Check that your objects are releasing and being cleaned up correctly ` +
-          `or increase the maximum number of allowed animatable objects.`
+          `or increase the maximum number of allowed animatable objects.`,
       );
     }
 
@@ -50,13 +50,13 @@ class Visualisation {
     context: CanvasRenderingContext2D,
     width: number,
     height: number,
-    timeInMs: number
+    timeInMs: number,
   ) {
     if (!context) {
       throw new Error(
         "A CanvasRenderingContext2D instance must be provided to render AnimatableObjects." +
           "When calling the renderObjects() method on a visualisation instance, please ensure" +
-          "that you pass in a valid canvas context as an argument."
+          "that you pass in a valid canvas context as an argument.",
       );
     }
 
