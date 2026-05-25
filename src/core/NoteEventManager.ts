@@ -12,6 +12,7 @@ export default class NoteEventManager {
   #noteEvents: NoteEvent[] = [];
   #activeNotes: Map<string, NoteDownEvent> = new Map();
   #noteEventsForFrames: Map<number, NoteEvent[]> = new Map();
+  #nextUnreadNoteEventIndex = 0;
   #timeStampSinceLastFetchOfNewNoteEventsForFrame: number;
   #timeStampSinceLastPhraseEventDetected: number | null = null;
   #timeStampSinceLastChordEventDetected: number | null = null;
@@ -30,17 +31,18 @@ export default class NoteEventManager {
 
   getNewNoteEventsForFrame(
     frameIndex: number,
-    eventFilter?: NoteEventType
+    eventFilter?: NoteEventType,
   ): NoteEvent[] {
     const timeStampOfCurrentEventFetch = new Date().getTime();
 
     let newNoteEventsForFrame: NoteEvent[] = [];
 
     if (!this.#noteEventsForFrames.has(frameIndex)) {
-      newNoteEventsForFrame = this.#noteEvents.filter(
-        (noteEvent) =>
-          this.#timeStampSinceLastFetchOfNewNoteEventsForFrame < noteEvent.time
+      newNoteEventsForFrame = this.#noteEvents.slice(
+        this.#nextUnreadNoteEventIndex,
       );
+
+      this.#nextUnreadNoteEventIndex = this.#noteEvents.length;
 
       this.#noteEventsForFrames.set(frameIndex, newNoteEventsForFrame);
     } else {
@@ -56,14 +58,14 @@ export default class NoteEventManager {
 
     return eventFilter
       ? newNoteEventsForFrame.filter(
-          (noteEvent) => noteEvent.event === eventFilter
+          (noteEvent) => noteEvent.event === eventFilter,
         )
       : newNoteEventsForFrame;
   }
 
   getRecentlyPhrasedNoteEvents(
     timeWindow: number = 2000,
-    eventFilter?: string
+    eventFilter?: string,
   ): NoteEvent[] {
     const recentlyPhrasedNoteEvents = this.#noteEvents.filter((noteEvent) => {
       const noteEventIsNew =
@@ -85,7 +87,7 @@ export default class NoteEventManager {
 
     const chordToneNoteEvents = this.getRecentlyPhrasedNoteEvents(
       timeWindowBetweenChordTones,
-      "notedown"
+      "notedown",
     );
 
     if (
@@ -107,7 +109,7 @@ export default class NoteEventManager {
     const timeStampOfCurrentEventFetch = new Date().getTime();
 
     const noteEventsNoteOn = this.#noteEvents.filter(
-      (noteEvent) => noteEvent.event === "notedown"
+      (noteEvent) => noteEvent.event === "notedown",
     );
 
     if (noteEventsNoteOn.length < 2) {
@@ -145,12 +147,12 @@ export default class NoteEventManager {
 
   getNewHarmonicQualityChangeEventForFrame(
     timeWindowBetweenChordTones = 600,
-    minimumPeriodBetweenHarmonicChanges = 1000
+    minimumPeriodBetweenHarmonicChanges = 1000,
   ) {
     const timeStampOfCurrentEventFetch = new Date().getTime();
 
     const chordToneNoteEvents = this.getNewChordEventForFrame(
-      timeWindowBetweenChordTones
+      timeWindowBetweenChordTones,
     );
 
     if (
@@ -168,7 +170,7 @@ export default class NoteEventManager {
           chordToneNoteEvent.note
             .split("")
             .filter((character) => !/^[0-9]*$/.test(character))
-            .join("")
+            .join(""),
       );
 
       const detectedChord = Chord.detect(chordTonesWithoutOctaveSuffixes);
@@ -195,7 +197,7 @@ export default class NoteEventManager {
 
   getPlayedArpeggioDirectionForFrame(
     maxSemitoneDistance = 5,
-    timeWindowBetweenChordTones = 600
+    timeWindowBetweenChordTones = 600,
   ) {
     const lastThreeNotesPlayed = this.#noteEvents
       .filter((noteEvent) => noteEvent.event === "notedown")
@@ -203,7 +205,7 @@ export default class NoteEventManager {
 
     if (lastThreeNotesPlayed.length >= 3) {
       const noteNumbersOfLastThreeNotesPlayed = lastThreeNotesPlayed.map(
-        ({ noteNumber }) => noteNumber
+        ({ noteNumber }) => noteNumber,
       );
 
       const currentTimestamp = new Date().getTime();
@@ -236,11 +238,11 @@ export default class NoteEventManager {
       if (
         Math.abs(
           lastThreeNotesPlayed[0].noteNumber -
-            lastThreeNotesPlayed[1].noteNumber
+            lastThreeNotesPlayed[1].noteNumber,
         ) <= maxSemitoneDistance &&
         Math.abs(
           lastThreeNotesPlayed[1].noteNumber -
-            lastThreeNotesPlayed[2].noteNumber
+            lastThreeNotesPlayed[2].noteNumber,
         ) <= maxSemitoneDistance
       ) {
         return lastThreeNotesPlayed[2].noteNumber >
@@ -259,22 +261,22 @@ export default class NoteEventManager {
       this.getRecentlyPhrasedNoteEvents(timeWindow, "notedown")
         .map(
           (recentlyPhrasedNoteEvent) =>
-            (recentlyPhrasedNoteEvent as NoteDownEvent).attack
+            (recentlyPhrasedNoteEvent as NoteDownEvent).attack,
         )
         .reduce(
           (totalIntensity, currentIntensity) =>
             totalIntensity + (currentIntensity ?? 0),
-          0
+          0,
         ) / intensityFactor,
-      1
+      1,
     );
   }
 
   registerNoteOnEvent(
     note: string,
     number: number,
-    attack: NormalizedFloat = toNormalizedFloat(1)
-  ): void {
+    attack: NormalizedFloat = toNormalizedFloat(1),
+  ): NoteDownEvent {
     const noteDownEvent: NoteDownEvent = {
       event: "notedown",
       time: new Date().getTime(),
@@ -285,9 +287,11 @@ export default class NoteEventManager {
 
     this.#activeNotes.set(note, noteDownEvent);
     this.#noteEvents.push(noteDownEvent);
+
+    return noteDownEvent;
   }
 
-  registerNoteOffEvent(note: string, number: number): void {
+  registerNoteOffEvent(note: string, number: number): NoteUpEvent {
     const noteUpEvent: NoteUpEvent = {
       event: "noteup",
       time: new Date().getTime(),
@@ -297,5 +301,7 @@ export default class NoteEventManager {
 
     this.#activeNotes.delete(note);
     this.#noteEvents.push(noteUpEvent);
+
+    return noteUpEvent;
   }
 }

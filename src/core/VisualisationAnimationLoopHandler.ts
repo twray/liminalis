@@ -127,7 +127,6 @@ class VisualisationAnimationLoopHandler<TState> {
   #noteUpCallbacks: NoteUpEventCallback[] = [];
   #frameRenderCallbacks: FrameEventCallback[] = [];
 
-  #internalFrameIndex = 0;
   #internalElapsedTimeInMs = 0;
   #internalLastFrameTimestampInMs: number | null = null;
 
@@ -218,8 +217,6 @@ class VisualisationAnimationLoopHandler<TState> {
       return (canvasProps: CanvasProps) => {
         const { context, width, height } = canvasProps;
 
-        const frameIndex = this.#getNextFrameIndex();
-
         // Compute runtime from a monotonic internal clock so timing is
         // independent from canvas-sketch playback settings.
 
@@ -296,36 +293,6 @@ class VisualisationAnimationLoopHandler<TState> {
 
         // Handle remaining event callbacks as registered
         // within the setup() function
-
-        const notesPressedUpForFrame =
-          this.#noteEventManager.getNewNoteEventsForFrame(
-            frameIndex,
-            "noteup",
-          ) as NoteUpEvent[];
-
-        const notesPressedDownForFrame =
-          this.#noteEventManager.getNewNoteEventsForFrame(
-            frameIndex,
-            "notedown",
-          ) as NoteDownEvent[];
-
-        notesPressedDownForFrame.forEach((recentNotePressedDown) => {
-          this.#noteDownCallbacks.forEach((callback) => {
-            callback({
-              ...recentNotePressedDown,
-              visualisation: this.#visualisation,
-            });
-          });
-        });
-
-        notesPressedUpForFrame.forEach((recentNotePressedUp) => {
-          this.#noteUpCallbacks.forEach((callback) => {
-            callback({
-              ...recentNotePressedUp,
-              visualisation: this.#visualisation,
-            });
-          });
-        });
 
         this.#timeCallbacks
           .filter((timeCallback) => !timeCallback.expired)
@@ -444,11 +411,19 @@ class VisualisationAnimationLoopHandler<TState> {
         modeManager.transitionToNextMode();
       }
 
-      noteEventManager.registerNoteOnEvent(note, number, attack);
+      const noteDownEvent = noteEventManager.registerNoteOnEvent(
+        note,
+        number,
+        attack,
+      );
+
+      this.#dispatchNoteDownCallbacks(noteDownEvent);
     };
 
     const handleNoteOff = (note: string, number: number) => {
-      noteEventManager.registerNoteOffEvent(note, number);
+      const noteUpEvent = noteEventManager.registerNoteOffEvent(note, number);
+
+      this.#dispatchNoteUpCallbacks(noteUpEvent);
     };
   }
 
@@ -460,16 +435,27 @@ class VisualisationAnimationLoopHandler<TState> {
     input.addListener(eventType, callback);
   };
 
-  #resetInternalClock = (): void => {
-    this.#internalFrameIndex = 0;
-    this.#internalElapsedTimeInMs = 0;
-    this.#internalLastFrameTimestampInMs = null;
+  #dispatchNoteDownCallbacks = (noteDownEvent: NoteDownEvent): void => {
+    this.#noteDownCallbacks.forEach((callback) => {
+      callback({
+        ...noteDownEvent,
+        visualisation: this.#visualisation,
+      });
+    });
   };
 
-  #getNextFrameIndex = (): number => {
-    const frameIndex = this.#internalFrameIndex;
-    this.#internalFrameIndex += 1;
-    return frameIndex;
+  #dispatchNoteUpCallbacks = (noteUpEvent: NoteUpEvent): void => {
+    this.#noteUpCallbacks.forEach((callback) => {
+      callback({
+        ...noteUpEvent,
+        visualisation: this.#visualisation,
+      });
+    });
+  };
+
+  #resetInternalClock = (): void => {
+    this.#internalElapsedTimeInMs = 0;
+    this.#internalLastFrameTimestampInMs = null;
   };
 
   #getInternalElapsedTimeInMs = (): number => {
