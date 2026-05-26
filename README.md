@@ -750,7 +750,21 @@ rect({ x: 0, y: 50, width: 20, height: 20, fillStyle: "#00ffff" }).animateTo(
 );
 ```
 
-Or use easing libraries:
+You can pass either:
+
+- A function `(t) => number`
+- A convenience string name from `easing-utils` (for example, `"easeInSine"`)
+
+If you prefer string names (no import required):
+
+```typescript
+rect({ x: 0, y: 50, width: 20, height: 20, fillStyle: "#ff8800" }).animateTo(
+  { x: 100 },
+  { duration: 1000, easing: "easeOutBounce" },
+);
+```
+
+Or use easing libraries directly:
 
 ```typescript
 import { easeOutBounce, easeOutBack, easeInCubic } from "easing-utils";
@@ -819,7 +833,7 @@ interface AnimationSegmentOptions {
   duration?: number; // Duration in ms
   endTime?: number; // Alternative: absolute end time
   delay?: number; // Delay before starting (added to 'at')
-  easing?: (t: number) => number; // Easing function (0→1)
+  easing?: ((t: number) => number) | string; // Easing function or easing-utils name (e.g. "easeInSine")
   reverse?: boolean; // Reverse animation direction
 }
 ```
@@ -1502,14 +1516,14 @@ circle({ cx: 50, cy: 50, radius: 50 })
 
 **Options:**
 
-| Option     | Type                    | Description                                 |
-| ---------- | ----------------------- | ------------------------------------------- |
-| `at`       | `number \| null`        | Start time (ms) or `null` for event-based   |
-| `duration` | `number`                | Duration in milliseconds                    |
-| `endTime`  | `number`                | Alternative to duration (absolute end time) |
-| `delay`    | `number`                | Delay before starting (added to `at`)       |
-| `easing`   | `(t: number) => number` | Easing function                             |
-| `reverse`  | `boolean`               | Reverse the animation direction             |
+| Option     | Type                                | Description                                          |
+| ---------- | ----------------------------------- | ---------------------------------------------------- |
+| `at`       | `number \| null`                    | Start time (ms) or `null` for event-based            |
+| `duration` | `number`                            | Duration in milliseconds                             |
+| `endTime`  | `number`                            | Alternative to duration (absolute end time)          |
+| `delay`    | `number`                            | Delay before starting (added to `at`)                |
+| `easing`   | `((t: number) => number) \| string` | Easing function or easing-utils function name string |
+| `reverse`  | `boolean`                           | Reverse the animation direction                      |
 
 #### `.withOptions(options)`
 
