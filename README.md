@@ -644,7 +644,7 @@ Liminalis features a powerful declarative animation system for shape primitives.
 - **Reusable options** - apply default timing/easing to multiple segments with `withOptions()`
 - **Type-safe** - only numeric properties can be animated (enforced at compile time)
 
-Shape primitives (`rect`, `circle`, `line`) return `AnimatableShape` instances that support declarative timeline animations using the `.animateTo()` method. This allows you to create smooth, chained animations on any numeric properties.
+Shape primitives (`rect`, `circle`, `line`, `text`) return `AnimatableShape` instances that support declarative timeline animations using the `.animateTo()` method. This allows you to create smooth, chained animations on any numeric properties.
 
 #### Basic Animation
 
@@ -1142,7 +1142,7 @@ createVisualisation.setup(({ atStart, onNoteDown, onNoteUp, onRender }) => {
 
 The `onRender` callback receives an object with:
 
-- `draw(callback)` - Access 2D canvas primitives (background, rect, circle, line, withStyles, etc.)
+- `draw(callback)` - Access 2D canvas primitives (background, rect, circle, line, text, withStyles, etc.)
 - `renderIsometric(callback)` - Access isometric 3D primitives (cuboid, tile, withStyles)
 - `time` - Current time in milliseconds
 - `width`, `height` - Canvas dimensions
@@ -1186,7 +1186,7 @@ Define how the object should be drawn:
 ```typescript
 .withRenderer(({ draw, renderIsometric }) => {
   // Access rendering methods via draw() and renderIsometric()
-  draw(({ circle, rect, background }) => {
+  draw(({ circle, rect, text, background }) => {
     // 2D canvas primitives
   });
 
@@ -1208,7 +1208,7 @@ Define how the object should be drawn:
 **Draw Callback (2D Canvas):**
 
 - **Canvas**: `context`, `width`, `height`, `center`
-- **Primitives**: `background`, `rect`, `circle`, `line`
+- **Primitives**: `background`, `rect`, `circle`, `line`, `text`
 - **Styling**: `withStyles`
 
 **Render Isometric Callback (3D Projection):**
@@ -1294,6 +1294,34 @@ line({
 });
 ```
 
+#### `text(content, { x?, y?, fontStyle?, fillStyle?, strokeStyle?, strokeWidth?, opacity?, rotate?, rotateOrigin?, scale?, scaleX?, scaleY?, scaleOrigin? })`
+
+```typescript
+text("Hello World", {
+  x: 40,
+  y: 80,
+  fontStyle: "24px serif",
+  fillStyle: "#333",
+});
+
+text("Rotated Label", {
+  x: 300,
+  y: 180,
+  rotate: -12,
+  rotateOrigin: "center",
+  strokeStyle: "#222",
+  strokeWidth: 2,
+});
+```
+
+Text rendering defaults:
+
+- `fontStyle`: `"12pt sans-serif"`
+- `fillStyle`: `"#333"`
+- `strokeStyle`: `"transparent"` (no stroke unless specified)
+- Text is rendered with `textBaseline = "top"`, so `x` and `y` map to top-based positioning.
+- Center-based transforms are calculated from measured text bounds.
+
 ### Styling & Transformations
 
 #### `withStyles(styles, callback)`
@@ -1310,7 +1338,7 @@ withStyles({ strokeStyle: "#666", strokeWidth: 3 }, () => {
 
 #### Transform Props
 
-All shape primitives (`rect`, `circle`, `line`) support transform properties that are applied at render time:
+All shape primitives (`rect`, `circle`, `line`, `text`) support transform properties that are applied at render time:
 
 **Rotation:**
 
@@ -1484,7 +1512,7 @@ rect({
 
 #### `.animateTo(targetProps, options)`
 
-Animate shape properties over time. Available on `rect()`, `circle()`, and `line()` primitives:
+Animate shape properties over time. Available on `rect()`, `circle()`, `line()`, and `text()` primitives:
 
 **Basic Usage:**
 

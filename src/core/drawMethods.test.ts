@@ -14,6 +14,8 @@ describe("drawMethods transform props", () => {
       translate: vi.fn(),
       rotate: vi.fn(),
       scale: vi.fn(),
+      font: "",
+      globalAlpha: 1,
       fillStyle: "",
       strokeStyle: "",
       lineWidth: 1,
@@ -25,6 +27,16 @@ describe("drawMethods transform props", () => {
       fill: vi.fn(),
       stroke: vi.fn(),
       fillRect: vi.fn(),
+      fillText: vi.fn(),
+      strokeText: vi.fn(),
+      measureText: vi.fn(
+        (value: string) =>
+          ({
+            width: value.length * 10,
+            actualBoundingBoxAscent: 10,
+            actualBoundingBoxDescent: 2,
+          }) as TextMetrics,
+      ),
       canvas: { width: 800, height: 600 },
     } as unknown as CanvasRenderingContext2D;
   });
@@ -418,6 +430,7 @@ describe("drawMethods transform props", () => {
             width: 200,
             height: 100,
             fillStyle: "#333",
+            strokeStyle: "#333",
             strokeWidth: 10,
             strokeAlignment: "inside",
           });
@@ -447,6 +460,7 @@ describe("drawMethods transform props", () => {
             width: 200,
             height: 100,
             fillStyle: "#333",
+            strokeStyle: "#333",
             strokeWidth: 10,
             strokeAlignment: "outside",
           });
@@ -476,6 +490,7 @@ describe("drawMethods transform props", () => {
             cx: 200,
             cy: 200,
             radius: 50,
+            strokeStyle: "#333",
             strokeWidth: 10,
             strokeAlignment: "center",
           });
@@ -507,6 +522,7 @@ describe("drawMethods transform props", () => {
             cy: 200,
             radius: 50,
             fillStyle: "#333",
+            strokeStyle: "#333",
             strokeWidth: 10,
             strokeAlignment: "inside",
           });
@@ -546,6 +562,7 @@ describe("drawMethods transform props", () => {
             cy: 200,
             radius: 50,
             fillStyle: "#333",
+            strokeStyle: "#333",
             strokeWidth: 10,
             strokeAlignment: "outside",
           });
@@ -572,6 +589,83 @@ describe("drawMethods transform props", () => {
         -Math.PI / 2,
         (Math.PI * 3) / 2,
       );
+    });
+  });
+
+  describe("text rendering", () => {
+    it('uses default font style "12pt sans-serif" when fontStyle is not provided', async () => {
+      const { createDrawContext } = await import("./drawMethods");
+      const drawContext = createDrawContext();
+
+      drawContext.executeDrawCallback(
+        (d) => {
+          d.text("Hello", { x: 10, y: 20 });
+        },
+        mockContext,
+        800,
+        600,
+        0,
+      );
+
+      expect(mockContext.font).toBe("12pt sans-serif");
+      expect(mockContext.fillText).toHaveBeenCalledWith("Hello", 10, 20);
+      expect(mockContext.strokeText).not.toHaveBeenCalled();
+    });
+
+    it("applies base draw styles to text including stroke and font style", async () => {
+      const { createDrawContext } = await import("./drawMethods");
+      const drawContext = createDrawContext();
+
+      drawContext.executeDrawCallback(
+        (d) => {
+          d.withStyles(
+            {
+              fillStyle: "#ff0000",
+              strokeStyle: "#00ff00",
+              strokeWidth: 3,
+              fontStyle: "18px monospace",
+              opacity: 0.4,
+            },
+            () => {
+              d.text("Styled", { x: 30, y: 40 });
+            },
+          );
+        },
+        mockContext,
+        800,
+        600,
+        0,
+      );
+
+      expect(mockContext.font).toBe("18px monospace");
+      expect(mockContext.globalAlpha).toBe(0.4);
+      expect(mockContext.fillStyle).toBe("#ff0000");
+      expect(mockContext.strokeStyle).toBe("#00ff00");
+      expect(mockContext.lineWidth).toBe(3);
+      expect(mockContext.fillText).toHaveBeenCalledWith("Styled", 30, 40);
+      expect(mockContext.strokeText).toHaveBeenCalledWith("Styled", 30, 40);
+    });
+
+    it("applies transforms to text", async () => {
+      const { createDrawContext } = await import("./drawMethods");
+      const drawContext = createDrawContext();
+
+      drawContext.executeDrawCallback(
+        (d) => {
+          d.text("Hi", { x: 100, y: 50, rotate: 45 });
+        },
+        mockContext,
+        800,
+        600,
+        0,
+      );
+
+      // "Hi" => width 20, ascent 10, descent 2
+      // With textBaseline="top", bounds are x=100, y=50, width=20, height=12
+      // center=(110, 56)
+      expect(mockContext.translate).toHaveBeenCalledWith(110, 56);
+      expect(mockContext.rotate).toHaveBeenCalledWith((45 * Math.PI) / 180);
+      expect(mockContext.translate).toHaveBeenCalledWith(-110, -56);
     });
   });
 });

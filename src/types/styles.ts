@@ -7,12 +7,16 @@ export interface StrokeStyles {
   strokeWidth?: number;
 }
 
+export interface TextStyles {
+  fontStyle?: string;
+}
+
 export interface WithOpacity {
   opacity?: number;
 }
 
 export type PartialDrawStyles = Partial<
-  FillStyles & StrokeStyles & WithOpacity
+  FillStyles & StrokeStyles & TextStyles & WithOpacity
 >;
 
 export type PartialIsometricStyles = Partial<FillStyles & StrokeStyles>;

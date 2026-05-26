@@ -14,6 +14,10 @@ const DEFAULT_STROKE_STYLE = "#333";
 const DEFAULT_STROKE_WIDTH = 1;
 const DEFAULT_STROKE_ALIGNMENT = "center";
 
+const DEFAULT_TEXT_FILL_STYLE = "#333";
+const DEFAULT_TEXT_STROKE_STYLE = "transparent";
+const DEFAULT_TEXT_FONT_STYLE = "12pt sans-serif";
+
 interface FillStyles {
   fillStyle?: string;
 }
@@ -44,12 +48,9 @@ export interface TransformProps {
   scaleOrigin?: TransformOrigin;
 }
 
-export interface CircleProps
-  extends FillStyles, StrokeStyles, WithOpacity, TransformProps {
-  cx: number;
-  cy: number;
-  radius: number;
-  strokeAlignment?: StrokeAlignment;
+export interface LineProps extends StrokeStyles, WithOpacity, TransformProps {
+  start: Partial<Point2D>;
+  end: Partial<Point2D>;
 }
 
 export interface ArcProps extends CircleProps {
@@ -57,9 +58,12 @@ export interface ArcProps extends CircleProps {
   end: number;
 }
 
-export interface LineProps extends StrokeStyles, WithOpacity, TransformProps {
-  start: Partial<Point2D>;
-  end: Partial<Point2D>;
+export interface CircleProps
+  extends FillStyles, StrokeStyles, WithOpacity, TransformProps {
+  cx: number;
+  cy: number;
+  radius: number;
+  strokeAlignment?: StrokeAlignment;
 }
 
 export interface RectProps
@@ -74,6 +78,16 @@ export interface RectProps
   strokeAlignment?: StrokeAlignment;
 }
 
+export interface TextProps
+  extends
+    Partial<Point2D>,
+    FillStyles,
+    StrokeStyles,
+    WithOpacity,
+    TransformProps {
+  fontStyle?: string;
+}
+
 export interface DrawMethods {
   width: number;
   height: number;
@@ -85,6 +99,7 @@ export interface DrawMethods {
   arc: (props: ArcProps) => Animatable<ArcProps>;
   circle: (props: CircleProps) => Animatable<CircleProps>;
   line: (props: LineProps) => Animatable<LineProps>;
+  text: (text: string, props: TextProps) => Animatable<TextProps>;
 }
 
 const background = (
@@ -366,6 +381,79 @@ const rect = (context: CanvasRenderingContext2D, props: RectProps) => {
   });
 };
 
+const getTextBounds = (
+  context: CanvasRenderingContext2D,
+  text: string,
+  x: number,
+  y: number,
+  fontStyle: string,
+): { x: number; y: number; width: number; height: number } => {
+  context.save();
+  context.font = fontStyle;
+
+  const metrics = context.measureText(text);
+
+  context.restore();
+
+  const width = metrics.width ?? 0;
+
+  const fallbackHeightMatch = fontStyle.match(/(\d+(?:\.\d+)?)px/);
+  const fallbackHeight = fallbackHeightMatch
+    ? Number(fallbackHeightMatch[1])
+    : 12;
+
+  const ascent = metrics.actualBoundingBoxAscent ?? fallbackHeight;
+  const descent = metrics.actualBoundingBoxDescent ?? 0;
+  const height = Math.max(ascent + descent, fallbackHeight);
+
+  return {
+    x,
+    // Text is rendered using textBaseline="top", so y is already the top edge.
+    y,
+    width,
+    height,
+  };
+};
+
+const text = (
+  context: CanvasRenderingContext2D,
+  textValue: string,
+  props: TextProps,
+) => {
+  const {
+    x = 0,
+    y = 0,
+    fontStyle = DEFAULT_TEXT_FONT_STYLE,
+    fillStyle = DEFAULT_TEXT_FILL_STYLE,
+    strokeStyle = DEFAULT_TEXT_STROKE_STYLE,
+    strokeWidth = DEFAULT_STROKE_WIDTH,
+    opacity = 1,
+  } = props;
+
+  const bounds = getTextBounds(context, textValue, x, y, fontStyle);
+
+  renderWithTransform(context, props, bounds, () => {
+    context.save();
+
+    context.globalAlpha = opacity;
+    context.font = fontStyle;
+    context.textBaseline = "top";
+
+    if (fillStyle !== "transparent") {
+      context.fillStyle = fillStyle;
+      context.fillText(textValue, x, y);
+    }
+
+    if (strokeStyle !== "transparent" && strokeWidth > 0) {
+      context.strokeStyle = strokeStyle;
+      context.lineWidth = strokeWidth;
+      context.strokeText(textValue, x, y);
+    }
+
+    context.restore();
+  });
+};
+
 export interface DrawContext {
   executeDrawCallback: (
     callback: (methods: DrawMethods) => void,
@@ -389,8 +477,8 @@ export const createDrawContext = (): DrawContext => {
     registry.beginFrame(timeInMs);
 
     let appliedStyles: PartialDrawStyles = {
-      fillStyle: DEFAULT_FILL_STYLE,
-      strokeStyle: DEFAULT_STROKE_STYLE,
+      fillStyle: DEFAULT_TEXT_FILL_STYLE,
+      strokeStyle: DEFAULT_TEXT_STROKE_STYLE,
       strokeWidth: DEFAULT_STROKE_WIDTH,
     };
 
@@ -432,6 +520,8 @@ export const createDrawContext = (): DrawContext => {
         registry.queue(mergeStyles(props), (p) => circle(context, p)),
       line: (props: LineProps) =>
         registry.queue(mergeStyles(props), (p) => line(context, p)),
+      text: (textValue: string, props: TextProps) =>
+        registry.queue(mergeStyles(props), (p) => text(context, textValue, p)),
     };
 
     // Execute the user's callback (queues shapes and their .to() animations)
