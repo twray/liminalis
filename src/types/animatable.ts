@@ -1,6 +1,19 @@
 import { EasingFunction } from "./common";
 import { EventTime } from "./events";
 
+type EasingUtilsModule = typeof import("easing-utils");
+
+type EasingUtilsExportKey = {
+  [K in keyof EasingUtilsModule]: EasingUtilsModule[K] extends (
+    t: number,
+    ...args: any[]
+  ) => number
+    ? K
+    : never;
+}[keyof EasingUtilsModule];
+
+export type EasingUtilsFunctionName = Extract<EasingUtilsExportKey, string>;
+
 /**
  * Extract only numeric property keys from a type
  */
@@ -8,8 +21,8 @@ export type NumericKeys<T> = {
   [K in keyof T]: T[K] extends number
     ? K
     : T[K] extends number | undefined
-    ? K
-    : never;
+      ? K
+      : never;
 }[keyof T];
 
 /**
@@ -25,7 +38,7 @@ export interface AnimationSegmentOptions {
   duration?: number;
   endTime?: number;
   delay?: number;
-  easing?: EasingFunction;
+  easing?: EasingFunction | EasingUtilsFunctionName;
   reverse?: boolean;
 }
 

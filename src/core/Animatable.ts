@@ -1,5 +1,9 @@
+import * as easingUtils from "easing-utils";
+
+import type { EasingFunction } from "../types";
 import {
   AnimationSegmentOptions,
+  EasingUtilsFunctionName,
   PartialNumericProps,
 } from "../types/animatable";
 import { eventTimeToMs } from "../util";
@@ -9,9 +13,12 @@ interface Segment<TProps> {
   options: AnimationSegmentOptions;
 }
 
+type BuiltInEasingFunctions = Pick<typeof easingUtils, EasingUtilsFunctionName>;
+
 class Animatable<TProps extends object> {
   static #DEFAULT_EASING = (n: number): number => n;
   static #DEFAULT_DURATION = 500;
+  static #BUILT_IN_EASING_FUNCTIONS: BuiltInEasingFunctions = easingUtils;
 
   static #PROPERTY_DEFAULTS: Record<string, number> = {
     opacity: 1,
@@ -438,12 +445,28 @@ class Animatable<TProps extends object> {
     rawProgress: number,
     options: AnimationSegmentOptions,
   ): number {
-    const easing = options.easing ?? Animatable.#DEFAULT_EASING;
+    const easing = this.#resolveEasing(options.easing);
     let progress = easing(rawProgress);
     if (options.reverse) {
       progress = 1 - progress;
     }
     return progress;
+  }
+
+  #resolveEasing(easing: AnimationSegmentOptions["easing"]): EasingFunction {
+    if (typeof easing === "function") {
+      return easing;
+    }
+
+    if (typeof easing === "string") {
+      const easingFunction = Animatable.#BUILT_IN_EASING_FUNCTIONS[easing];
+
+      if (typeof easingFunction === "function") {
+        return easingFunction;
+      }
+    }
+
+    return Animatable.#DEFAULT_EASING;
   }
 
   reset(): void {

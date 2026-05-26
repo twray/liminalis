@@ -1,3 +1,4 @@
+import { easeInSine, easeOutCubic } from "easing-utils";
 import { describe, expect, it, vi } from "vitest";
 import Animatable from "./Animatable";
 
@@ -838,6 +839,17 @@ describe("withOptions API", () => {
       expect(anim.getCurrentProps(500).x).toBe(25);
     });
 
+    it("applies named easing string to all subsequent animateTo calls", () => {
+      const anim = new Animatable({ x: 0 }, 0);
+      anim
+        .withOptions({ duration: 1000, easing: "easeOutCubic" })
+        .animateTo({ x: 100 })
+        .animateTo({ x: 200 });
+
+      const expectedXAtHalfway = easeOutCubic(0.5) * 100;
+      expect(anim.getCurrentProps(500).x).toBeCloseTo(expectedXAtHalfway);
+    });
+
     it("allows per-segment override of withOptions", () => {
       const anim = new Animatable({ radius: 100 }, 0);
       anim
@@ -906,6 +918,16 @@ describe("Easing Functions", () => {
       // At t=500, linear progress is 0.5
       // With easeOutCubic: 1 - (1-0.5)^3 = 1 - 0.125 = 0.875
       expect(anim.getCurrentProps(500).x).toBe(87.5);
+    });
+
+    it("uses easing-utils easing function by name", () => {
+      const anim = new Animatable({ x: 0 }, 0);
+      anim.animateTo({ x: 100 }, { duration: 1000, easing: "easeInSine" });
+
+      const expectedXAtHalfway = easeInSine(0.5) * 100;
+
+      expect(anim.getCurrentProps(500).x).toBeCloseTo(expectedXAtHalfway);
+      expect(anim.getCurrentProps(1000).x).toBeCloseTo(100);
     });
   });
 
