@@ -20,6 +20,9 @@ describe("drawMethods transform props", () => {
       strokeStyle: "",
       lineWidth: 1,
       beginPath: vi.fn(),
+      closePath: vi.fn(),
+      clip: vi.fn(),
+      rect: vi.fn(),
       arc: vi.fn(),
       ellipse: vi.fn(),
       roundRect: vi.fn(),
@@ -390,6 +393,281 @@ describe("drawMethods transform props", () => {
       expect(mockContext.translate).toHaveBeenCalledWith(50, 50);
       expect(mockContext.rotate).toHaveBeenCalledWith((45 * Math.PI) / 180);
       expect(mockContext.translate).toHaveBeenCalledWith(-50, -50);
+    });
+  });
+
+  describe("polygon rendering", () => {
+    it("renders sequential line segments from points", async () => {
+      const { createDrawContext } = await import("./drawMethods");
+      const drawContext = createDrawContext();
+
+      drawContext.executeDrawCallback(
+        (d) => {
+          d.polygon({
+            points: [
+              { x: 100, y: 100 },
+              { x: 140, y: 100 },
+              { x: 120, y: 140 },
+            ],
+            strokeStyle: "#333",
+          });
+        },
+        mockContext,
+        800,
+        600,
+        0,
+      );
+
+      expect(mockContext.moveTo).toHaveBeenCalledWith(100, 100);
+      expect(mockContext.lineTo).toHaveBeenNthCalledWith(1, 140, 100);
+      expect(mockContext.lineTo).toHaveBeenNthCalledWith(2, 120, 140);
+      expect(mockContext.closePath).not.toHaveBeenCalled();
+    });
+
+    it("closes the polygon when closePath is true", async () => {
+      const { createDrawContext } = await import("./drawMethods");
+      const drawContext = createDrawContext();
+
+      drawContext.executeDrawCallback(
+        (d) => {
+          d.polygon({
+            points: [
+              { x: 100, y: 100 },
+              { x: 150, y: 100 },
+              { x: 125, y: 150 },
+            ],
+            closePath: true,
+            strokeStyle: "#333",
+          });
+        },
+        mockContext,
+        800,
+        600,
+        0,
+      );
+
+      expect(mockContext.closePath).toHaveBeenCalled();
+    });
+
+    it("applies strokeAlignment only when the polygon is closed", async () => {
+      const { createDrawContext } = await import("./drawMethods");
+      const drawContext = createDrawContext();
+
+      drawContext.executeDrawCallback(
+        (d) => {
+          d.polygon({
+            points: [
+              { x: 100, y: 100 },
+              { x: 150, y: 100 },
+              { x: 125, y: 150 },
+            ],
+            strokeStyle: "#333",
+            strokeWidth: 10,
+            strokeAlignment: "inside",
+          });
+        },
+        mockContext,
+        800,
+        600,
+        0,
+      );
+
+      expect(mockContext.clip).not.toHaveBeenCalled();
+      expect(mockContext.lineWidth).toBe(10);
+
+      vi.clearAllMocks();
+
+      drawContext.executeDrawCallback(
+        (d) => {
+          d.polygon({
+            points: [
+              { x: 100, y: 100 },
+              { x: 150, y: 100 },
+              { x: 125, y: 150 },
+            ],
+            closePath: true,
+            strokeStyle: "#333",
+            strokeWidth: 10,
+            strokeAlignment: "inside",
+          });
+        },
+        mockContext,
+        800,
+        600,
+        0,
+      );
+
+      expect(mockContext.clip).toHaveBeenCalledWith();
+      expect(mockContext.lineWidth).toBe(20);
+    });
+
+    it("uses doubled stroke width for inside and outside closed polygons", async () => {
+      const { createDrawContext } = await import("./drawMethods");
+      const drawContext = createDrawContext();
+
+      drawContext.executeDrawCallback(
+        (d) => {
+          d.polygon({
+            points: [
+              { x: 100, y: 100 },
+              { x: 150, y: 100 },
+              { x: 125, y: 150 },
+            ],
+            closePath: true,
+            strokeStyle: "#333",
+            strokeWidth: 8,
+            strokeAlignment: "inside",
+          });
+        },
+        mockContext,
+        800,
+        600,
+        0,
+      );
+
+      expect(mockContext.lineWidth).toBe(16);
+
+      vi.clearAllMocks();
+
+      drawContext.executeDrawCallback(
+        (d) => {
+          d.polygon({
+            points: [
+              { x: 100, y: 100 },
+              { x: 150, y: 100 },
+              { x: 125, y: 150 },
+            ],
+            closePath: true,
+            strokeStyle: "#333",
+            strokeWidth: 8,
+            strokeAlignment: "outside",
+          });
+        },
+        mockContext,
+        800,
+        600,
+        0,
+      );
+
+      expect(mockContext.lineWidth).toBe(16);
+    });
+
+    it("keeps original stroke width for open polygons even when strokeAlignment is set", async () => {
+      const { createDrawContext } = await import("./drawMethods");
+      const drawContext = createDrawContext();
+
+      drawContext.executeDrawCallback(
+        (d) => {
+          d.polygon({
+            points: [
+              { x: 100, y: 100 },
+              { x: 150, y: 100 },
+              { x: 125, y: 150 },
+            ],
+            strokeStyle: "#333",
+            strokeWidth: 8,
+            strokeAlignment: "outside",
+          });
+        },
+        mockContext,
+        800,
+        600,
+        0,
+      );
+
+      expect(mockContext.lineWidth).toBe(8);
+      expect(mockContext.clip).not.toHaveBeenCalled();
+    });
+
+    it("treats matching first and last points as a closed shape", async () => {
+      const { createDrawContext } = await import("./drawMethods");
+      const drawContext = createDrawContext();
+
+      drawContext.executeDrawCallback(
+        (d) => {
+          d.polygon({
+            points: [
+              { x: 100, y: 100 },
+              { x: 150, y: 100 },
+              { x: 125, y: 150 },
+              { x: 100, y: 100 },
+            ],
+            strokeStyle: "#333",
+            strokeWidth: 10,
+            strokeAlignment: "outside",
+          });
+        },
+        mockContext,
+        800,
+        600,
+        0,
+      );
+
+      expect(mockContext.closePath).toHaveBeenCalled();
+      expect(mockContext.clip).toHaveBeenCalledWith("evenodd");
+    });
+
+    it("animates numeric point coordinates in the points array", async () => {
+      const { createDrawContext } = await import("./drawMethods");
+      const drawContext = createDrawContext();
+
+      const initialPoints = [
+        { x: 100, y: 100 },
+        { x: 140, y: 100 },
+        { x: 120, y: 140 },
+      ];
+
+      const targetPoints = [
+        { x: 120, y: 80 },
+        { x: 160, y: 120 },
+        { x: 140, y: 160 },
+      ];
+
+      const drawAnimatedPolygon = () => {
+        drawContext.executeDrawCallback(
+          (d) => {
+            d.polygon({
+              points: initialPoints,
+              closePath: true,
+              strokeStyle: "#333",
+            }).animateTo({ points: targetPoints }, { duration: 1000 });
+          },
+          mockContext,
+          800,
+          600,
+          0,
+        );
+      };
+
+      drawAnimatedPolygon();
+
+      vi.clearAllMocks();
+
+      drawContext.executeDrawCallback(
+        (d) => {
+          d.polygon({
+            points: initialPoints,
+            closePath: true,
+            strokeStyle: "#333",
+          }).animateTo({ points: targetPoints }, { duration: 1000 });
+        },
+        mockContext,
+        800,
+        600,
+        500,
+      );
+
+      const moveToCall = vi.mocked(mockContext.moveTo).mock.calls[0];
+      const lineToCalls = vi.mocked(mockContext.lineTo).mock.calls;
+
+      expect(moveToCall[0]).toBeCloseTo(110);
+      expect(moveToCall[1]).toBeCloseTo(90);
+
+      expect(lineToCalls[0][0]).toBeCloseTo(150);
+      expect(lineToCalls[0][1]).toBeCloseTo(110);
+
+      expect(lineToCalls[1][0]).toBeCloseTo(130);
+      expect(lineToCalls[1][1]).toBeCloseTo(150);
     });
   });
 

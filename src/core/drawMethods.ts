@@ -58,6 +58,13 @@ export interface LineProps extends StrokeStyles, WithOpacity, TransformProps {
   end: Partial<Point2D>;
 }
 
+export interface PolygonProps
+  extends StrokeStyles, WithOpacity, TransformProps {
+  points: Point2D[];
+  closePath?: boolean;
+  strokeAlignment?: StrokeAlignment;
+}
+
 interface EllipticGeometryProps
   extends FillStyles, StrokeStyles, WithOpacity, TransformProps {
   cx: number;
@@ -124,6 +131,7 @@ export interface DrawMethods {
   center: Point2D;
   centerOf: (props: Dimensions2D) => Point2D;
   line: (props: LineProps) => Animatable<LineProps>;
+  polygon: (props: PolygonProps) => Animatable<PolygonProps>;
   arc: (props: ArcProps) => Animatable<ArcProps>;
   circle: (props: CircleProps) => Animatable<CircleProps>;
   ellipse: (props: EllipseProps) => Animatable<EllipseProps>;
@@ -275,6 +283,110 @@ const line = (context: CanvasRenderingContext2D, props: LineProps) => {
     context.lineTo(endX, endY);
 
     context.stroke();
+
+    context.restore();
+  });
+};
+
+const polygon = (context: CanvasRenderingContext2D, props: PolygonProps) => {
+  const {
+    points,
+    closePath = false,
+    strokeStyle = DEFAULT_STROKE_STYLE,
+    strokeWidth = DEFAULT_STROKE_WIDTH,
+    strokeAlignment = DEFAULT_STROKE_ALIGNMENT,
+    opacity = 1,
+  } = props;
+
+  if (points.length < 2) {
+    return;
+  }
+
+  const firstPoint = points[0];
+  const lastPoint = points[points.length - 1];
+  const pointsAlreadyClosed =
+    firstPoint.x === lastPoint.x && firstPoint.y === lastPoint.y;
+  const shouldClosePath = closePath || pointsAlreadyClosed;
+
+  const minX = Math.min(...points.map(({ x }) => x));
+  const minY = Math.min(...points.map(({ y }) => y));
+  const maxX = Math.max(...points.map(({ x }) => x));
+  const maxY = Math.max(...points.map(({ y }) => y));
+
+  const bounds = {
+    x: minX,
+    y: minY,
+    width: maxX - minX,
+    height: maxY - minY,
+  };
+
+  const tracePolygonPath = (isClosedPath: boolean): void => {
+    context.moveTo(points[0].x, points[0].y);
+
+    for (let index = 1; index < points.length; index++) {
+      const point = points[index];
+      context.lineTo(point.x, point.y);
+    }
+
+    if (isClosedPath) {
+      context.closePath();
+    }
+  };
+
+  renderWithTransform(context, props, bounds, () => {
+    context.save();
+
+    context.globalAlpha = opacity;
+
+    if (strokeStyle !== "transparent" && strokeWidth > 0) {
+      context.strokeStyle = strokeStyle;
+      context.lineWidth = strokeWidth;
+
+      const canApplyStrokeAlignment = shouldClosePath;
+
+      if (canApplyStrokeAlignment && strokeAlignment === "inside") {
+        // Draw at 2x width and keep only the inner half so visible width
+        // matches the requested strokeWidth.
+        context.lineWidth = strokeWidth * 2;
+
+        context.save();
+        context.beginPath();
+        tracePolygonPath(true);
+        context.clip();
+
+        context.beginPath();
+        tracePolygonPath(true);
+        context.stroke();
+        context.restore();
+      } else if (canApplyStrokeAlignment && strokeAlignment === "outside") {
+        // Draw at 2x width and keep only the outer half so visible width
+        // matches the requested strokeWidth.
+        context.lineWidth = strokeWidth * 2;
+
+        // Clip to everything outside the polygon to keep only the outer half.
+        const clipPadding = strokeWidth * 2;
+
+        context.save();
+        context.beginPath();
+        context.rect(
+          minX - clipPadding,
+          minY - clipPadding,
+          bounds.width + clipPadding * 2,
+          bounds.height + clipPadding * 2,
+        );
+        tracePolygonPath(true);
+        context.clip("evenodd");
+
+        context.beginPath();
+        tracePolygonPath(true);
+        context.stroke();
+        context.restore();
+      } else {
+        context.beginPath();
+        tracePolygonPath(shouldClosePath);
+        context.stroke();
+      }
+    }
 
     context.restore();
   });
@@ -575,16 +687,18 @@ export const createDrawContext = (): DrawContext => {
       background: (props: BackgroundProps) => background(context, props),
       center: { x: width / 2, y: height / 2 },
       centerOf,
-      rect: (props: RectProps) =>
-        registry.queue(mergeStyles(props), (p) => rect(context, p)),
-      arc: (props: ArcProps) =>
-        registry.queue(mergeStyles(props), (p) => arc(context, p)),
+      line: (props: LineProps) =>
+        registry.queue(mergeStyles(props), (p) => line(context, p)),
+      polygon: (props: PolygonProps) =>
+        registry.queue(mergeStyles(props), (p) => polygon(context, p)),
       circle: (props: CircleProps) =>
         registry.queue(mergeStyles(props), (p) => circle(context, p)),
       ellipse: (props: EllipseProps) =>
         registry.queue(mergeStyles(props), (p) => ellipse(context, p)),
-      line: (props: LineProps) =>
-        registry.queue(mergeStyles(props), (p) => line(context, p)),
+      arc: (props: ArcProps) =>
+        registry.queue(mergeStyles(props), (p) => arc(context, p)),
+      rect: (props: RectProps) =>
+        registry.queue(mergeStyles(props), (p) => rect(context, p)),
       text: (textValue: string, props: TextProps) =>
         registry.queue(mergeStyles(props), (p) => text(context, textValue, p)),
     };

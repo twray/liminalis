@@ -15,6 +15,17 @@ interface Segment<TProps> {
 
 type BuiltInEasingFunctions = Pick<typeof easingUtils, EasingUtilsFunctionName>;
 
+type TimelineEntry<TProps> = {
+  segment: Segment<TProps>;
+  startTime: number | null;
+  duration: number;
+};
+
+interface NumericLeafTarget {
+  path: string;
+  value: number;
+}
+
 class Animatable<TProps extends object> {
   static #DEFAULT_EASING = (n: number): number => n;
   static #DEFAULT_DURATION = 500;
@@ -37,12 +48,12 @@ class Animatable<TProps extends object> {
   #hasWarnedAboutMissingDuration = false;
 
   constructor(props: TProps, firstInvokedTime: number) {
-    this.#initialProps = { ...props };
+    this.#initialProps = this.#cloneValue(props);
     this.#firstInvokedTime = firstInvokedTime;
   }
 
   updateInitialProps(props: TProps): void {
-    this.#initialProps = { ...props };
+    this.#initialProps = this.#cloneValue(props);
   }
 
   captureCurrentProps(timeInMs: number): void {
@@ -81,22 +92,14 @@ class Animatable<TProps extends object> {
 
     // Start with initial props. Snapshot is only used when a newly-introduced
     // segment needs to inherit a live in-flight value.
-    const baseProps = { ...this.#initialProps };
+    const baseProps = this.#cloneValue(this.#initialProps);
 
     // For each property, find the value at the current time
     return this.#evaluatePropsAtTime(timeline, baseProps, relativeTime);
   }
 
-  #buildTimeline(): Array<{
-    segment: Segment<TProps>;
-    startTime: number | null;
-    duration: number;
-  }> {
-    const timeline: Array<{
-      segment: Segment<TProps>;
-      startTime: number | null;
-      duration: number;
-    }> = [];
+  #buildTimeline(): TimelineEntry<TProps>[] {
+    const timeline: TimelineEntry<TProps>[] = [];
 
     let cumulativeEnd = 0;
 
@@ -158,22 +161,20 @@ class Animatable<TProps extends object> {
   }
 
   #evaluatePropsAtTime(
-    timeline: Array<{
-      segment: Segment<TProps>;
-      startTime: number | null;
-      duration: number;
-    }>,
+    timeline: TimelineEntry<TProps>[],
     baseProps: TProps,
     time: number,
   ): TProps {
-    const result = { ...baseProps };
+    const result = this.#cloneValue(baseProps);
 
     // Sort by start time for proper evaluation order
     const sortedEntries = timeline
       .filter((e) => e.startTime !== null)
       .sort((a, b) => a.startTime! - b.startTime!);
 
-    this.#pruneSegmentStartValues(sortedEntries);
+    const segmentTargetsCache = new Map<Segment<TProps>, NumericLeafTarget[]>();
+
+    this.#pruneSegmentStartValues(sortedEntries, segmentTargetsCache);
 
     // For each property, we need to find the "active" segment (the latest one that has started)
     // and interpolate or use completed value
@@ -189,11 +190,14 @@ class Animatable<TProps extends object> {
 
       const endTime = startTime + duration;
 
-      for (const key of Object.keys(segment.targetProps)) {
+      for (const { path: key, value } of this.#getSegmentTargets(
+        segment,
+        segmentTargetsCache,
+      )) {
         if (time >= endTime) {
           // Segment completed - record its final value
           propertyStates.set(key, {
-            value: (segment.targetProps as any)[key],
+            value,
             endTime,
           });
         }
@@ -202,7 +206,7 @@ class Animatable<TProps extends object> {
 
     // Apply completed values to result
     for (const [key, state] of propertyStates) {
-      (result as any)[key] = state.value;
+      this.#setValueAtPath(result, key, state.value);
     }
 
     // Second pass: for each property, find if there's an active (in-progress) segment
@@ -216,18 +220,25 @@ class Animatable<TProps extends object> {
       // Only process segments that have started but not completed
       if (time < startTime || time > endTime) continue;
 
-      for (const key of Object.keys(segment.targetProps)) {
+      for (const { path: key, value: targetValue } of this.#getSegmentTargets(
+        segment,
+        segmentTargetsCache,
+      )) {
         // Check if a later segment for this property has started
         const laterSegmentStarted = sortedEntries.some((other) => {
           if (other === entry || other.startTime === null) return false;
           if (other.startTime <= startTime!) return false;
           if (time < other.startTime) return false;
-          return key in other.segment.targetProps;
+          return this.#hasTargetPath(other.segment, key, segmentTargetsCache);
         });
 
         if (laterSegmentStarted) continue; // This property is owned by a later segment
 
-        const segmentStartValueKey = this.#getSegmentStartValueKey(entry, key);
+        const segmentStartValueKey = this.#getSegmentStartValueKey(
+          entry,
+          key,
+          targetValue,
+        );
 
         const hasCachedStartValue =
           this.#segmentStartValues.has(segmentStartValueKey);
@@ -240,63 +251,260 @@ class Animatable<TProps extends object> {
               key,
               startTime,
               baseProps,
+              segmentTargetsCache,
             );
 
         if (!hasCachedStartValue) {
           this.#segmentStartValues.set(segmentStartValueKey, startValue);
         }
 
-        const targetValue = (segment.targetProps as any)[key] as number;
         const elapsed = time - startTime;
         const rawProgress =
           duration === 0 ? 1 : Math.max(0, Math.min(1, elapsed / duration));
         const progress = this.#applyProgress(rawProgress, segment.options);
 
-        (result as any)[key] =
-          startValue + (targetValue - startValue) * progress;
+        this.#setValueAtPath(
+          result,
+          key,
+          startValue + (targetValue - startValue) * progress,
+        );
       }
     }
 
     return result;
   }
 
+  #cloneValue<T>(value: T): T {
+    if (Array.isArray(value)) {
+      return value.map((item) => this.#cloneValue(item)) as T;
+    }
+
+    if (value !== null && typeof value === "object") {
+      const cloned: Record<string, unknown> = {};
+
+      for (const [key, nestedValue] of Object.entries(
+        value as Record<string, unknown>,
+      )) {
+        cloned[key] = this.#cloneValue(nestedValue);
+      }
+
+      return cloned as T;
+    }
+
+    return value;
+  }
+
+  #collectNumericLeafTargets(
+    value: unknown,
+    currentPath = "",
+    targets: NumericLeafTarget[] = [],
+  ): NumericLeafTarget[] {
+    if (typeof value === "number" && currentPath !== "") {
+      targets.push({ path: currentPath, value });
+      return targets;
+    }
+
+    if (Array.isArray(value)) {
+      for (let index = 0; index < value.length; index++) {
+        const nestedValue = value[index];
+
+        if (nestedValue === undefined) {
+          continue;
+        }
+
+        const path =
+          currentPath === "" ? `${index}` : `${currentPath}.${index}`;
+        this.#collectNumericLeafTargets(nestedValue, path, targets);
+      }
+
+      return targets;
+    }
+
+    if (value !== null && typeof value === "object") {
+      for (const [key, nestedValue] of Object.entries(
+        value as Record<string, unknown>,
+      )) {
+        if (nestedValue === undefined) {
+          continue;
+        }
+
+        const path = currentPath === "" ? key : `${currentPath}.${key}`;
+        this.#collectNumericLeafTargets(nestedValue, path, targets);
+      }
+    }
+
+    return targets;
+  }
+
+  #getSegmentTargets(
+    segment: Segment<TProps>,
+    cache: Map<Segment<TProps>, NumericLeafTarget[]>,
+  ): NumericLeafTarget[] {
+    const cached = cache.get(segment);
+
+    if (cached !== undefined) {
+      return cached;
+    }
+
+    const targets = this.#collectNumericLeafTargets(segment.targetProps);
+    cache.set(segment, targets);
+
+    return targets;
+  }
+
+  #hasTargetPath(
+    segment: Segment<TProps>,
+    path: string,
+    cache: Map<Segment<TProps>, NumericLeafTarget[]>,
+  ): boolean {
+    return this.#getSegmentTargets(segment, cache).some(
+      (target) => target.path === path,
+    );
+  }
+
+  #getTargetValue(
+    segment: Segment<TProps>,
+    path: string,
+    cache: Map<Segment<TProps>, NumericLeafTarget[]>,
+  ): number | undefined {
+    const matchingTarget = this.#getSegmentTargets(segment, cache).find(
+      (target) => target.path === path,
+    );
+
+    return matchingTarget?.value;
+  }
+
+  #isIndexSegment(segment: string): boolean {
+    return /^\d+$/.test(segment);
+  }
+
+  #getValueAtPath(object: unknown, path: string): unknown {
+    const segments = path.split(".");
+    let currentValue = object as unknown;
+
+    for (const segment of segments) {
+      if (currentValue === null || currentValue === undefined) {
+        return undefined;
+      }
+
+      if (Array.isArray(currentValue) && this.#isIndexSegment(segment)) {
+        currentValue = currentValue[Number(segment)];
+      } else if (typeof currentValue === "object") {
+        currentValue = (currentValue as Record<string, unknown>)[segment];
+      } else {
+        return undefined;
+      }
+    }
+
+    return currentValue;
+  }
+
+  #getNumericValueAtPath(object: unknown, path: string): number | undefined {
+    const valueAtPath = this.#getValueAtPath(object, path);
+
+    return typeof valueAtPath === "number" ? valueAtPath : undefined;
+  }
+
+  #setValueAtPath(object: unknown, path: string, value: number): void {
+    const segments = path.split(".");
+
+    if (segments.length === 0) {
+      return;
+    }
+
+    let currentTarget = object as Record<string, unknown>;
+
+    for (let index = 0; index < segments.length; index++) {
+      const segment = segments[index];
+      const isLastSegment = index === segments.length - 1;
+      const nextSegment = segments[index + 1];
+      const nextIsArray =
+        nextSegment !== undefined && this.#isIndexSegment(nextSegment);
+
+      if (Array.isArray(currentTarget) && this.#isIndexSegment(segment)) {
+        const arrayIndex = Number(segment);
+
+        if (isLastSegment) {
+          currentTarget[arrayIndex] = value;
+          return;
+        }
+
+        if (
+          currentTarget[arrayIndex] === undefined ||
+          currentTarget[arrayIndex] === null ||
+          typeof currentTarget[arrayIndex] !== "object"
+        ) {
+          currentTarget[arrayIndex] = nextIsArray ? [] : {};
+        }
+
+        currentTarget = currentTarget[arrayIndex] as Record<string, unknown>;
+        continue;
+      }
+
+      if (isLastSegment) {
+        currentTarget[segment] = value;
+        return;
+      }
+
+      if (
+        currentTarget[segment] === undefined ||
+        currentTarget[segment] === null ||
+        typeof currentTarget[segment] !== "object"
+      ) {
+        currentTarget[segment] = nextIsArray ? [] : {};
+      }
+
+      currentTarget = currentTarget[segment] as Record<string, unknown>;
+    }
+  }
+
+  #getDefaultValueForPath(path: string): number {
+    // Only top-level properties can have non-zero defaults.
+    if (!path.includes(".")) {
+      return Animatable.#PROPERTY_DEFAULTS[path] ?? 0;
+    }
+
+    return 0;
+  }
+
   #getPropertyValueAtTime(
-    sortedEntries: Array<{
-      segment: Segment<TProps>;
-      startTime: number | null;
-      duration: number;
-    }>,
-    excludeEntry: {
-      segment: Segment<TProps>;
-      startTime: number | null;
-      duration: number;
-    },
-    key: string,
+    sortedEntries: TimelineEntry<TProps>[],
+    excludeEntry: TimelineEntry<TProps>,
+    path: string,
     atTime: number,
     baseProps: TProps,
+    segmentTargetsCache: Map<Segment<TProps>, NumericLeafTarget[]>,
     allowSnapshotFallback = true,
   ): number {
     // Start with base value.
     // Use property-specific defaults for certain properties (e.g., opacity, scale default to 1)
 
-    const defaultValue = Animatable.#PROPERTY_DEFAULTS[key] ?? 0;
-    let value = (baseProps as any)[key] ?? defaultValue;
+    const defaultValue = this.#getDefaultValueForPath(path);
+    let value = this.#getNumericValueAtPath(baseProps, path) ?? defaultValue;
 
     if (
       allowSnapshotFallback &&
       this.#shouldUseSnapshotFallbackForSegment(
         sortedEntries,
         excludeEntry,
-        key,
+        path,
+        segmentTargetsCache,
       )
     ) {
-      value = (this.#propsSnapshot as any)[key] ?? value;
+      value = this.#getNumericValueAtPath(this.#propsSnapshot, path) ?? value;
     }
 
     for (const entry of sortedEntries) {
       if (entry === excludeEntry) continue;
       if (entry.startTime === null) continue;
-      if (!(key in entry.segment.targetProps)) continue;
+
+      const targetValue = this.#getTargetValue(
+        entry.segment,
+        path,
+        segmentTargetsCache,
+      );
+
+      if (targetValue === undefined) continue;
 
       const { startTime, duration } = entry;
       const endTime = startTime + duration;
@@ -305,10 +513,14 @@ class Animatable<TProps extends object> {
 
       if (atTime >= endTime) {
         // Segment completed before our target time
-        value = (entry.segment.targetProps as any)[key];
+        value = targetValue;
       } else {
         // Segment in progress at our target time
-        const segmentStartValueKey = this.#getSegmentStartValueKey(entry, key);
+        const segmentStartValueKey = this.#getSegmentStartValueKey(
+          entry,
+          path,
+          targetValue,
+        );
 
         const hasCachedStartValue =
           this.#segmentStartValues.has(segmentStartValueKey);
@@ -318,9 +530,10 @@ class Animatable<TProps extends object> {
           : this.#getPropertyValueAtTime(
               sortedEntries,
               entry,
-              key,
+              path,
               startTime,
               baseProps,
+              segmentTargetsCache,
               allowSnapshotFallback,
             );
 
@@ -328,7 +541,6 @@ class Animatable<TProps extends object> {
           this.#segmentStartValues.set(segmentStartValueKey, prevValue);
         }
 
-        const targetValue = (entry.segment.targetProps as any)[key] as number;
         const elapsed = atTime - startTime;
         const rawProgress =
           duration === 0 ? 1 : Math.max(0, Math.min(1, elapsed / duration));
@@ -344,44 +556,34 @@ class Animatable<TProps extends object> {
   }
 
   #computeSegmentStartValue(
-    sortedEntries: Array<{
-      segment: Segment<TProps>;
-      startTime: number | null;
-      duration: number;
-    }>,
-    entry: {
-      segment: Segment<TProps>;
-      startTime: number | null;
-      duration: number;
-    },
-    key: string,
+    sortedEntries: TimelineEntry<TProps>[],
+    entry: TimelineEntry<TProps>,
+    path: string,
     startTime: number,
     baseProps: TProps,
+    segmentTargetsCache: Map<Segment<TProps>, NumericLeafTarget[]>,
   ): number {
     return this.#getPropertyValueAtTime(
       sortedEntries,
       entry,
-      key,
+      path,
       startTime,
       baseProps,
+      segmentTargetsCache,
       true,
     );
   }
 
   #shouldUseSnapshotFallbackForSegment(
-    sortedEntries: Array<{
-      segment: Segment<TProps>;
-      startTime: number | null;
-      duration: number;
-    }>,
-    excludeEntry: {
-      segment: Segment<TProps>;
-      startTime: number | null;
-      duration: number;
-    },
-    key: string,
+    sortedEntries: TimelineEntry<TProps>[],
+    excludeEntry: TimelineEntry<TProps>,
+    path: string,
+    segmentTargetsCache: Map<Segment<TProps>, NumericLeafTarget[]>,
   ): boolean {
-    if (this.#propsSnapshot === null || !(key in this.#propsSnapshot)) {
+    if (
+      this.#propsSnapshot === null ||
+      this.#getNumericValueAtPath(this.#propsSnapshot, path) === undefined
+    ) {
       return false;
     }
 
@@ -391,7 +593,9 @@ class Animatable<TProps extends object> {
 
     const hasPriorSegmentForProperty = sortedEntries.some((entry) => {
       if (entry === excludeEntry || entry.startTime === null) return false;
-      if (!(key in entry.segment.targetProps)) return false;
+      if (!this.#hasTargetPath(entry.segment, path, segmentTargetsCache)) {
+        return false;
+      }
 
       return entry.startTime < excludeEntry.startTime!;
     });
@@ -400,25 +604,18 @@ class Animatable<TProps extends object> {
   }
 
   #getSegmentStartValueKey(
-    entry: {
-      segment: Segment<TProps>;
-      startTime: number | null;
-      duration: number;
-    },
-    key: string,
+    entry: TimelineEntry<TProps>,
+    path: string,
+    targetValue: number,
   ): string {
-    const targetValue = (entry.segment.targetProps as any)[key] as number;
     const startTime = entry.startTime ?? "null";
 
-    return `${key}|${startTime}|${entry.duration}|${targetValue}`;
+    return `${path}|${startTime}|${entry.duration}|${targetValue}`;
   }
 
   #pruneSegmentStartValues(
-    sortedEntries: Array<{
-      segment: Segment<TProps>;
-      startTime: number | null;
-      duration: number;
-    }>,
+    sortedEntries: TimelineEntry<TProps>[],
+    segmentTargetsCache: Map<Segment<TProps>, NumericLeafTarget[]>,
   ): void {
     if (this.#segmentStartValues.size === 0) {
       return;
@@ -429,8 +626,13 @@ class Animatable<TProps extends object> {
     for (const entry of sortedEntries) {
       if (entry.startTime === null) continue;
 
-      for (const key of Object.keys(entry.segment.targetProps)) {
-        validKeys.add(this.#getSegmentStartValueKey(entry, key));
+      for (const target of this.#getSegmentTargets(
+        entry.segment,
+        segmentTargetsCache,
+      )) {
+        validKeys.add(
+          this.#getSegmentStartValueKey(entry, target.path, target.value),
+        );
       }
     }
 

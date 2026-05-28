@@ -15,20 +15,22 @@ type EasingUtilsExportKey = {
 export type EasingUtilsFunctionName = Extract<EasingUtilsExportKey, string>;
 
 /**
- * Extract only numeric property keys from a type
+ * Recursively map a type to only its numeric leaves.
  */
-export type NumericKeys<T> = {
-  [K in keyof T]: T[K] extends number
-    ? K
-    : T[K] extends number | undefined
-      ? K
+export type DeepNumericProps<T> = T extends number | undefined
+  ? number
+  : T extends (infer U)[]
+    ? DeepNumericProps<U>[]
+    : T extends object
+      ? { [K in keyof T]?: DeepNumericProps<T[K]> }
       : never;
-}[keyof T];
 
 /**
- * Create a partial type with only numeric properties
+ * Create a partial type that allows animating any nested numeric leaf.
  */
-export type PartialNumericProps<T> = Partial<Pick<T, NumericKeys<T>>>;
+export type PartialNumericProps<T> = Partial<{
+  [K in keyof T]: DeepNumericProps<T[K]>;
+}>;
 
 /**
  * Options for an animation segment
