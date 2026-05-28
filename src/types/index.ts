@@ -8,3 +8,4 @@ export * from "./isometric.js";
 export * from "./render.js";
 export * from "./settings.js";
 export * from "./styles.js";
+export * from "./utility.js";

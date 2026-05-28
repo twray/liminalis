@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { BezierProps } from "./drawMethods";
 
 // We test the internal functions by creating a mock canvas context
 // and verifying the transform calls
@@ -25,6 +26,8 @@ describe("drawMethods transform props", () => {
       rect: vi.fn(),
       arc: vi.fn(),
       ellipse: vi.fn(),
+      quadraticCurveTo: vi.fn(),
+      bezierCurveTo: vi.fn(),
       roundRect: vi.fn(),
       moveTo: vi.fn(),
       lineTo: vi.fn(),
@@ -668,6 +671,311 @@ describe("drawMethods transform props", () => {
 
       expect(lineToCalls[1][0]).toBeCloseTo(130);
       expect(lineToCalls[1][1]).toBeCloseTo(150);
+    });
+  });
+
+  describe("bezier rendering", () => {
+    it("renders quadratic and cubic bezier segments in sequence", async () => {
+      const { createDrawContext } = await import("./drawMethods");
+      const drawContext = createDrawContext();
+
+      drawContext.executeDrawCallback(
+        (d) => {
+          d.bezier({
+            segments: [
+              {
+                point: { x: 100, y: 120 },
+              },
+              {
+                control: { x: 140, y: 80 },
+                point: { x: 180, y: 120 },
+              },
+              {
+                control: [
+                  { x: 220, y: 160 },
+                  { x: 260, y: 60 },
+                ],
+                point: { x: 300, y: 120 },
+              },
+            ],
+            fillStyle: "transparent",
+            strokeStyle: "#333",
+          });
+        },
+        mockContext,
+        800,
+        600,
+        0,
+      );
+
+      expect(mockContext.moveTo).toHaveBeenCalledWith(100, 120);
+      expect(mockContext.quadraticCurveTo).toHaveBeenCalledWith(
+        140,
+        80,
+        180,
+        120,
+      );
+      expect(mockContext.bezierCurveTo).toHaveBeenCalledWith(
+        220,
+        160,
+        260,
+        60,
+        300,
+        120,
+      );
+      expect(mockContext.closePath).not.toHaveBeenCalled();
+    });
+
+    it("ignores bezier input when the first segment includes control points", async () => {
+      const { createDrawContext } = await import("./drawMethods");
+      const drawContext = createDrawContext();
+
+      drawContext.executeDrawCallback(
+        (d) => {
+          const invalidBezierInput = {
+            segments: [
+              {
+                control: { x: 140, y: 80 },
+                point: { x: 180, y: 120 },
+              },
+              {
+                control: { x: 220, y: 90 },
+                point: { x: 260, y: 140 },
+              },
+            ],
+            fillStyle: "transparent",
+            strokeStyle: "#333",
+          } as unknown as Parameters<typeof d.bezier>[0];
+
+          d.bezier(invalidBezierInput);
+        },
+        mockContext,
+        800,
+        600,
+        0,
+      );
+
+      expect(mockContext.moveTo).not.toHaveBeenCalled();
+      expect(mockContext.quadraticCurveTo).not.toHaveBeenCalled();
+      expect(mockContext.bezierCurveTo).not.toHaveBeenCalled();
+    });
+
+    it("closes the bezier shape when closePath is true", async () => {
+      const { createDrawContext } = await import("./drawMethods");
+      const drawContext = createDrawContext();
+
+      drawContext.executeDrawCallback(
+        (d) => {
+          d.bezier({
+            segments: [
+              {
+                point: { x: 100, y: 120 },
+              },
+              {
+                control: { x: 140, y: 80 },
+                point: { x: 180, y: 120 },
+              },
+            ],
+            closePath: true,
+            fillStyle: "transparent",
+            strokeStyle: "#333",
+          });
+        },
+        mockContext,
+        800,
+        600,
+        0,
+      );
+
+      expect(mockContext.closePath).toHaveBeenCalled();
+    });
+
+    it("applies strokeAlignment only when the bezier shape is closed", async () => {
+      const { createDrawContext } = await import("./drawMethods");
+      const drawContext = createDrawContext();
+
+      drawContext.executeDrawCallback(
+        (d) => {
+          d.bezier({
+            segments: [
+              {
+                point: { x: 100, y: 120 },
+              },
+              {
+                control: { x: 140, y: 80 },
+                point: { x: 180, y: 120 },
+              },
+            ],
+            fillStyle: "transparent",
+            strokeStyle: "#333",
+            strokeWidth: 10,
+            strokeAlignment: "inside",
+          });
+        },
+        mockContext,
+        800,
+        600,
+        0,
+      );
+
+      expect(mockContext.clip).not.toHaveBeenCalled();
+      expect(mockContext.lineWidth).toBe(10);
+
+      vi.clearAllMocks();
+
+      drawContext.executeDrawCallback(
+        (d) => {
+          d.bezier({
+            segments: [
+              {
+                point: { x: 100, y: 120 },
+              },
+              {
+                control: { x: 140, y: 80 },
+                point: { x: 180, y: 120 },
+              },
+            ],
+            closePath: true,
+            fillStyle: "transparent",
+            strokeStyle: "#333",
+            strokeWidth: 10,
+            strokeAlignment: "inside",
+          });
+        },
+        mockContext,
+        800,
+        600,
+        0,
+      );
+
+      expect(mockContext.clip).toHaveBeenCalledWith();
+      expect(mockContext.lineWidth).toBe(20);
+    });
+
+    it("treats matching start and end points as a closed bezier shape", async () => {
+      const { createDrawContext } = await import("./drawMethods");
+      const drawContext = createDrawContext();
+
+      drawContext.executeDrawCallback(
+        (d) => {
+          d.bezier({
+            segments: [
+              {
+                point: { x: 100, y: 120 },
+              },
+              {
+                control: { x: 140, y: 80 },
+                point: { x: 100, y: 120 },
+              },
+            ],
+            fillStyle: "transparent",
+            strokeStyle: "#333",
+            strokeWidth: 10,
+            strokeAlignment: "outside",
+          });
+        },
+        mockContext,
+        800,
+        600,
+        0,
+      );
+
+      expect(mockContext.closePath).toHaveBeenCalled();
+      expect(mockContext.clip).toHaveBeenCalledWith("evenodd");
+      expect(mockContext.lineWidth).toBe(20);
+    });
+
+    it("animates start, control, and end points on bezier segments", async () => {
+      const { createDrawContext } = await import("./drawMethods");
+      const drawContext = createDrawContext();
+
+      const initialPath: Pick<BezierProps, "segments"> = {
+        segments: [
+          {
+            point: { x: 100, y: 100 },
+          },
+          {
+            control: { x: 120, y: 60 },
+            point: { x: 160, y: 100 },
+          },
+          {
+            control: [
+              { x: 190, y: 140 },
+              { x: 230, y: 60 },
+            ],
+            point: { x: 260, y: 100 },
+          },
+        ],
+      };
+
+      const targetPath: Pick<BezierProps, "segments"> = {
+        segments: [
+          {
+            point: { x: 120, y: 90 },
+          },
+          {
+            control: { x: 150, y: 40 },
+            point: { x: 180, y: 120 },
+          },
+          {
+            control: [
+              { x: 220, y: 170 },
+              { x: 260, y: 80 },
+            ],
+            point: { x: 290, y: 130 },
+          },
+        ],
+      };
+
+      drawContext.executeDrawCallback(
+        (d) => {
+          d.bezier({
+            ...initialPath,
+            fillStyle: "transparent",
+            strokeStyle: "#333",
+          }).animateTo(targetPath, { duration: 1000 });
+        },
+        mockContext,
+        800,
+        600,
+        0,
+      );
+
+      vi.clearAllMocks();
+
+      drawContext.executeDrawCallback(
+        (d) => {
+          d.bezier({
+            ...initialPath,
+            fillStyle: "transparent",
+            strokeStyle: "#333",
+          }).animateTo(targetPath, { duration: 1000 });
+        },
+        mockContext,
+        800,
+        600,
+        500,
+      );
+
+      const moveToCall = vi.mocked(mockContext.moveTo).mock.calls[0];
+      const quadraticCurveCall = vi.mocked(mockContext.quadraticCurveTo).mock
+        .calls[0];
+      const cubicCurveCall = vi.mocked(mockContext.bezierCurveTo).mock.calls[0];
+
+      expect(moveToCall[0]).toBeCloseTo(110);
+      expect(moveToCall[1]).toBeCloseTo(95);
+
+      expect(quadraticCurveCall[0]).toBeCloseTo(135);
+      expect(quadraticCurveCall[1]).toBeCloseTo(50);
+      expect(quadraticCurveCall[2]).toBeCloseTo(170);
+      expect(quadraticCurveCall[3]).toBeCloseTo(110);
+
+      expect(cubicCurveCall[0]).toBeCloseTo(205);
+      expect(cubicCurveCall[1]).toBeCloseTo(155);
+      expect(cubicCurveCall[2]).toBeCloseTo(245);
+      expect(cubicCurveCall[3]).toBeCloseTo(70);
+      expect(cubicCurveCall[4]).toBeCloseTo(275);
+      expect(cubicCurveCall[5]).toBeCloseTo(115);
     });
   });
 

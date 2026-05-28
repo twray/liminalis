@@ -3,6 +3,7 @@ import type {
   Dimensions2D,
   PartialDrawStyles,
   Point2D,
+  XOR,
 } from "../types";
 import {
   clampNonNegativeValue,
@@ -65,6 +66,37 @@ export interface PolygonProps
   strokeAlignment?: StrokeAlignment;
 }
 
+export interface BezierStartSegment {
+  point: Point2D;
+  control?: never;
+}
+
+export interface QuadraticBezierSegment {
+  control: Point2D;
+  point: Point2D;
+}
+
+export interface CubicBezierSegment {
+  control: Point2D[];
+  point: Point2D;
+}
+
+export type BezierCurveSegment = XOR<
+  QuadraticBezierSegment,
+  CubicBezierSegment
+>;
+
+export type BezierSegment = BezierStartSegment | BezierCurveSegment;
+
+export type BezierSegments = BezierSegment[];
+
+export interface BezierProps
+  extends FillStyles, StrokeStyles, WithOpacity, TransformProps {
+  segments: BezierSegments;
+  closePath?: boolean;
+  strokeAlignment?: StrokeAlignment;
+}
+
 interface EllipticGeometryProps
   extends FillStyles, StrokeStyles, WithOpacity, TransformProps {
   cx: number;
@@ -73,18 +105,17 @@ interface EllipticGeometryProps
 
 interface CircularRadius {
   radius: number;
-  radiusX?: never;
-  radiusY?: never;
 }
 
 interface EllipticalRadius {
-  radius?: never;
   radiusX: number;
   radiusY: number;
 }
 
+type ArcRadius = XOR<CircularRadius, EllipticalRadius>;
+
 export type ArcProps = EllipticGeometryProps &
-  (CircularRadius | EllipticalRadius) & {
+  ArcRadius & {
     start: number;
     end: number;
     strokeAlignment?: StrokeAlignment;
@@ -132,6 +163,7 @@ export interface DrawMethods {
   centerOf: (props: Dimensions2D) => Point2D;
   line: (props: LineProps) => Animatable<LineProps>;
   polygon: (props: PolygonProps) => Animatable<PolygonProps>;
+  bezier: (props: BezierProps) => Animatable<BezierProps>;
   arc: (props: ArcProps) => Animatable<ArcProps>;
   circle: (props: CircleProps) => Animatable<CircleProps>;
   ellipse: (props: EllipseProps) => Animatable<EllipseProps>;
@@ -384,6 +416,211 @@ const polygon = (context: CanvasRenderingContext2D, props: PolygonProps) => {
       } else {
         context.beginPath();
         tracePolygonPath(shouldClosePath);
+        context.stroke();
+      }
+    }
+
+    context.restore();
+  });
+};
+
+const bezier = (context: CanvasRenderingContext2D, props: BezierProps) => {
+  const {
+    segments,
+    closePath = false,
+    fillStyle = DEFAULT_FILL_STYLE,
+    strokeStyle = DEFAULT_STROKE_STYLE,
+    strokeWidth = DEFAULT_STROKE_WIDTH,
+    strokeAlignment = DEFAULT_STROKE_ALIGNMENT,
+    opacity = 1,
+  } = props;
+
+  if (segments.length < 2) {
+    return;
+  }
+
+  const isPoint2D = (value: unknown): value is Point2D =>
+    typeof value === "object" &&
+    value !== null &&
+    "x" in value &&
+    "y" in value &&
+    typeof value.x === "number" &&
+    typeof value.y === "number";
+
+  const isBezierStartSegment = (
+    value: unknown,
+  ): value is BezierStartSegment => {
+    if (typeof value !== "object" || value === null || !("point" in value)) {
+      return false;
+    }
+
+    if ("control" in value) {
+      return false;
+    }
+
+    return isPoint2D(value.point);
+  };
+
+  const isBezierCurveSegment = (
+    value: unknown,
+  ): value is BezierCurveSegment => {
+    if (
+      typeof value !== "object" ||
+      value === null ||
+      !("control" in value) ||
+      !("point" in value)
+    ) {
+      return false;
+    }
+
+    if (!isPoint2D(value.point)) {
+      return false;
+    }
+
+    if (Array.isArray(value.control)) {
+      return (
+        value.control.length === 2 &&
+        isPoint2D(value.control[0]) &&
+        isPoint2D(value.control[1])
+      );
+    }
+
+    return isPoint2D(value.control);
+  };
+
+  const [startSegment, ...curveSegments] = segments;
+
+  const validatedCurveSegments = curveSegments.filter(isBezierCurveSegment);
+
+  if (
+    !isBezierStartSegment(startSegment) ||
+    validatedCurveSegments.length !== curveSegments.length
+  ) {
+    return;
+  }
+
+  const startPoint = startSegment.point;
+
+  const pathEnd =
+    validatedCurveSegments[validatedCurveSegments.length - 1].point;
+  const pathAlreadyClosed =
+    startPoint.x === pathEnd.x && startPoint.y === pathEnd.y;
+  const shouldClosePath = closePath || pathAlreadyClosed;
+
+  const points: Point2D[] = [startPoint];
+
+  const isCubicBezierSegment = (
+    segment: BezierCurveSegment,
+  ): segment is CubicBezierSegment => Array.isArray(segment.control);
+
+  for (const segment of validatedCurveSegments) {
+    if (!isCubicBezierSegment(segment)) {
+      points.push(segment.control, segment.point);
+    } else {
+      points.push(...segment.control, segment.point);
+    }
+  }
+
+  const minX = Math.min(...points.map(({ x }) => x));
+  const minY = Math.min(...points.map(({ y }) => y));
+  const maxX = Math.max(...points.map(({ x }) => x));
+  const maxY = Math.max(...points.map(({ y }) => y));
+
+  const bounds = {
+    x: minX,
+    y: minY,
+    width: maxX - minX,
+    height: maxY - minY,
+  };
+
+  const traceBezierPath = (isClosedPath: boolean): void => {
+    context.moveTo(startPoint.x, startPoint.y);
+
+    for (const segment of validatedCurveSegments) {
+      if (!isCubicBezierSegment(segment)) {
+        context.quadraticCurveTo(
+          segment.control.x,
+          segment.control.y,
+          segment.point.x,
+          segment.point.y,
+        );
+      } else {
+        const [control1, control2] = segment.control;
+
+        context.bezierCurveTo(
+          control1.x,
+          control1.y,
+          control2.x,
+          control2.y,
+          segment.point.x,
+          segment.point.y,
+        );
+      }
+    }
+
+    if (isClosedPath) {
+      context.closePath();
+    }
+  };
+
+  renderWithTransform(context, props, bounds, () => {
+    context.save();
+
+    context.globalAlpha = opacity;
+
+    if (fillStyle !== "transparent") {
+      context.fillStyle = fillStyle;
+      context.beginPath();
+      traceBezierPath(shouldClosePath);
+      context.fill();
+    }
+
+    if (strokeStyle !== "transparent" && strokeWidth > 0) {
+      context.strokeStyle = strokeStyle;
+      context.lineWidth = strokeWidth;
+
+      const canApplyStrokeAlignment = shouldClosePath;
+
+      if (canApplyStrokeAlignment && strokeAlignment === "inside") {
+        // Draw at 2x width and keep only the inner half so visible width
+        // matches the requested strokeWidth.
+        context.lineWidth = strokeWidth * 2;
+
+        context.save();
+        context.beginPath();
+        traceBezierPath(true);
+        context.clip();
+
+        context.beginPath();
+        traceBezierPath(true);
+        context.stroke();
+        context.restore();
+      } else if (canApplyStrokeAlignment && strokeAlignment === "outside") {
+        // Draw at 2x width and keep only the outer half so visible width
+        // matches the requested strokeWidth.
+        context.lineWidth = strokeWidth * 2;
+
+        // Clip to everything outside the shape to keep only the outer half.
+        const clipPadding = strokeWidth * 2;
+
+        context.save();
+        context.beginPath();
+        context.rect(
+          minX - clipPadding,
+          minY - clipPadding,
+          bounds.width + clipPadding * 2,
+          bounds.height + clipPadding * 2,
+        );
+        traceBezierPath(true);
+        context.clip("evenodd");
+
+        context.beginPath();
+        traceBezierPath(true);
+        context.stroke();
+        context.restore();
+      } else {
+        context.beginPath();
+        traceBezierPath(shouldClosePath);
         context.stroke();
       }
     }
@@ -691,6 +928,8 @@ export const createDrawContext = (): DrawContext => {
         registry.queue(mergeStyles(props), (p) => line(context, p)),
       polygon: (props: PolygonProps) =>
         registry.queue(mergeStyles(props), (p) => polygon(context, p)),
+      bezier: (props: BezierProps) =>
+        registry.queue(mergeStyles(props), (p) => bezier(context, p)),
       circle: (props: CircleProps) =>
         registry.queue(mergeStyles(props), (p) => circle(context, p)),
       ellipse: (props: EllipseProps) =>
