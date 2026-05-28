@@ -1,8 +1,13 @@
 import type {
   Corners,
   Dimensions2D,
+  FillStyles,
   PartialDrawStyles,
   Point2D,
+  StrokeAlignment,
+  StrokeStyles,
+  WithBlend,
+  WithOpacity,
   XOR,
 } from "../types";
 import {
@@ -19,31 +24,17 @@ const DEFAULT_FILL_STYLE = "transparent";
 const DEFAULT_STROKE_STYLE = "#333";
 const DEFAULT_STROKE_WIDTH = 1;
 const DEFAULT_STROKE_ALIGNMENT = "center";
+const DEFAULT_BLEND_MODE: GlobalCompositeOperation = "source-over";
 
 const DEFAULT_TEXT_FILL_STYLE = "#333";
 const DEFAULT_TEXT_STROKE_STYLE = "transparent";
 const DEFAULT_TEXT_FONT_STYLE = "12pt sans-serif";
-
-interface FillStyles {
-  fillStyle?: string;
-}
-
-interface StrokeStyles {
-  strokeStyle?: string;
-  strokeWidth?: number;
-}
-
-interface WithOpacity {
-  opacity?: number;
-}
 
 export interface BackgroundProps {
   color: string;
 }
 
 export type TransformOrigin = "center" | Point2D;
-
-export type StrokeAlignment = "center" | "inside" | "outside";
 
 export interface TransformProps {
   rotate?: number;
@@ -54,13 +45,14 @@ export interface TransformProps {
   scaleOrigin?: TransformOrigin;
 }
 
-export interface LineProps extends StrokeStyles, WithOpacity, TransformProps {
+export interface LineProps
+  extends StrokeStyles, WithOpacity, WithBlend, TransformProps {
   start: Partial<Point2D>;
   end: Partial<Point2D>;
 }
 
 export interface PolygonProps
-  extends StrokeStyles, WithOpacity, TransformProps {
+  extends StrokeStyles, WithOpacity, WithBlend, TransformProps {
   points: Point2D[];
   closePath?: boolean;
   strokeAlignment?: StrokeAlignment;
@@ -91,14 +83,14 @@ export type BezierSegment = BezierStartSegment | BezierCurveSegment;
 export type BezierSegments = BezierSegment[];
 
 export interface BezierProps
-  extends FillStyles, StrokeStyles, WithOpacity, TransformProps {
+  extends FillStyles, StrokeStyles, WithOpacity, WithBlend, TransformProps {
   segments: BezierSegments;
   closePath?: boolean;
   strokeAlignment?: StrokeAlignment;
 }
 
 interface EllipticGeometryProps
-  extends FillStyles, StrokeStyles, WithOpacity, TransformProps {
+  extends FillStyles, StrokeStyles, WithOpacity, WithBlend, TransformProps {
   cx: number;
   cy: number;
 }
@@ -139,6 +131,7 @@ export interface RectProps
     FillStyles,
     StrokeStyles,
     WithOpacity,
+    WithBlend,
     TransformProps {
   cornerRadius?: Corners | number;
   strokeAlignment?: StrokeAlignment;
@@ -150,6 +143,7 @@ export interface TextProps
     FillStyles,
     StrokeStyles,
     WithOpacity,
+    WithBlend,
     TransformProps {
   fontStyle?: string;
 }
@@ -291,6 +285,7 @@ const line = (context: CanvasRenderingContext2D, props: LineProps) => {
     strokeStyle = DEFAULT_STROKE_STYLE,
     strokeWidth = DEFAULT_STROKE_WIDTH,
     opacity = 1,
+    blend = DEFAULT_BLEND_MODE,
   } = props;
 
   // Bounds for transform origin (bounding box of the line)
@@ -307,6 +302,7 @@ const line = (context: CanvasRenderingContext2D, props: LineProps) => {
     context.save();
 
     context.globalAlpha = opacity;
+    context.globalCompositeOperation = blend;
     context.strokeStyle = strokeStyle;
     context.lineWidth = strokeWidth;
 
@@ -328,6 +324,7 @@ const polygon = (context: CanvasRenderingContext2D, props: PolygonProps) => {
     strokeWidth = DEFAULT_STROKE_WIDTH,
     strokeAlignment = DEFAULT_STROKE_ALIGNMENT,
     opacity = 1,
+    blend = DEFAULT_BLEND_MODE,
   } = props;
 
   if (points.length < 2) {
@@ -369,6 +366,7 @@ const polygon = (context: CanvasRenderingContext2D, props: PolygonProps) => {
     context.save();
 
     context.globalAlpha = opacity;
+    context.globalCompositeOperation = blend;
 
     if (strokeStyle !== "transparent" && strokeWidth > 0) {
       context.strokeStyle = strokeStyle;
@@ -433,6 +431,7 @@ const bezier = (context: CanvasRenderingContext2D, props: BezierProps) => {
     strokeWidth = DEFAULT_STROKE_WIDTH,
     strokeAlignment = DEFAULT_STROKE_ALIGNMENT,
     opacity = 1,
+    blend = DEFAULT_BLEND_MODE,
   } = props;
 
   if (segments.length < 2) {
@@ -567,6 +566,7 @@ const bezier = (context: CanvasRenderingContext2D, props: BezierProps) => {
     context.save();
 
     context.globalAlpha = opacity;
+    context.globalCompositeOperation = blend;
 
     if (fillStyle !== "transparent") {
       context.fillStyle = fillStyle;
@@ -643,6 +643,7 @@ const arc = (context: CanvasRenderingContext2D, props: ArcProps) => {
     strokeWidth = DEFAULT_STROKE_WIDTH,
     strokeAlignment = DEFAULT_STROKE_ALIGNMENT,
     opacity = 1,
+    blend = DEFAULT_BLEND_MODE,
   } = props;
 
   const isCircle = radius !== undefined;
@@ -690,6 +691,7 @@ const arc = (context: CanvasRenderingContext2D, props: ArcProps) => {
     context.save();
 
     context.globalAlpha = opacity;
+    context.globalCompositeOperation = blend;
 
     // Draw fill
     if (fillStyle !== "transparent") {
@@ -752,6 +754,7 @@ const rect = (context: CanvasRenderingContext2D, props: RectProps) => {
     strokeWidth = DEFAULT_STROKE_WIDTH,
     strokeAlignment = "center",
     opacity = 1,
+    blend = DEFAULT_BLEND_MODE,
     cornerRadius = 0,
   } = props;
 
@@ -774,6 +777,7 @@ const rect = (context: CanvasRenderingContext2D, props: RectProps) => {
     context.save();
 
     context.globalAlpha = opacity;
+    context.globalCompositeOperation = blend;
 
     // Draw fill
     if (fillStyle !== "transparent") {
@@ -840,6 +844,7 @@ const text = (
     strokeStyle = DEFAULT_TEXT_STROKE_STYLE,
     strokeWidth = DEFAULT_STROKE_WIDTH,
     opacity = 1,
+    blend = DEFAULT_BLEND_MODE,
   } = props;
 
   const bounds = getTextBounds(context, textValue, x, y, fontStyle);
@@ -848,6 +853,7 @@ const text = (
     context.save();
 
     context.globalAlpha = opacity;
+    context.globalCompositeOperation = blend;
     context.font = fontStyle;
     context.textBaseline = "top";
 
@@ -892,6 +898,7 @@ export const createDrawContext = (): DrawContext => {
       fillStyle: DEFAULT_TEXT_FILL_STYLE,
       strokeStyle: DEFAULT_TEXT_STROKE_STYLE,
       strokeWidth: DEFAULT_STROKE_WIDTH,
+      blend: DEFAULT_BLEND_MODE,
     };
 
     const mergeStyles = <T extends PartialDrawStyles>(

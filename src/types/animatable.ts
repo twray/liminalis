@@ -15,6 +15,13 @@ type EasingUtilsExportKey = {
 export type EasingUtilsFunctionName = Extract<EasingUtilsExportKey, string>;
 
 /**
+ * Keys in T whose value type is numeric.
+ */
+export type NumericKeys<T> = {
+  [K in keyof T]-?: T[K] extends number ? K : never;
+}[keyof T];
+
+/**
  * Recursively map a type to only its numeric leaves.
  */
 export type DeepNumericProps<T> = T extends number | undefined
