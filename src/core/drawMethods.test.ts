@@ -21,6 +21,7 @@ describe("drawMethods transform props", () => {
       lineWidth: 1,
       beginPath: vi.fn(),
       arc: vi.fn(),
+      ellipse: vi.fn(),
       roundRect: vi.fn(),
       moveTo: vi.fn(),
       lineTo: vi.fn(),
@@ -586,6 +587,133 @@ describe("drawMethods transform props", () => {
         200,
         200,
         55,
+        -Math.PI / 2,
+        (Math.PI * 3) / 2,
+      );
+    });
+  });
+
+  describe("strokeAlignment for ellipse", () => {
+    it("draws stroke at original radii when strokeAlignment is 'center' (default)", async () => {
+      const { createDrawContext } = await import("./drawMethods");
+      const drawContext = createDrawContext();
+
+      drawContext.executeDrawCallback(
+        (d) => {
+          d.ellipse({
+            cx: 300,
+            cy: 200,
+            radiusX: 80,
+            radiusY: 40,
+            strokeStyle: "#333",
+            strokeWidth: 10,
+            strokeAlignment: "center",
+          });
+        },
+        mockContext,
+        800,
+        600,
+        0,
+      );
+
+      expect(mockContext.ellipse).toHaveBeenCalledWith(
+        300,
+        200,
+        80,
+        40,
+        0,
+        -Math.PI / 2,
+        (Math.PI * 3) / 2,
+      );
+    });
+
+    it("draws stroke with reduced radii when strokeAlignment is 'inside'", async () => {
+      const { createDrawContext } = await import("./drawMethods");
+      const drawContext = createDrawContext();
+
+      drawContext.executeDrawCallback(
+        (d) => {
+          d.ellipse({
+            cx: 300,
+            cy: 200,
+            radiusX: 80,
+            radiusY: 40,
+            fillStyle: "#333",
+            strokeStyle: "#333",
+            strokeWidth: 10,
+            strokeAlignment: "inside",
+          });
+        },
+        mockContext,
+        800,
+        600,
+        0,
+      );
+
+      // Fill uses original radii.
+      expect(mockContext.ellipse).toHaveBeenCalledWith(
+        300,
+        200,
+        80,
+        40,
+        0,
+        0,
+        Math.PI * 2,
+      );
+
+      // Stroke radii are reduced by strokeWidth/2 per axis.
+      expect(mockContext.ellipse).toHaveBeenCalledWith(
+        300,
+        200,
+        75,
+        35,
+        0,
+        -Math.PI / 2,
+        (Math.PI * 3) / 2,
+      );
+    });
+
+    it("draws stroke with increased radii when strokeAlignment is 'outside'", async () => {
+      const { createDrawContext } = await import("./drawMethods");
+      const drawContext = createDrawContext();
+
+      drawContext.executeDrawCallback(
+        (d) => {
+          d.ellipse({
+            cx: 300,
+            cy: 200,
+            radiusX: 80,
+            radiusY: 40,
+            fillStyle: "#333",
+            strokeStyle: "#333",
+            strokeWidth: 10,
+            strokeAlignment: "outside",
+          });
+        },
+        mockContext,
+        800,
+        600,
+        0,
+      );
+
+      // Fill uses original radii.
+      expect(mockContext.ellipse).toHaveBeenCalledWith(
+        300,
+        200,
+        80,
+        40,
+        0,
+        0,
+        Math.PI * 2,
+      );
+
+      // Stroke radii are increased by strokeWidth/2 per axis.
+      expect(mockContext.ellipse).toHaveBeenCalledWith(
+        300,
+        200,
+        85,
+        45,
+        0,
         -Math.PI / 2,
         (Math.PI * 3) / 2,
       );

@@ -56,3 +56,7 @@ export function propertyIsWritable(object: Object, property: string) {
 export function clampWithinRange(value: number, min: number, max: number) {
   return Math.max(min, Math.min(value, max));
 }
+
+export function clampNonNegativeValue(value: number) {
+  return Math.max(0, value);
+}

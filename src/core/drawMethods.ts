@@ -4,7 +4,12 @@ import type {
   PartialDrawStyles,
   Point2D,
 } from "../types";
-import { clampWithinRange, degreesToRadians, isCorners } from "../util";
+import {
+  clampNonNegativeValue,
+  clampWithinRange,
+  degreesToRadians,
+  isCorners,
+} from "../util";
 import type Animatable from "./Animatable";
 import AnimatableRegistry from "./AnimatableRegistry";
 
@@ -53,16 +58,39 @@ export interface LineProps extends StrokeStyles, WithOpacity, TransformProps {
   end: Partial<Point2D>;
 }
 
-export interface ArcProps extends CircleProps {
-  start: number;
-  end: number;
-}
-
-export interface CircleProps
+interface EllipticGeometryProps
   extends FillStyles, StrokeStyles, WithOpacity, TransformProps {
   cx: number;
   cy: number;
+}
+
+interface CircularRadius {
   radius: number;
+  radiusX?: never;
+  radiusY?: never;
+}
+
+interface EllipticalRadius {
+  radius?: never;
+  radiusX: number;
+  radiusY: number;
+}
+
+export type ArcProps = EllipticGeometryProps &
+  (CircularRadius | EllipticalRadius) & {
+    start: number;
+    end: number;
+    strokeAlignment?: StrokeAlignment;
+  };
+
+export interface CircleProps extends EllipticGeometryProps {
+  radius: number;
+  strokeAlignment?: StrokeAlignment;
+}
+
+export interface EllipseProps extends EllipticGeometryProps {
+  radiusX: number;
+  radiusY: number;
   strokeAlignment?: StrokeAlignment;
 }
 
@@ -95,10 +123,11 @@ export interface DrawMethods {
   background: (props: BackgroundProps) => void;
   center: Point2D;
   centerOf: (props: Dimensions2D) => Point2D;
-  rect: (props: RectProps) => Animatable<RectProps>;
+  line: (props: LineProps) => Animatable<LineProps>;
   arc: (props: ArcProps) => Animatable<ArcProps>;
   circle: (props: CircleProps) => Animatable<CircleProps>;
-  line: (props: LineProps) => Animatable<LineProps>;
+  ellipse: (props: EllipseProps) => Animatable<EllipseProps>;
+  rect: (props: RectProps) => Animatable<RectProps>;
   text: (text: string, props: TextProps) => Animatable<TextProps>;
 }
 
@@ -181,6 +210,40 @@ const renderWithTransform = (
   context.restore();
 };
 
+const getTextBounds = (
+  context: CanvasRenderingContext2D,
+  text: string,
+  x: number,
+  y: number,
+  fontStyle: string,
+): { x: number; y: number; width: number; height: number } => {
+  context.save();
+  context.font = fontStyle;
+
+  const metrics = context.measureText(text);
+
+  context.restore();
+
+  const width = metrics.width ?? 0;
+
+  const fallbackHeightMatch = fontStyle.match(/(\d+(?:\.\d+)?)px/);
+  const fallbackHeight = fallbackHeightMatch
+    ? Number(fallbackHeightMatch[1])
+    : 12;
+
+  const ascent = metrics.actualBoundingBoxAscent ?? fallbackHeight;
+  const descent = metrics.actualBoundingBoxDescent ?? 0;
+  const height = Math.max(ascent + descent, fallbackHeight);
+
+  return {
+    x,
+    // Text is rendered using textBaseline="top", so y is already the top edge.
+    y,
+    width,
+    height,
+  };
+};
+
 const line = (context: CanvasRenderingContext2D, props: LineProps) => {
   const {
     start: { x: startX = 0, y: startY = 0 },
@@ -222,6 +285,8 @@ const arc = (context: CanvasRenderingContext2D, props: ArcProps) => {
     cx,
     cy,
     radius,
+    radiusX,
+    radiusY,
     start,
     end,
     fillStyle = DEFAULT_FILL_STYLE,
@@ -231,17 +296,45 @@ const arc = (context: CanvasRenderingContext2D, props: ArcProps) => {
     opacity = 1,
   } = props;
 
-  const clampedRadius = radius >= 0 ? radius : 0;
+  const isCircle = radius !== undefined;
+
+  const { validatedRadiusX, validatedRadiusY } = isCircle
+    ? {
+        validatedRadiusX: clampNonNegativeValue(radius),
+        validatedRadiusY: clampNonNegativeValue(radius),
+      }
+    : {
+        validatedRadiusX: clampNonNegativeValue(radiusX),
+        validatedRadiusY: clampNonNegativeValue(radiusY),
+      };
 
   const clampedStart = clampWithinRange(start, 0, 360);
   const clampedEnd = clampWithinRange(end, 0, 360);
+  const strokeStart = degreesToRadians(clampedStart - 90);
+  const strokeEnd = degreesToRadians(clampedEnd - 90);
 
-  // Calculate bounds for transform origin (bounding box of the circle)
+  const drawArcPath = (
+    radiusForX: number,
+    radiusForY: number,
+    startAngle: number,
+    endAngle: number,
+  ) => {
+    context.beginPath();
+
+    if (isCircle) {
+      context.arc(cx, cy, radiusForX, startAngle, endAngle);
+      return;
+    }
+
+    context.ellipse(cx, cy, radiusForX, radiusForY, 0, startAngle, endAngle);
+  };
+
+  // Calculate bounds for transform origin (bounding box of the arc shape)
   const bounds = {
-    x: cx - clampedRadius,
-    y: cy - clampedRadius,
-    width: clampedRadius * 2,
-    height: clampedRadius * 2,
+    x: cx - validatedRadiusX,
+    y: cy - validatedRadiusY,
+    width: validatedRadiusX * 2,
+    height: validatedRadiusY * 2,
   };
 
   renderWithTransform(context, props, bounds, () => {
@@ -252,8 +345,7 @@ const arc = (context: CanvasRenderingContext2D, props: ArcProps) => {
     // Draw fill
     if (fillStyle !== "transparent") {
       context.fillStyle = fillStyle;
-      context.beginPath();
-      context.arc(cx, cy, clampedRadius, 0, Math.PI * 2);
+      drawArcPath(validatedRadiusX, validatedRadiusY, 0, Math.PI * 2);
       context.fill();
     }
 
@@ -261,28 +353,29 @@ const arc = (context: CanvasRenderingContext2D, props: ArcProps) => {
     if (strokeStyle !== "transparent" && strokeWidth > 0) {
       context.strokeStyle = strokeStyle;
       context.lineWidth = strokeWidth;
+      const halfStrokeWidth = strokeWidth / 2;
 
-      let strokeRadius = clampedRadius;
+      let strokeRadiusX = validatedRadiusX;
+      let strokeRadiusY = validatedRadiusY;
 
       if (strokeAlignment === "inside") {
         // Inset the stroke by half its width
-        strokeRadius = clampedRadius - strokeWidth / 2;
+        strokeRadiusX = clampNonNegativeValue(
+          validatedRadiusX - halfStrokeWidth,
+        );
+        strokeRadiusY = clampNonNegativeValue(
+          validatedRadiusY - halfStrokeWidth,
+        );
       } else if (strokeAlignment === "outside") {
         // Outset the stroke by half its width
-        strokeRadius = clampedRadius + strokeWidth / 2;
+        strokeRadiusX = validatedRadiusX + halfStrokeWidth;
+        strokeRadiusY = validatedRadiusY + halfStrokeWidth;
       }
 
       // For "center", use the original radius (default canvas behavior)
 
-      if (strokeRadius > 0) {
-        context.beginPath();
-        context.arc(
-          cx,
-          cy,
-          strokeRadius,
-          degreesToRadians(clampedStart - 90),
-          degreesToRadians(clampedEnd - 90),
-        );
+      if (strokeRadiusX > 0 && strokeRadiusY > 0) {
+        drawArcPath(strokeRadiusX, strokeRadiusY, strokeStart, strokeEnd);
         context.stroke();
       }
     }
@@ -292,6 +385,10 @@ const arc = (context: CanvasRenderingContext2D, props: ArcProps) => {
 };
 
 const circle = (context: CanvasRenderingContext2D, props: CircleProps) => {
+  arc(context, { ...props, start: 0, end: 360 });
+};
+
+const ellipse = (context: CanvasRenderingContext2D, props: EllipseProps) => {
   arc(context, { ...props, start: 0, end: 360 });
 };
 
@@ -379,40 +476,6 @@ const rect = (context: CanvasRenderingContext2D, props: RectProps) => {
 
     context.restore();
   });
-};
-
-const getTextBounds = (
-  context: CanvasRenderingContext2D,
-  text: string,
-  x: number,
-  y: number,
-  fontStyle: string,
-): { x: number; y: number; width: number; height: number } => {
-  context.save();
-  context.font = fontStyle;
-
-  const metrics = context.measureText(text);
-
-  context.restore();
-
-  const width = metrics.width ?? 0;
-
-  const fallbackHeightMatch = fontStyle.match(/(\d+(?:\.\d+)?)px/);
-  const fallbackHeight = fallbackHeightMatch
-    ? Number(fallbackHeightMatch[1])
-    : 12;
-
-  const ascent = metrics.actualBoundingBoxAscent ?? fallbackHeight;
-  const descent = metrics.actualBoundingBoxDescent ?? 0;
-  const height = Math.max(ascent + descent, fallbackHeight);
-
-  return {
-    x,
-    // Text is rendered using textBaseline="top", so y is already the top edge.
-    y,
-    width,
-    height,
-  };
 };
 
 const text = (
@@ -518,6 +581,8 @@ export const createDrawContext = (): DrawContext => {
         registry.queue(mergeStyles(props), (p) => arc(context, p)),
       circle: (props: CircleProps) =>
         registry.queue(mergeStyles(props), (p) => circle(context, p)),
+      ellipse: (props: EllipseProps) =>
+        registry.queue(mergeStyles(props), (p) => ellipse(context, p)),
       line: (props: LineProps) =>
         registry.queue(mergeStyles(props), (p) => line(context, p)),
       text: (textValue: string, props: TextProps) =>
