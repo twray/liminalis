@@ -1,5 +1,12 @@
 // Main library entry point for npm package
-export { createVisualisation, logMessage, midiVisual } from "./core";
+export {
+  createVisualisation,
+  defineMidiVisual,
+  defineVisual,
+  logMessage,
+  midiVisual,
+  visual,
+} from "./core";
 export { default as Animatable } from "./core/Animatable";
 export type {
   CircleProps,
