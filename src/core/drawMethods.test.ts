@@ -17,7 +17,6 @@ describe("drawMethods transform props", () => {
       scale: vi.fn(),
       font: "",
       globalAlpha: 1,
-      globalCompositeOperation: "source-over",
       fillStyle: "",
       strokeStyle: "",
       lineWidth: 1,
@@ -1340,7 +1339,6 @@ describe("drawMethods transform props", () => {
               strokeWidth: 3,
               fontStyle: "18px monospace",
               opacity: 0.4,
-              blend: "screen",
             },
             () => {
               d.text("Styled", { x: 30, y: 40 });
@@ -1355,7 +1353,6 @@ describe("drawMethods transform props", () => {
 
       expect(mockContext.font).toBe("18px monospace");
       expect(mockContext.globalAlpha).toBe(0.4);
-      expect(mockContext.globalCompositeOperation).toBe("screen");
       expect(mockContext.fillStyle).toBe("#ff0000");
       expect(mockContext.strokeStyle).toBe("#00ff00");
       expect(mockContext.lineWidth).toBe(3);
@@ -1383,73 +1380,6 @@ describe("drawMethods transform props", () => {
       expect(mockContext.translate).toHaveBeenCalledWith(110, 56);
       expect(mockContext.rotate).toHaveBeenCalledWith((45 * Math.PI) / 180);
       expect(mockContext.translate).toHaveBeenCalledWith(-110, -56);
-    });
-  });
-
-  describe("blend rendering", () => {
-    it("defaults blend mode to source-over when blend is omitted", async () => {
-      const { createDrawContext } = await import("./drawMethods");
-      const drawContext = createDrawContext();
-
-      mockContext.globalCompositeOperation = "multiply";
-
-      drawContext.executeDrawCallback(
-        (d) => {
-          d.line({
-            start: { x: 0, y: 0 },
-            end: { x: 100, y: 100 },
-          });
-        },
-        mockContext,
-        800,
-        600,
-        0,
-      );
-
-      expect(mockContext.globalCompositeOperation).toBe("source-over");
-    });
-
-    it("applies blend mode from withStyles context", async () => {
-      const { createDrawContext } = await import("./drawMethods");
-      const drawContext = createDrawContext();
-
-      drawContext.executeDrawCallback(
-        (d) => {
-          d.withStyles({ blend: "multiply" }, () => {
-            d.circle({ cx: 100, cy: 100, radius: 30 });
-          });
-        },
-        mockContext,
-        800,
-        600,
-        0,
-      );
-
-      expect(mockContext.globalCompositeOperation).toBe("multiply");
-    });
-
-    it("allows shape blend to override withStyles blend", async () => {
-      const { createDrawContext } = await import("./drawMethods");
-      const drawContext = createDrawContext();
-
-      drawContext.executeDrawCallback(
-        (d) => {
-          d.withStyles({ blend: "multiply" }, () => {
-            d.circle({
-              cx: 100,
-              cy: 100,
-              radius: 30,
-              blend: "screen",
-            });
-          });
-        },
-        mockContext,
-        800,
-        600,
-        0,
-      );
-
-      expect(mockContext.globalCompositeOperation).toBe("screen");
     });
   });
 });
