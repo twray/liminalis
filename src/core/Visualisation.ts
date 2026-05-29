@@ -1,16 +1,14 @@
-import BaseVisual from "./BaseVisual";
+import MidiVisual from "./MidiVisual";
 
-type AnyVisualObject = BaseVisual<any, any>;
+type AnyAnimatableObject = MidiVisual<any>;
 
 class Visualisation {
   public idsOfAllAnimatableObjectsCreated: string[] = [];
-  public animatableObjects: Map<string, AnyVisualObject> = new Map();
+  public animatableObjects: Map<string, AnyAnimatableObject> = new Map();
 
   constructor(public maxAnimatableObjects: number = 1000) {}
 
-  get<TVisual extends AnyVisualObject = AnyVisualObject>(
-    id: string,
-  ): TVisual | undefined {
+  get(id: string): AnyAnimatableObject | undefined {
     if (
       !this.animatableObjects.has(id) &&
       this.idsOfAllAnimatableObjectsCreated.includes(id)
@@ -18,15 +16,15 @@ class Visualisation {
       console.warn(
         `object with id "${id}" was requested but is not currently registered.` +
           ` It may have been removed from the visualisation already because objects are` +
-          ` removed automatically when they finish their lifecycle. If you wish to access this` +
-          ` object again after it completes, call its setIsPermanent(true) method when creating it.`,
+          ` removed automatically when they are release. If you wish to access this object again,` +
+          ` after it is released, call its setIsPermanent(true) method when creating it.`,
       );
     }
 
-    return this.animatableObjects.get(id) as TVisual | undefined;
+    return this.animatableObjects.get(id);
   }
 
-  add(id: string, animatableObject: AnyVisualObject) {
+  add(id: string, animatableObject: AnyAnimatableObject) {
     const { maxAnimatableObjects } = this;
 
     this.animatableObjects.set(id, animatableObject);
@@ -43,7 +41,7 @@ class Visualisation {
     return animatableObject;
   }
 
-  addPermanently(id: string, animatableObject: AnyVisualObject) {
+  addPermanently(id: string, animatableObject: AnyAnimatableObject) {
     animatableObject.setIsPermanent(true);
     return this.add(id, animatableObject);
   }
@@ -56,16 +54,26 @@ class Visualisation {
   ) {
     if (!context) {
       throw new Error(
-        "A CanvasRenderingContext2D instance must be provided to render visual objects." +
+        "A CanvasRenderingContext2D instance must be provided to render AnimatableObjects." +
           "When calling the renderObjects() method on a visualisation instance, please ensure" +
           "that you pass in a valid canvas context as an argument.",
       );
     }
 
     this.animatableObjects.forEach((animatableObject) => {
-      if (animatableObject.shouldRender()) {
+      const {
+        releaseFactor,
+        isPermanent,
+        isReleasing: hasBeenReleased,
+      } = animatableObject;
+
+      if (releaseFactor === 0) {
+        animatableObject.isReleasing = false;
+      }
+
+      if (releaseFactor > 0 || isPermanent) {
         animatableObject.renderIn(context, width, height, timeInMs);
-      } else if (animatableObject.shouldMarkForRemoval()) {
+      } else if (hasBeenReleased) {
         animatableObject.markedForRemoval = true;
       }
     });

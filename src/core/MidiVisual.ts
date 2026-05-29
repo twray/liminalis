@@ -1,10 +1,19 @@
-import { NormalizedFloat } from "../types";
+import {
+  DrawCallback,
+  NormalizedFloat,
+  RenderIsometricCallback,
+  RenderProps,
+} from "../types";
+import IsometricView from "../views/IsometricView";
+import { createDrawContext } from "./drawMethods";
+import { getRenderIsometricMethods } from "./renderIsometricMethods";
+
 import { toNormalizedFloat } from "../util";
-import BaseVisual, { BaseVisualRenderProps } from "./BaseVisual";
 
-export type MidiVisualStatus = "idle" | "sustained" | "releasing";
+type MidiVisualStatus = "idle" | "sustained" | "releasing";
 
-interface MidiVisualLifecycleProps {
+interface MidiVisualRenderProps<TProps> extends RenderProps {
+  props: TProps;
   status: MidiVisualStatus;
   attackValue: NormalizedFloat;
   releaseFactor: NormalizedFloat;
@@ -14,20 +23,15 @@ interface MidiVisualLifecycleProps {
   timeReleased: number | null;
 }
 
-export type MidiVisualRenderProps<TProps> = BaseVisualRenderProps<
-  TProps,
-  MidiVisualLifecycleProps
->;
-
-class MidiVisual<TProps = {}> extends BaseVisual<
-  TProps,
-  MidiVisualLifecycleProps
-> {
+class MidiVisual<TProps = {}> {
   public attackValue: NormalizedFloat = toNormalizedFloat(0);
   public sustainPeriod: number = 0;
   public releasePeriod: number = 0;
   public isSustaining: boolean = false;
   public isReleasing: boolean = false;
+  public markedForRemoval: boolean = false;
+
+  public timeFirstRender: Date | null = null;
 
   public timeAttacked: Date | null = null;
   public timeReleased: Date | null = null;
@@ -35,8 +39,107 @@ class MidiVisual<TProps = {}> extends BaseVisual<
   public timeAttackedSinceFirstRender: number | null = null;
   public timeReleasedSinceFirstRender: number | null = null;
 
-  constructor(initialProps?: TProps) {
-    super(initialProps);
+  public isPermanent: boolean = false;
+
+  public props: TProps = {} as TProps;
+
+  public renderer: (params: MidiVisualRenderProps<TProps>) => void = () => {};
+
+  private drawContext = createDrawContext();
+
+  constructor() {}
+
+  withRenderer(renderer: (params: MidiVisualRenderProps<TProps>) => void) {
+    this.renderer = renderer;
+    return this;
+  }
+
+  withProps(props: TProps) {
+    this.props = props;
+    return this;
+  }
+
+  setIsPermanent(isPermanent: boolean) {
+    this.isPermanent = isPermanent;
+    this.timeFirstRender = new Date();
+    return this;
+  }
+
+  renderIn(
+    context: CanvasRenderingContext2D,
+    width: number,
+    height: number,
+    timeInMs: number
+  ): this {
+    const {
+      props,
+      attackValue,
+      releaseFactor,
+      releasePeriod,
+      isSustaining,
+      isReleasing,
+      timeAttackedSinceFirstRender: timeAttacked,
+      timeReleasedSinceFirstRender: timeReleased,
+    } = this;
+
+    const center = { x: width / 2, y: height / 2 };
+
+    let status: MidiVisualStatus = "idle";
+    if (isSustaining) status = "sustained";
+    if (isReleasing) status = "releasing";
+
+    const timeSinceFirstRender = this.getMsSince(this.timeFirstRender);
+
+    // Callbacks for calls to draw() and renderIsometric() methods
+
+    const drawCallbacks: DrawCallback[] = [];
+    const renderIsometricCallbacks: RenderIsometricCallback[] = [];
+
+    const draw = (callback: DrawCallback) => {
+      drawCallbacks.push(callback);
+    };
+
+    const renderIsometric = (callback: RenderIsometricCallback) => {
+      renderIsometricCallbacks.push(callback);
+    };
+
+    this.renderer({
+      props,
+      context,
+      width,
+      height,
+      center,
+      time: timeSinceFirstRender,
+      status,
+      attackValue,
+      releaseFactor,
+      releasePeriod,
+      timeFirstRender: 0,
+      timeAttacked,
+      timeReleased,
+      draw,
+      renderIsometric,
+    });
+
+    drawCallbacks.forEach((drawCallback) => {
+      this.drawContext.executeDrawCallback(
+        drawCallback,
+        context,
+        width,
+        height,
+        timeSinceFirstRender
+      );
+    });
+
+    renderIsometricCallbacks.forEach((renderIsometricCallback) => {
+      const isometricView = new IsometricView(context, width, height);
+      renderIsometricCallback(
+        getRenderIsometricMethods(isometricView, timeInMs)
+      );
+      isometricView.render();
+    });
+
+    return this;
   }
 
   attack(attackValue: number): this {
@@ -53,7 +156,7 @@ class MidiVisual<TProps = {}> extends BaseVisual<
 
     this.timeAttackedSinceFirstRender = this.getMsSince(
       timeFirstRender,
-      this.timeAttacked,
+      this.timeAttacked
     );
 
     return this;
@@ -76,7 +179,7 @@ class MidiVisual<TProps = {}> extends BaseVisual<
 
         this.timeReleasedSinceFirstRender = this.getMsSince(
           timeFirstRender,
-          this.timeReleased,
+          this.timeReleased
         );
       }
     }, this.sustainPeriod);
@@ -84,39 +187,12 @@ class MidiVisual<TProps = {}> extends BaseVisual<
     return this;
   }
 
-  protected getLifecycleProps(): MidiVisualLifecycleProps {
-    let status: MidiVisualStatus = "idle";
+  getMsSince(time?: Date | null, referenceTime?: Date | null): number {
+    const timeNow = referenceTime
+      ? referenceTime.getTime()
+      : new Date().getTime();
 
-    if (this.isSustaining) {
-      status = "sustained";
-    }
-
-    if (this.isReleasing) {
-      status = "releasing";
-    }
-
-    return {
-      status,
-      attackValue: this.attackValue,
-      releaseFactor: this.releaseFactor,
-      releasePeriod: this.releasePeriod,
-      timeFirstRender: 0,
-      timeAttacked: this.timeAttackedSinceFirstRender,
-      timeReleased: this.timeReleasedSinceFirstRender,
-    };
-  }
-
-  shouldRender(): boolean {
-    return this.releaseFactor > 0 || this.isPermanent;
-  }
-
-  shouldMarkForRemoval(): boolean {
-    if (!this.isPermanent && this.isReleasing && this.releaseFactor === 0) {
-      this.isReleasing = false;
-      return true;
-    }
-
-    return false;
+    return time && time instanceof Date ? timeNow - time.getTime() : 0;
   }
 
   get releaseFactor(): NormalizedFloat {
