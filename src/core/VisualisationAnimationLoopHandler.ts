@@ -96,16 +96,12 @@ const DEFAULTS = {
   SETTINGS_FPS: 60,
 };
 
-const canvas = document.createElement("canvas");
-canvas.setAttribute("id", "canvas-visualisation");
-
 class VisualisationAnimationLoopHandler<TState> {
-  #settings: SketchSettings = {
+  #settings: Omit<SketchSettings, "canvas"> = {
     animate: true,
     fps: DEFAULTS.SETTINGS_FPS,
     playbackRate: "throttle",
     scaleToFit: true,
-    canvas,
   };
 
   #appProperties: AppSettings = {
@@ -208,6 +204,9 @@ class VisualisationAnimationLoopHandler<TState> {
 
   render() {
     this.#resetInternalClock();
+
+    const canvas = document.createElement("canvas");
+    canvas.setAttribute("id", "canvas-visualisation");
 
     // Create draw context scoped to this render lifecycle
     // This persists across frames but is isolated to this visualisation
@@ -317,7 +316,10 @@ class VisualisationAnimationLoopHandler<TState> {
       noteEventManager: this.#noteEventManager,
     });
 
-    canvasSketch(sketchFunction, this.#settings);
+    canvasSketch(sketchFunction, {
+      ...this.#settings,
+      canvas,
+    });
   }
 
   #setUpEventListeners({
