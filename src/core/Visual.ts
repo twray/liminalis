@@ -10,11 +10,11 @@ import { getRenderIsometricMethods } from "./renderIsometricMethods";
 
 import { toNormalizedFloat } from "../util";
 
-type MidiVisualStatus = "idle" | "sustained" | "releasing";
+export type VisualStatus = "idle" | "sustained" | "releasing";
 
-interface MidiVisualRenderProps<TProps> extends RenderProps {
+export interface VisualRenderProps<TProps> extends RenderProps {
   props: TProps;
-  status: MidiVisualStatus;
+  status: VisualStatus;
   attackValue: NormalizedFloat;
   releaseFactor: NormalizedFloat;
   releasePeriod: number;
@@ -23,7 +23,11 @@ interface MidiVisualRenderProps<TProps> extends RenderProps {
   timeReleased: number | null;
 }
 
-class MidiVisual<TProps = {}> {
+export type VisualRenderer<TProps> = (
+  params: VisualRenderProps<TProps>,
+) => void;
+
+class Visual<TProps = {}> {
   public attackValue: NormalizedFloat = toNormalizedFloat(0);
   public sustainPeriod: number = 0;
   public releasePeriod: number = 0;
@@ -43,13 +47,21 @@ class MidiVisual<TProps = {}> {
 
   public props: TProps = {} as TProps;
 
-  public renderer: (params: MidiVisualRenderProps<TProps>) => void = () => {};
+  public renderer: VisualRenderer<TProps> = () => {};
 
   private drawContext = createDrawContext();
 
-  constructor() {}
+  constructor(initialProps?: TProps, renderer?: VisualRenderer<TProps>) {
+    if (initialProps !== undefined) {
+      this.props = initialProps;
+    }
 
-  withRenderer(renderer: (params: MidiVisualRenderProps<TProps>) => void) {
+    if (renderer) {
+      this.renderer = renderer;
+    }
+  }
+
+  withRenderer(renderer: VisualRenderer<TProps>) {
     this.renderer = renderer;
     return this;
   }
@@ -69,7 +81,7 @@ class MidiVisual<TProps = {}> {
     context: CanvasRenderingContext2D,
     width: number,
     height: number,
-    timeInMs: number
+    timeInMs: number,
   ): this {
     const {
       props,
@@ -84,7 +96,7 @@ class MidiVisual<TProps = {}> {
 
     const center = { x: width / 2, y: height / 2 };
 
-    let status: MidiVisualStatus = "idle";
+    let status: VisualStatus = "idle";
     if (isSustaining) status = "sustained";
     if (isReleasing) status = "releasing";
 
@@ -127,14 +139,14 @@ class MidiVisual<TProps = {}> {
         context,
         width,
         height,
-        timeSinceFirstRender
+        timeSinceFirstRender,
       );
     });
 
     renderIsometricCallbacks.forEach((renderIsometricCallback) => {
       const isometricView = new IsometricView(context, width, height);
       renderIsometricCallback(
-        getRenderIsometricMethods(isometricView, timeInMs)
+        getRenderIsometricMethods(isometricView, timeInMs),
       );
       isometricView.render();
     });
@@ -156,7 +168,7 @@ class MidiVisual<TProps = {}> {
 
     this.timeAttackedSinceFirstRender = this.getMsSince(
       timeFirstRender,
-      this.timeAttacked
+      this.timeAttacked,
     );
 
     return this;
@@ -179,7 +191,7 @@ class MidiVisual<TProps = {}> {
 
         this.timeReleasedSinceFirstRender = this.getMsSince(
           timeFirstRender,
-          this.timeReleased
+          this.timeReleased,
         );
       }
     }, this.sustainPeriod);
@@ -209,4 +221,4 @@ class MidiVisual<TProps = {}> {
   }
 }
 
-export default MidiVisual;
+export default Visual;

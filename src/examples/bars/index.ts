@@ -16,13 +16,13 @@ createVisualisation
       mappableBaseNotes.forEach((mappableBaseNote, index) => {
         visualisation.addPermanently(
           mappableBaseNote,
-          springRectangle().withProps({
+          springRectangle({
             x: (width - squareSize) / 2 + index * barWidth * 2,
             y: (height - squareSize) / 2,
             width: barWidth,
             height: squareSize,
             fill: "#333333",
-          })
+          }),
         );
       });
     });

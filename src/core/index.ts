@@ -1,6 +1,6 @@
-import MidiVisual from "./MidiVisual";
+import { defineVisual } from "./componentFactories";
 import VisualisationAnimationLoopHandler from "./VisualisationAnimationLoopHandler";
 
 export { logMessage } from "../util/log";
-export const midiVisual = <TProps>() => new MidiVisual<TProps>();
+export const visual = defineVisual;
 export const createVisualisation = new VisualisationAnimationLoopHandler();

@@ -23,9 +23,7 @@ createVisualisation
 
       visualisation.add(
         note,
-        springCircle()
-          .withProps({ xOffset: startXOffset + index * 50 })
-          .attack(attack)
+        springCircle({ xOffset: startXOffset + index * 50 }).attack(attack),
       );
     });
 

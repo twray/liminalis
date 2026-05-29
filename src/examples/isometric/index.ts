@@ -14,10 +14,7 @@ createVisualisation
 
       visualisation.add(
         note[0],
-        bouncyCuboid()
-          .withProps({ positionIndex })
-          .attack(attack)
-          .sustain(10000)
+        bouncyCuboid({ positionIndex }).attack(attack).sustain(10000),
       );
     });
 

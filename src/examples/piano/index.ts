@@ -112,13 +112,13 @@ createVisualisation
 
         visualisation.addPermanently(
           mappableNotes[i],
-          pianoKey().withProps({
+          pianoKey({
             x: keyboardOrigin.x + xOffset * keyDimensions.width,
             y: keyboardOrigin.y,
             width: keyDimensions.width,
             height: keyDimensions.height,
             keyType,
-          })
+          }),
         );
 
         if (i < mappableNotes.length - 1) {

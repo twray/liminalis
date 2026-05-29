@@ -1,34 +1,27 @@
-import { createVisualisation, midiVisual } from "../../core";
+import { createVisualisation, visual } from "../../core";
 import { toNormalizedFloat } from "../../util";
 
 createVisualisation
   .setup(({ atStart, onNoteDown, onNoteUp, onRender }) => {
-    atStart(({ visualisation }) => {
-      visualisation.addPermanently(
-        "note",
-        midiVisual().withRenderer(({ draw, timeAttacked, timeReleased }) => {
-          draw(({ center, circle, withStyles }) => {
-            const { x: cx, y: cy } = center;
+    const noteVisual = visual(({ draw, timeAttacked, timeReleased }) => {
+      draw(({ center, circle, withStyles }) => {
+        const { x: cx, y: cy } = center;
 
-            // Circle animates in response to attack and release events
-            withStyles({ strokeStyle: "#666666" }, () => {
-              circle({
-                cx,
-                cy,
-                radius: 50,
-              })
-                .animateTo(
-                  { radius: 100 },
-                  { at: timeAttacked, duration: 1000 }
-                )
-                .animateTo(
-                  { radius: 50 },
-                  { at: timeReleased, duration: 1000 }
-                );
-            });
-          });
-        })
-      );
+        // Circle animates in response to attack and release events
+        withStyles({ strokeStyle: "#666666" }, () => {
+          circle({
+            cx,
+            cy,
+            radius: 50,
+          })
+            .animateTo({ radius: 100 }, { at: timeAttacked, duration: 1000 })
+            .animateTo({ radius: 50 }, { at: timeReleased, duration: 1000 });
+        });
+      });
+    });
+
+    atStart(({ visualisation }) => {
+      visualisation.addPermanently("note", noteVisual());
     });
 
     onRender(({ draw, center }) => {
@@ -47,7 +40,7 @@ createVisualisation
               radius: 10,
             }).animateTo(
               { cy: endYPos },
-              { duration: 1000, delay: 500 + i * 250 }
+              { duration: 1000, delay: 500 + i * 250 },
             );
           }
         });

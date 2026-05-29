@@ -1,6 +1,6 @@
-import MidiVisual from "./MidiVisual";
+import Visual from "./Visual";
 
-type AnyAnimatableObject = MidiVisual<any>;
+type AnyAnimatableObject = Visual<any>;
 
 class Visualisation {
   public idsOfAllAnimatableObjectsCreated: string[] = [];
