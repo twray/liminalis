@@ -1,6 +1,6 @@
-import { createVisualisation, logMessage } from "./core";
+import { createScene, logMessage } from "./core";
 
-createVisualisation
+createScene
   .setup(({ atStart }) => {
     atStart(() => {
       logMessage("Welcome to Liminalis");
