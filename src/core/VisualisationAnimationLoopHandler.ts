@@ -1,6 +1,7 @@
 import canvasSketch from "canvas-sketch";
 import { Utilities, WebMidi } from "webmidi";
 
+import VideoRecorder from "./VideoRecorder";
 import { createDrawContext } from "./drawMethods";
 import { getRenderIsometricMethods } from "./renderIsometricMethods";
 
@@ -62,6 +63,7 @@ interface SceneSettings {
   height?: number;
   fps?: number;
   computerKeyboardDebugEnabled?: boolean;
+  videoRecordingScale?: number;
 }
 
 interface SetupFunctionProps<TState> {
@@ -84,12 +86,14 @@ interface FrameRenderProps extends RenderProps {
 }
 
 const KEYBOARD_DEBUG_ATTACK_KEY_REGEX = /^[1-9]$/;
-const SCREENSHOT_EXPORT_KEY = "s";
+const SCREENSHOT_EXPORT_KEY = "e";
+const VIDEO_EXPORT_KEY = "e";
 
 const DEFAULTS = {
   INTERNAL_CLOCK_MAX_FRAME_DELTA_IN_MS: 250,
   SETTINGS_COMPUTER_KEYBOARD_DEBUG_ENABLED: true,
   SETTINGS_FPS: 60,
+  SETTINGS_VIDEO_RECORDING_SCALE: 1,
 };
 
 class VisualisationAnimationLoopHandler<TState> {
@@ -123,6 +127,10 @@ class VisualisationAnimationLoopHandler<TState> {
 
   #currentKeyboardDebugNumericPressedKey: string | null = null;
 
+  #canvas: HTMLCanvasElement | null = null;
+  #videoRecorder = new VideoRecorder();
+  #videoRecordingScale = DEFAULTS.SETTINGS_VIDEO_RECORDING_SCALE;
+
   constructor() {}
 
   withSettings({
@@ -130,6 +138,7 @@ class VisualisationAnimationLoopHandler<TState> {
     height,
     fps = 60,
     computerKeyboardDebugEnabled = DEFAULTS.SETTINGS_COMPUTER_KEYBOARD_DEBUG_ENABLED,
+    videoRecordingScale = DEFAULTS.SETTINGS_VIDEO_RECORDING_SCALE,
   }: SceneSettings) {
     this.#settings = { ...this.#settings, fps };
 
@@ -141,6 +150,8 @@ class VisualisationAnimationLoopHandler<TState> {
       ...this.#appProperties,
       computerKeyboardDebugEnabled,
     };
+
+    this.#videoRecordingScale = videoRecordingScale;
 
     return this;
   }
@@ -203,6 +214,7 @@ class VisualisationAnimationLoopHandler<TState> {
     // Creates the canvas instance on render
     const canvas = document.createElement("canvas");
     canvas.setAttribute("id", "canvas-visualisation");
+    this.#canvas = canvas;
 
     // Create draw context scoped to this render lifecycle
     // This persists across frames but is isolated to this scene
@@ -303,6 +315,13 @@ class VisualisationAnimationLoopHandler<TState> {
 
         // Render all animatable objects
         this.#scene.renderObjects(context, width, height, timeInMs);
+
+        if (this.#videoRecorder.isRecording) {
+          this.#videoRecorder.captureFrame(timeInMs);
+          logMessage("Recording ...");
+        } else if (this.#videoRecorder.isEncoding) {
+          logMessage("Saving video capture ...");
+        }
       };
     };
 
@@ -325,10 +344,19 @@ class VisualisationAnimationLoopHandler<TState> {
         if (event.repeat) return;
 
         const hasModifierKey = event.metaKey || event.ctrlKey || event.shiftKey;
+        const isVideoExportKeyCombo =
+          (event.metaKey || event.ctrlKey) &&
+          event.shiftKey &&
+          event.key.toLowerCase() === VIDEO_EXPORT_KEY;
         const isScreenshotExportKeyCombo =
           (event.metaKey || event.ctrlKey) &&
           !event.shiftKey &&
           event.key.toLowerCase() === SCREENSHOT_EXPORT_KEY;
+
+        if (isVideoExportKeyCombo) {
+          void this.#toggleVideoRecording();
+          return;
+        }
 
         if (isScreenshotExportKeyCombo) {
           logMessage("Snapshot exported as image");
@@ -497,6 +525,35 @@ class VisualisationAnimationLoopHandler<TState> {
     }
 
     return Date.now();
+  };
+
+  #toggleVideoRecording = async (): Promise<void> => {
+    if (!this.#canvas || this.#videoRecorder.isEncoding) {
+      return;
+    }
+
+    if (this.#videoRecorder.isRecording) {
+      logMessage("Saving video capture ...");
+
+      try {
+        const { blob, fileName } = await this.#videoRecorder.stopAndEncode();
+        this.#videoRecorder.download(blob, fileName);
+        logMessage("Recording ready for download");
+      } catch {
+        logMessage("Video capture failed");
+      }
+
+      return;
+    }
+
+    try {
+      this.#videoRecorder.start(this.#canvas, {
+        scale: this.#videoRecordingScale,
+      });
+      logMessage("Recording ...");
+    } catch {
+      logMessage("Video capture unavailable");
+    }
   };
 }
 

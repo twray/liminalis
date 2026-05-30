@@ -9,6 +9,19 @@ const mockState = {
   },
 };
 
+const videoRecorderMockState = {
+  instances: [] as Array<{
+    start: ReturnType<typeof vi.fn>;
+    captureFrame: ReturnType<typeof vi.fn>;
+    stopAndEncode: ReturnType<typeof vi.fn>;
+    download: ReturnType<typeof vi.fn>;
+    flags: {
+      isRecording: boolean;
+      isEncoding: boolean;
+    };
+  }>,
+};
+
 vi.mock("canvas-sketch", () => {
   return {
     default: vi.fn((sketchFactory: () => (props: any) => void) => {
@@ -43,6 +56,73 @@ vi.mock("webmidi", () => {
 vi.mock("../util/log", () => {
   return {
     logMessage: vi.fn(),
+  };
+});
+
+vi.mock("./VideoRecorder", () => {
+  return {
+    default: class MockVideoRecorder {
+      #instance = {
+        start: vi.fn(),
+        captureFrame: vi.fn(),
+        stopAndEncode: vi.fn(),
+        download: vi.fn(),
+        flags: {
+          isRecording: false,
+          isEncoding: false,
+        },
+      };
+
+      constructor() {
+        videoRecorderMockState.instances.push(this.#instance);
+      }
+
+      get isRecording() {
+        return this.#instance.flags.isRecording;
+      }
+
+      get isEncoding() {
+        return this.#instance.flags.isEncoding;
+      }
+
+      start(...args: any[]) {
+        this.#instance.start(...args);
+        this.#instance.flags.isRecording = true;
+      }
+
+      captureFrame(elapsedTimeInMs?: number) {
+        this.#instance.captureFrame(elapsedTimeInMs);
+      }
+
+      async stopAndEncode() {
+        this.#instance.flags.isRecording = false;
+        this.#instance.flags.isEncoding = true;
+
+        const mockResult = this.#instance.stopAndEncode();
+
+        if (
+          mockResult &&
+          typeof (mockResult as Promise<unknown>).then === "function"
+        ) {
+          const resolvedValue = await mockResult;
+          this.#instance.flags.isEncoding = false;
+          return resolvedValue;
+        }
+
+        await Promise.resolve();
+
+        this.#instance.flags.isEncoding = false;
+
+        return {
+          blob: new Blob(["video"]),
+          fileName: "liminalis-capture.webm",
+        };
+      }
+
+      download(blob: Blob, fileName: string) {
+        this.#instance.download(blob, fileName);
+      }
+    },
   };
 });
 
@@ -102,12 +182,22 @@ const createKeyboardEvent = (
     ...overrides,
   }) as unknown as KeyboardEvent;
 
+const getLatestVideoRecorderMock = () => {
+  const latestRecorderMock =
+    videoRecorderMockState.instances.at(-1);
+
+  expect(latestRecorderMock).toBeDefined();
+
+  return latestRecorderMock!;
+};
+
 describe("VisualisationAnimationLoopHandler note dispatch", () => {
   beforeEach(() => {
     vi.resetModules();
     mockState.latestRenderCallback = null;
     mockState.midiListeners.noteon = [];
     mockState.midiListeners.noteoff = [];
+    videoRecorderMockState.instances = [];
     setupDomGlobals();
     vi.mocked(logMessage).mockReset();
   });
@@ -259,7 +349,7 @@ describe("VisualisationAnimationLoopHandler note dispatch", () => {
     expect(shiftKeydownEvent.preventDefault).not.toHaveBeenCalled();
   });
 
-  it("logs screenshot export on Cmd/Ctrl+S and skips debug note dispatch", async () => {
+  it("logs screenshot export on Cmd/Ctrl+E and skips debug note dispatch", async () => {
     const { default: VisualisationAnimationLoopHandler } =
       await import("./VisualisationAnimationLoopHandler");
 
@@ -276,20 +366,20 @@ describe("VisualisationAnimationLoopHandler note dispatch", () => {
 
     const keydownListener = getWindowKeyboardListener("keydown");
 
-    const ctrlS = createKeyboardEvent({
-      key: "s",
-      code: "KeyS",
+    const ctrlE = createKeyboardEvent({
+      key: "e",
+      code: "KeyE",
       ctrlKey: true,
     });
 
-    const cmdS = createKeyboardEvent({
-      key: "s",
-      code: "KeyS",
+    const cmdE = createKeyboardEvent({
+      key: "e",
+      code: "KeyE",
       metaKey: true,
     });
 
-    keydownListener(ctrlS);
-    keydownListener(cmdS);
+    keydownListener(ctrlE);
+    keydownListener(cmdE);
 
     expect(vi.mocked(logMessage)).toHaveBeenCalledTimes(2);
     expect(vi.mocked(logMessage)).toHaveBeenNthCalledWith(
@@ -301,7 +391,114 @@ describe("VisualisationAnimationLoopHandler note dispatch", () => {
       "Snapshot exported as image",
     );
     expect(onNoteDown).not.toHaveBeenCalled();
-    expect(ctrlS.preventDefault).not.toHaveBeenCalled();
-    expect(cmdS.preventDefault).not.toHaveBeenCalled();
+    expect(ctrlE.preventDefault).not.toHaveBeenCalled();
+    expect(cmdE.preventDefault).not.toHaveBeenCalled();
+  });
+
+  it("starts deterministic recording on Cmd/Ctrl+SHIFT+E and keeps recording status visible", async () => {
+    const { default: VisualisationAnimationLoopHandler } =
+      await import("./VisualisationAnimationLoopHandler");
+
+    const handler = new VisualisationAnimationLoopHandler()
+      .withSettings({ videoRecordingScale: 0.5 })
+      .setup(() => {});
+
+    handler.render();
+    await flushPromises();
+
+    const recorderMock = getLatestVideoRecorderMock();
+    const keydownListener = getWindowKeyboardListener("keydown");
+
+    keydownListener(
+      createKeyboardEvent({
+        key: "E",
+        code: "KeyE",
+        ctrlKey: true,
+        shiftKey: true,
+      }),
+    );
+
+    expect(recorderMock.start).toHaveBeenCalledTimes(1);
+    expect(recorderMock.start.mock.calls[0]?.[1]).toEqual({ scale: 0.5 });
+    expect(vi.mocked(logMessage)).toHaveBeenCalledWith("Recording ...");
+
+    expect(mockState.latestRenderCallback).not.toBeNull();
+    mockState.latestRenderCallback!(createCanvasProps());
+
+    expect(recorderMock.captureFrame).toHaveBeenCalledTimes(1);
+    expect(recorderMock.captureFrame).toHaveBeenCalledWith(0);
+    expect(vi.mocked(logMessage)).toHaveBeenCalledWith("Recording ...");
+  });
+
+  it("shows saving status during encoding and then ready/download when deterministic capture completes", async () => {
+    const { default: VisualisationAnimationLoopHandler } =
+      await import("./VisualisationAnimationLoopHandler");
+
+    const handler = new VisualisationAnimationLoopHandler().setup(() => {});
+
+    handler.render();
+    await flushPromises();
+
+    const recorderMock = getLatestVideoRecorderMock();
+    const keydownListener = getWindowKeyboardListener("keydown");
+
+    keydownListener(
+      createKeyboardEvent({
+        key: "E",
+        code: "KeyE",
+        metaKey: true,
+        shiftKey: true,
+      }),
+    );
+
+    let resolveStopAndEncode:
+      | ((result: { blob: Blob; fileName: string }) => void)
+      | null = null;
+
+    recorderMock.stopAndEncode.mockImplementation(
+      () =>
+        new Promise<{ blob: Blob; fileName: string }>((resolve) => {
+          resolveStopAndEncode = resolve;
+        }),
+    );
+
+    keydownListener(
+      createKeyboardEvent({
+        key: "E",
+        code: "KeyE",
+        metaKey: true,
+        shiftKey: true,
+      }),
+    );
+
+    expect(recorderMock.stopAndEncode).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(logMessage)).toHaveBeenCalledWith(
+      "Saving video capture ...",
+    );
+
+    expect(mockState.latestRenderCallback).not.toBeNull();
+    mockState.latestRenderCallback!(createCanvasProps());
+
+    expect(vi.mocked(logMessage)).toHaveBeenCalledWith(
+      "Saving video capture ...",
+    );
+
+    const fakeBlob = new Blob(["encoded-video"]);
+    expect(resolveStopAndEncode).toBeDefined();
+
+    resolveStopAndEncode!({
+      blob: fakeBlob,
+      fileName: "liminalis-capture.webm",
+    });
+
+    await flushPromises();
+
+    expect(recorderMock.download).toHaveBeenCalledWith(
+      fakeBlob,
+      "liminalis-capture.webm",
+    );
+    expect(vi.mocked(logMessage)).toHaveBeenCalledWith(
+      "Recording ready for download",
+    );
   });
 });
