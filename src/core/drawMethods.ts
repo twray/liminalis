@@ -162,7 +162,7 @@ export interface DrawMethods {
   circle: (props: CircleProps) => Animatable<CircleProps>;
   ellipse: (props: EllipseProps) => Animatable<EllipseProps>;
   rect: (props: RectProps) => Animatable<RectProps>;
-  text: (text: string, props: TextProps) => Animatable<TextProps>;
+  text: (text: string, props?: TextProps) => Animatable<TextProps>;
 }
 
 const background = (
@@ -945,7 +945,7 @@ export const createDrawContext = (): DrawContext => {
         registry.queue(mergeStyles(props), (p) => arc(context, p)),
       rect: (props: RectProps) =>
         registry.queue(mergeStyles(props), (p) => rect(context, p)),
-      text: (textValue: string, props: TextProps) =>
+      text: (textValue: string, props: TextProps = {}) =>
         registry.queue(mergeStyles(props), (p) => text(context, textValue, p)),
     };
 
