@@ -3,10 +3,10 @@ import Visual from "./Visual";
 type AnySceneObject = Visual<any>;
 
 class Scene {
-  public sceneObjects: Set<AnySceneObject> = new Set();
-  public sceneObjectsByKey: Map<string, AnySceneObject> = new Map();
+  #sceneObjects: Set<AnySceneObject> = new Set();
+  #sceneObjectsByKey: Map<string, AnySceneObject> = new Map();
 
-  public keysOfAllSceneObjectsCreated: string[] = [];
+  #keysOfAllSceneObjectsCreated: string[] = [];
 
   constructor(public maxSceneObjects: number = 1000) {}
 
@@ -24,8 +24,8 @@ class Scene {
     const clonedObject = sceneObject.clone();
 
     this.removeByKey(key);
-    this.sceneObjectsByKey.set(key, clonedObject);
-    this.keysOfAllSceneObjectsCreated.push(key);
+    this.#sceneObjectsByKey.set(key, clonedObject);
+    this.#keysOfAllSceneObjectsCreated.push(key);
 
     this.registerSceneObject(clonedObject);
 
@@ -40,8 +40,8 @@ class Scene {
 
   getByKey(key: string): AnySceneObject | undefined {
     if (
-      !this.sceneObjectsByKey.has(key) &&
-      this.keysOfAllSceneObjectsCreated.includes(key)
+      !this.#sceneObjectsByKey.has(key) &&
+      this.#keysOfAllSceneObjectsCreated.includes(key)
     ) {
       console.warn(
         `object with key "${key}" was requested but is not currently registered.` +
@@ -51,23 +51,23 @@ class Scene {
       );
     }
 
-    return this.sceneObjectsByKey.get(key);
+    return this.#sceneObjectsByKey.get(key);
   }
 
   has(sceneObject: AnySceneObject) {
-    return this.sceneObjects.has(sceneObject);
+    return this.#sceneObjects.has(sceneObject);
   }
 
   hasKey(key: string) {
-    return this.sceneObjectsByKey.has(key);
+    return this.#sceneObjectsByKey.has(key);
   }
 
   remove(sceneObject: AnySceneObject) {
-    this.sceneObjects.delete(sceneObject);
+    this.#sceneObjects.delete(sceneObject);
 
-    this.sceneObjectsByKey.forEach((objectForKey, key) => {
+    this.#sceneObjectsByKey.forEach((objectForKey, key) => {
       if (objectForKey === sceneObject) {
-        this.sceneObjectsByKey.delete(key);
+        this.#sceneObjectsByKey.delete(key);
       }
     });
 
@@ -75,14 +75,14 @@ class Scene {
   }
 
   removeByKey(key: string) {
-    const sceneObject = this.sceneObjectsByKey.get(key);
+    const sceneObject = this.#sceneObjectsByKey.get(key);
 
     if (!sceneObject) {
       return undefined;
     }
 
-    this.sceneObjectsByKey.delete(key);
-    this.sceneObjects.delete(sceneObject);
+    this.#sceneObjectsByKey.delete(key);
+    this.#sceneObjects.delete(sceneObject);
 
     return sceneObject;
   }
@@ -101,7 +101,7 @@ class Scene {
       );
     }
 
-    this.sceneObjects.forEach((sceneObject) => {
+    this.#sceneObjects.forEach((sceneObject) => {
       const {
         releaseFactor,
         isPermanent,
@@ -121,7 +121,7 @@ class Scene {
   }
 
   cleanUp() {
-    this.sceneObjects.forEach((sceneObject) => {
+    this.#sceneObjects.forEach((sceneObject) => {
       if (!sceneObject.isPermanent && sceneObject.markedForRemoval) {
         this.remove(sceneObject);
       }
@@ -131,9 +131,9 @@ class Scene {
   private registerSceneObject(sceneObject: AnySceneObject) {
     const { maxSceneObjects } = this;
 
-    this.sceneObjects.add(sceneObject);
+    this.#sceneObjects.add(sceneObject);
 
-    if (this.sceneObjects.size > maxSceneObjects) {
+    if (this.#sceneObjects.size > maxSceneObjects) {
       console.warn(
         `Warning: Over ${maxSceneObjects} are registered. ` +
           `Check that your objects are releasing and being cleaned up correctly ` +
