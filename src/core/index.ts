@@ -4,4 +4,3 @@ import VisualisationAnimationLoopHandler from "./VisualisationAnimationLoopHandl
 export { logMessage } from "../util/log";
 export const visual = defineVisual;
 export const createScene = new VisualisationAnimationLoopHandler();
-export const createVisualisation = createScene;

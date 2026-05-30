@@ -1,5 +1,5 @@
 // Main library entry point for npm package
-export { createScene, createVisualisation, logMessage, visual } from "./core";
+export { createScene, logMessage, visual } from "./core";
 export { default as Animatable } from "./core/Animatable";
 export type {
   CircleProps,
