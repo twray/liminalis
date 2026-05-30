@@ -21,7 +21,6 @@ import type {
 
 import { eventTimeToMs, toNormalizedFloat } from "../util";
 
-import ModeManager from "./ModeManager";
 import NoteEventManager from "./NoteEventManager";
 import Scene from "./Scene";
 
@@ -54,7 +53,6 @@ interface ExpirableTimeCallbackEntry extends TimeCallbackEntry {
 
 interface SetUpEventListenersParams {
   appProperties: AppSettings;
-  modeManager: ModeManager;
   noteEventManager: NoteEventManager;
 }
 
@@ -106,7 +104,6 @@ class VisualisationAnimationLoopHandler<TState> {
   };
 
   #noteEventManager = new NoteEventManager("major");
-  #modeManager = new ModeManager([], []);
 
   #scene = new Scene();
   #sceneState: TState = {} as TState;
@@ -309,7 +306,6 @@ class VisualisationAnimationLoopHandler<TState> {
 
     this.#setUpEventListeners({
       appProperties: this.#appProperties,
-      modeManager: this.#modeManager,
       noteEventManager: this.#noteEventManager,
     });
 
@@ -318,7 +314,6 @@ class VisualisationAnimationLoopHandler<TState> {
 
   #setUpEventListeners({
     appProperties,
-    modeManager,
     noteEventManager,
   }: SetUpEventListenersParams) {
     const { computerKeyboardDebugEnabled } = appProperties;
@@ -403,10 +398,6 @@ class VisualisationAnimationLoopHandler<TState> {
       number: number,
       attack: NormalizedFloat = toNormalizedFloat(1),
     ) => {
-      if (modeManager.modeTransitionNotes.includes(note)) {
-        modeManager.transitionToNextMode();
-      }
-
       const noteDownEvent = noteEventManager.registerNoteOnEvent(
         note,
         number,
