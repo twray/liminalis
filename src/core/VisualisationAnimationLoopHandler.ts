@@ -20,6 +20,7 @@ import type {
 } from "../types";
 
 import { eventTimeToMs, toNormalizedFloat } from "../util";
+import { logMessage } from "../util/log";
 
 import NoteEventManager from "./NoteEventManager";
 import Scene from "./Scene";
@@ -83,6 +84,7 @@ interface FrameRenderProps extends RenderProps {
 }
 
 const KEYBOARD_DEBUG_ATTACK_KEY_REGEX = /^[1-9]$/;
+const SCREENSHOT_EXPORT_KEY = "s";
 
 const DEFAULTS = {
   INTERNAL_CLOCK_MAX_FRAME_DELTA_IN_MS: 250,
@@ -322,6 +324,21 @@ class VisualisationAnimationLoopHandler<TState> {
       window.addEventListener("keydown", (event) => {
         if (event.repeat) return;
 
+        const hasModifierKey = event.metaKey || event.ctrlKey || event.shiftKey;
+        const isScreenshotExportKeyCombo =
+          (event.metaKey || event.ctrlKey) &&
+          !event.shiftKey &&
+          event.key.toLowerCase() === SCREENSHOT_EXPORT_KEY;
+
+        if (isScreenshotExportKeyCombo) {
+          logMessage("Snapshot exported as image");
+          return;
+        }
+
+        if (hasModifierKey) {
+          return;
+        }
+
         if (KEYBOARD_DEBUG_ATTACK_KEY_REGEX.test(event.key)) {
           this.#currentKeyboardDebugNumericPressedKey = event.key;
           return;
@@ -346,6 +363,10 @@ class VisualisationAnimationLoopHandler<TState> {
       });
 
       window.addEventListener("keyup", (event) => {
+        if (event.metaKey || event.ctrlKey || event.shiftKey) {
+          return;
+        }
+
         const note = keyMappings.find(
           (keyMapping) => event.code === keyMapping.keyCode,
         )?.note;

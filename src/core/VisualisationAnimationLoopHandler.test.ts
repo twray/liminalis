@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { logMessage } from "../util/log";
 
 const mockState = {
   latestRenderCallback: null as ((props: any) => void) | null,
@@ -39,6 +40,12 @@ vi.mock("webmidi", () => {
   };
 });
 
+vi.mock("../util/log", () => {
+  return {
+    logMessage: vi.fn(),
+  };
+});
+
 const flushPromises = async () => {
   await Promise.resolve();
   await Promise.resolve();
@@ -71,6 +78,30 @@ const createCanvasProps = () => ({
   height: 720,
 });
 
+const getWindowKeyboardListener = (eventType: "keydown" | "keyup") => {
+  const addEventListener = (globalThis as any).window.addEventListener;
+  const call = addEventListener.mock.calls.find(
+    ([registeredEventType]: [string, (...args: any[]) => void]) =>
+      registeredEventType === eventType,
+  );
+
+  expect(call).toBeDefined();
+
+  return call[1] as (event: KeyboardEvent) => void;
+};
+
+const createKeyboardEvent = (
+  overrides: Partial<KeyboardEvent> & { key: string; code: string },
+) =>
+  ({
+    repeat: false,
+    metaKey: false,
+    ctrlKey: false,
+    shiftKey: false,
+    preventDefault: vi.fn(),
+    ...overrides,
+  }) as unknown as KeyboardEvent;
+
 describe("VisualisationAnimationLoopHandler note dispatch", () => {
   beforeEach(() => {
     vi.resetModules();
@@ -78,6 +109,7 @@ describe("VisualisationAnimationLoopHandler note dispatch", () => {
     mockState.midiListeners.noteon = [];
     mockState.midiListeners.noteoff = [];
     setupDomGlobals();
+    vi.mocked(logMessage).mockReset();
   });
 
   it("dispatches note callbacks immediately in MIDI arrival order", async () => {
@@ -145,5 +177,131 @@ describe("VisualisationAnimationLoopHandler note dispatch", () => {
 
     expect(onNoteDown).toHaveBeenCalledTimes(1);
     expect(onNoteUp).toHaveBeenCalledTimes(1);
+  });
+
+  it("preserves keyboard debug events when no modifiers are pressed", async () => {
+    const { default: VisualisationAnimationLoopHandler } =
+      await import("./VisualisationAnimationLoopHandler");
+
+    const onNoteDown = vi.fn();
+    const onNoteUp = vi.fn();
+
+    const handler = new VisualisationAnimationLoopHandler().setup(
+      ({ onNoteDown: registerOnNoteDown, onNoteUp: registerOnNoteUp }) => {
+        registerOnNoteDown(onNoteDown);
+        registerOnNoteUp(onNoteUp);
+      },
+    );
+
+    handler.render();
+    await flushPromises();
+
+    const keydownListener = getWindowKeyboardListener("keydown");
+    const keyupListener = getWindowKeyboardListener("keyup");
+
+    const keydownEvent = createKeyboardEvent({ key: "z", code: "KeyZ" });
+    keydownListener(keydownEvent);
+
+    expect(onNoteDown).toHaveBeenCalledTimes(1);
+    expect(keydownEvent.preventDefault).toHaveBeenCalledTimes(1);
+
+    const keyupEvent = createKeyboardEvent({ key: "z", code: "KeyZ" });
+    keyupListener(keyupEvent);
+
+    expect(onNoteUp).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not invoke keyboard debug note events when modifier keys are pressed", async () => {
+    const { default: VisualisationAnimationLoopHandler } =
+      await import("./VisualisationAnimationLoopHandler");
+
+    const onNoteDown = vi.fn();
+    const onNoteUp = vi.fn();
+
+    const handler = new VisualisationAnimationLoopHandler().setup(
+      ({ onNoteDown: registerOnNoteDown, onNoteUp: registerOnNoteUp }) => {
+        registerOnNoteDown(onNoteDown);
+        registerOnNoteUp(onNoteUp);
+      },
+    );
+
+    handler.render();
+    await flushPromises();
+
+    const keydownListener = getWindowKeyboardListener("keydown");
+    const keyupListener = getWindowKeyboardListener("keyup");
+
+    const ctrlKeydownEvent = createKeyboardEvent({
+      key: "z",
+      code: "KeyZ",
+      ctrlKey: true,
+    });
+
+    const shiftKeydownEvent = createKeyboardEvent({
+      key: "Z",
+      code: "KeyZ",
+      shiftKey: true,
+    });
+
+    const ctrlKeyupEvent = createKeyboardEvent({
+      key: "z",
+      code: "KeyZ",
+      ctrlKey: true,
+    });
+
+    keydownListener(ctrlKeydownEvent);
+    keydownListener(shiftKeydownEvent);
+    keyupListener(ctrlKeyupEvent);
+
+    expect(onNoteDown).not.toHaveBeenCalled();
+    expect(onNoteUp).not.toHaveBeenCalled();
+    expect(ctrlKeydownEvent.preventDefault).not.toHaveBeenCalled();
+    expect(shiftKeydownEvent.preventDefault).not.toHaveBeenCalled();
+  });
+
+  it("logs screenshot export on Cmd/Ctrl+S and skips debug note dispatch", async () => {
+    const { default: VisualisationAnimationLoopHandler } =
+      await import("./VisualisationAnimationLoopHandler");
+
+    const onNoteDown = vi.fn();
+
+    const handler = new VisualisationAnimationLoopHandler().setup(
+      ({ onNoteDown: registerOnNoteDown }) => {
+        registerOnNoteDown(onNoteDown);
+      },
+    );
+
+    handler.render();
+    await flushPromises();
+
+    const keydownListener = getWindowKeyboardListener("keydown");
+
+    const ctrlS = createKeyboardEvent({
+      key: "s",
+      code: "KeyS",
+      ctrlKey: true,
+    });
+
+    const cmdS = createKeyboardEvent({
+      key: "s",
+      code: "KeyS",
+      metaKey: true,
+    });
+
+    keydownListener(ctrlS);
+    keydownListener(cmdS);
+
+    expect(vi.mocked(logMessage)).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(logMessage)).toHaveBeenNthCalledWith(
+      1,
+      "Snapshot exported as image",
+    );
+    expect(vi.mocked(logMessage)).toHaveBeenNthCalledWith(
+      2,
+      "Snapshot exported as image",
+    );
+    expect(onNoteDown).not.toHaveBeenCalled();
+    expect(ctrlS.preventDefault).not.toHaveBeenCalled();
+    expect(cmdS.preventDefault).not.toHaveBeenCalled();
   });
 });
