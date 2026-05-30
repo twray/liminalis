@@ -11,6 +11,9 @@ When changing examples, tests, or docs, keep these conventions consistent:
 - Instantiate visuals before registering them in scene methods.
 - Preserve explicit keyed naming: `addWithKey`, `addPermanentlyWithKey`, `getByKey`, `removeByKey`, `hasKey`.
 - Use instance-based scene methods (`add`, `addPermanently`, `remove`, `has`) when you hold object references directly.
+- Keep blend mode docs/examples consistent with the `blend` property.
+- Keep primitive coverage current in docs/examples: `line`, `polygon`, `bezier`, `arc`, `circle`, `ellipse`, `rect`, `text`.
+- Prefer easing string constants in short examples where practical.
 
 ## 🎯 Philosophy
 
@@ -182,6 +185,9 @@ Before opening a PR, verify docs/examples still reflect the current API:
 - `QUICKREF.md` and `DEVELOPMENT.md` command descriptions match `package.json`
 - Keyed scene APIs keep `WithKey` naming
 - Visuals are instantiated before scene registration
+- Blend mode examples use `blend`, not ad-hoc aliases
+- Primitive docs include the latest draw API surface (`polygon`, `bezier`, `arc`, `ellipse`, `text`)
+- Easing examples include string-constant usage where helpful
 
 ### Breaking Change Detection
 

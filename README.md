@@ -5,10 +5,12 @@ A creative coding framework for building real-time music visualizations in TypeS
 ## Features
 
 - 🎹 **Native MIDI Support**: Built-in `onNoteDown` and `onNoteUp` event handlers for seamless MIDI integration
+- 🧭 **Dual Scene Registration API**: Choose keyed (`addWithKey`) or instance-based (`add`) workflows
 - 🎨 **Lifecycle-Driven Animations**: Objects respond to attack, sustain, and release phases with automatic state management
-- ⏱️ **Timeline Animation System**: Create smooth, overlapping animations with event-based timing
+- ⏱️ **Timeline Animation System**: Create smooth, overlapping animations with function or string-based easing
 - 🖼️ **Unified Rendering API**: Compose 2D canvas primitives and isometric views in the same render operation
-- 🎭 **Canvas Primitives**: Expressive API with stateful styling, transformations, and easing functions
+- ✏️ **Expanded 2D Primitives**: `line`, `polygon`, `bezier`, `arc`, `ellipse`, `rect`, `circle`, and `text`
+- 🌈 **Blend Mode Styling**: Apply compositing via per-shape `blend` or scoped `withStyles({ blend })`
 - 🎲 **Isometric Rendering**: Built-in isometric projection with cuboids and tiles
 
 ## Table of Contents
@@ -73,7 +75,6 @@ Create your first MIDI-driven visualization:
 
 ```typescript
 import { createScene, visual } from "liminalis";
-import { easeOutBounce } from "easing-utils";
 
 createScene
   .setup(({ atStart, onNoteDown, onNoteUp }) => {
@@ -91,7 +92,7 @@ createScene
             })
               .animateTo(
                 { radius: 150 },
-                { at: timeAttacked, duration: 1000, easing: easeOutBounce },
+                { at: timeAttacked, duration: 1000, easing: "easeOutBounce" },
               )
               .animateTo({ radius: 50 }, { at: timeReleased, duration: 1000 });
           });
@@ -369,18 +370,23 @@ const pianoKey = () => {
 #### Managing Objects
 
 ```typescript
-// Add an object permanently (persists across frames)
-scene.addPermanentlyWithKey("my-circle", springCircle({ xOffset: 50 }));
+// Instance-based registration (non-keyed)
+const permanent = springCircle({ xOffset: 50 });
+scene.addPermanently(permanent);
+permanent.attack(0.8);
 
-// Add an object temporarily (removed after release completes)
+if (scene.has(permanent)) {
+  permanent.release(1000);
+}
+
+// Key-based registration
 scene.addWithKey("temp-circle", springCircle({ xOffset: 100 }));
+scene.getByKey("temp-circle")?.attack(0.9);
+scene.getByKey("temp-circle")?.release(700);
 
-// Trigger lifecycle events
-scene.getByKey("my-circle")?.attack(0.8); // Attack with velocity 0.8
-scene.getByKey("my-circle")?.release(1000); // Release over 1000ms
-
-// Retrieve current object
-const obj = scene.getByKey("my-circle");
+if (scene.hasKey("temp-circle")) {
+  scene.removeByKey("temp-circle");
+}
 ```
 
 ### Rendering Strategies
@@ -636,7 +642,7 @@ Liminalis features a powerful declarative animation system for shape primitives.
 - **Reusable options** - apply default timing/easing to multiple segments with `withOptions()`
 - **Type-safe** - only numeric properties can be animated (enforced at compile time)
 
-Shape primitives (`rect`, `circle`, `line`, `text`) return `AnimatableShape` instances that support declarative timeline animations using the `.animateTo()` method. This allows you to create smooth, chained animations on any numeric properties.
+Shape primitives (`line`, `polygon`, `bezier`, `arc`, `circle`, `ellipse`, `rect`, `text`) return `AnimatableShape` instances that support declarative timeline animations using the `.animateTo()` method. This allows you to create smooth, chained animations on any numeric properties.
 
 #### Basic Animation
 
@@ -934,25 +940,32 @@ Demonstrates both rendering strategies in one visualization:
 
 - **Dynamic circles** that respond to MIDI attack/release
 - **Static circles** animated via `onRender` with staggered delays
+- **New shape primitives** (`polygon`, `bezier`, `ellipse`, `arc`) layered with blend modes
+- **Text rendering** via `text()` for labels/instructions
 
 ```typescript
 createScene
   .setup(({ atStart, onRender, onNoteDown, onNoteUp }) => {
+    const noteVisual = visual(({ draw }) => {
+      draw(({ circle, center }) => {
+        circle({
+          cx: center.x,
+          cy: center.y,
+          radius: 50,
+        });
+      });
+    });
+
+    const persistentNoteVisual = noteVisual();
+
     // Dynamic MIDI-responsive circle
     atStart(({ scene }) => {
-      scene.addPermanentlyWithKey(
-        "note",
-        visual(({ draw }) => {
-          draw(({ circle, center }) => {
-            // ...rendering logic
-          });
-        })(),
-      );
+      scene.addPermanently(persistentNoteVisual);
     });
 
     // Static animated circles
     onRender(({ draw, center }) => {
-      draw(({ circle }) => {
+      draw(({ circle, ellipse, arc, polygon, bezier, text }) => {
         for (let i = 0; i < 3; i++) {
           circle({
             cx: center.x + i * 40 - 40,
@@ -963,11 +976,66 @@ createScene
             { duration: 1000, delay: 500 + i * 250 },
           );
         }
+
+        ellipse({
+          cx: center.x,
+          cy: center.y + 120,
+          radiusX: 150,
+          radiusY: 45,
+          blend: "multiply",
+        });
+
+        arc({
+          cx: center.x,
+          cy: center.y + 120,
+          radius: 90,
+          start: 200,
+          end: 340,
+          strokeWidth: 8,
+          blend: "screen",
+        });
+
+        polygon({
+          points: [
+            { x: center.x - 70, y: center.y + 80 },
+            { x: center.x, y: center.y + 40 },
+            { x: center.x + 70, y: center.y + 80 },
+          ],
+          closePath: true,
+          blend: "overlay",
+        });
+
+        bezier({
+          segments: [
+            { point: { x: center.x - 100, y: center.y + 140 } },
+            {
+              control: { x: center.x - 20, y: center.y + 90 },
+              point: { x: center.x + 20, y: center.y + 140 },
+            },
+          ],
+          fillStyle: "transparent",
+          blend: "difference",
+        });
+
+        text("Use keys 1-9 or MIDI input", {
+          x: center.x - 130,
+          y: center.y + 175,
+          fontStyle: "16px serif",
+        });
       });
     });
 
-    onNoteDown(({ scene }) => scene.getByKey("note")?.attack(1));
-    onNoteUp(({ scene }) => scene.getByKey("note")?.release());
+    onNoteDown(({ scene }) => {
+      if (scene.has(persistentNoteVisual)) {
+        persistentNoteVisual.attack(1);
+      }
+    });
+
+    onNoteUp(({ scene }) => {
+      if (scene.has(persistentNoteVisual)) {
+        persistentNoteVisual.release();
+      }
+    });
   })
   .render();
 ```
@@ -1044,21 +1112,28 @@ createScene
   .setup(({ atStart, onRender, onNoteDown, onNoteUp }) => {
     // Static window UI
     onRender(({ draw }) => {
-      draw(({ background, rect, circle, withStyles }) => {
-      background({ color: "#F7F2E7" });
-      withStyles({ strokeStyle: "#666", strokeWidth: 3 }, () => {
-        rect({ x: 100, y: 100, width: 800, height: 500, cornerRadius: 30 });
+      draw(({ background, rect, line, circle, text, withStyles }) => {
+        background({ color: "#F7F2E7" });
+
+        withStyles({ strokeStyle: "#666", strokeWidth: 3 }, () => {
+          rect({ x: 100, y: 100, width: 800, height: 500, cornerRadius: 30 });
+          line({ start: { x: 100, y: 170 }, end: { x: 900, y: 170 } });
+          circle({ cx: 135, cy: 135, radius: 12, fillStyle: "#FF605C" });
+          text("Liminalis Piano", { x: 700, y: 128, fontStyle: "18px serif" });
+        });
       });
     });
 
     // Dynamic piano keys
     atStart(({ scene }) => {
-      const notes = ["C4", "C#4", "D4", "D#4", "E4", "F4", "F#4", "G4", ...];
+      const notes = ["C4", "C#4", "D4", "D#4", "E4"];
+
       notes.forEach((note) => {
         const keyType = note.includes("#") ? "black" : "white";
+
         scene.addPermanentlyWithKey(
           note,
-          pianoKey({ keyType, ... })
+          pianoKey({ x: 200, y: 250, keyType }),
         );
       });
     });
@@ -1130,7 +1205,7 @@ createScene.setup(({ atStart, onNoteDown, onNoteUp, onRender }) => {
 
 The `onRender` callback receives an object with:
 
-- `draw(callback)` - Access 2D canvas primitives (background, rect, circle, line, text, withStyles, etc.)
+- `draw(callback)` - Access 2D canvas primitives (`background`, `line`, `polygon`, `bezier`, `arc`, `circle`, `ellipse`, `rect`, `text`, `withStyles`, etc.)
 - `renderIsometric(callback)` - Access isometric 3D primitives (cuboid, tile, withStyles)
 - `time` - Current time in milliseconds
 - `width`, `height` - Canvas dimensions
@@ -1219,7 +1294,7 @@ The renderer callback passed into `visual(...)` receives:
 **Draw Callback (2D Canvas):**
 
 - **Canvas**: `context`, `width`, `height`, `center`
-- **Primitives**: `background`, `rect`, `circle`, `line`, `text`
+- **Primitives**: `background`, `line`, `polygon`, `bezier`, `arc`, `circle`, `ellipse`, `rect`, `text`
 - **Styling**: `withStyles`
 
 **Render Isometric Callback (3D Projection):**
@@ -1254,7 +1329,106 @@ background({ color: "#F7F2E7" });
 background({ color: "beige" });
 ```
 
-#### `rect({ x?, y?, width, height, fillStyle?, strokeStyle?, cornerRadius?, opacity?, strokeAlignment? })`
+#### `line({ start, end, strokeStyle?, strokeWidth?, opacity?, blend?, rotate?, rotateOrigin?, scale?, scaleX?, scaleY?, scaleOrigin? })`
+
+```typescript
+line({
+  start: { x: 100, y: 100 },
+  end: { x: 500, y: 100 },
+  strokeStyle: "#666",
+  strokeWidth: 3,
+  blend: "multiply",
+});
+```
+
+#### `polygon({ points, closePath?, strokeStyle?, strokeWidth?, strokeAlignment?, opacity?, blend?, rotate?, rotateOrigin?, scale?, scaleX?, scaleY?, scaleOrigin? })`
+
+```typescript
+polygon({
+  points: [
+    { x: 120, y: 180 },
+    { x: 220, y: 120 },
+    { x: 300, y: 200 },
+    { x: 180, y: 260 },
+  ],
+  closePath: true,
+  strokeStyle: "#666",
+  strokeWidth: 4,
+  strokeAlignment: "inside",
+  blend: "overlay",
+});
+```
+
+#### `bezier({ segments, closePath?, fillStyle?, strokeStyle?, strokeWidth?, strokeAlignment?, opacity?, blend?, rotate?, rotateOrigin?, scale?, scaleX?, scaleY?, scaleOrigin? })`
+
+```typescript
+bezier({
+  segments: [
+    { point: { x: 100, y: 160 } },
+    { control: { x: 160, y: 80 }, point: { x: 220, y: 160 } },
+    {
+      control: [
+        { x: 280, y: 240 },
+        { x: 340, y: 80 },
+      ],
+      point: { x: 400, y: 160 },
+    },
+  ],
+  strokeStyle: "#666",
+  fillStyle: "transparent",
+  strokeWidth: 3,
+  blend: "screen",
+});
+```
+
+#### `arc({ cx, cy, radius | (radiusX, radiusY), start, end, fillStyle?, strokeStyle?, strokeWidth?, strokeAlignment?, opacity?, blend?, rotate?, rotateOrigin?, scale?, scaleX?, scaleY?, scaleOrigin? })`
+
+```typescript
+arc({
+  cx: 400,
+  cy: 260,
+  radius: 90,
+  start: 20,
+  end: 320,
+  fillStyle: "transparent",
+  strokeStyle: "#666",
+  strokeWidth: 8,
+  blend: "multiply",
+});
+```
+
+#### `circle({ cx, cy, radius, fillStyle?, strokeStyle?, strokeWidth?, opacity?, blend?, strokeAlignment?, rotate?, rotateOrigin?, scale?, scaleX?, scaleY?, scaleOrigin? })`
+
+```typescript
+circle({
+  cx: 400,
+  cy: 300,
+  radius: 50,
+  fillStyle: "#FF605C",
+  strokeStyle: "#666",
+  strokeWidth: 2,
+  opacity: 1,
+  blend: "source-over",
+  strokeAlignment: "center", // "center" (default), "inside", or "outside"
+});
+```
+
+#### `ellipse({ cx, cy, radiusX, radiusY, fillStyle?, strokeStyle?, strokeWidth?, opacity?, blend?, strokeAlignment?, rotate?, rotateOrigin?, scale?, scaleX?, scaleY?, scaleOrigin? })`
+
+```typescript
+ellipse({
+  cx: 600,
+  cy: 300,
+  radiusX: 120,
+  radiusY: 60,
+  fillStyle: "transparent",
+  strokeStyle: "#666",
+  strokeWidth: 3,
+  blend: "difference",
+});
+```
+
+#### `rect({ x?, y?, width, height, fillStyle?, strokeStyle?, cornerRadius?, opacity?, blend?, strokeAlignment?, rotate?, rotateOrigin?, scale?, scaleX?, scaleY?, scaleOrigin? })`
 
 ```typescript
 rect({
@@ -1267,37 +1441,12 @@ rect({
   strokeStyle: "#666",
   strokeWidth: 3,
   opacity: 0.8,
+  blend: "source-over",
   strokeAlignment: "center", // "center" (default), "inside", or "outside"
 });
 ```
 
-#### `circle({ cx, cy, radius, fillStyle?, strokeStyle?, strokeWidth?, opacity?, strokeAlignment? })`
-
-```typescript
-circle({
-  cx: 400,
-  cy: 300,
-  radius: 50,
-  fillStyle: "#FF605C",
-  strokeStyle: "#666",
-  strokeWidth: 2,
-  opacity: 1,
-  strokeAlignment: "center", // "center" (default), "inside", or "outside"
-});
-```
-
-#### `line({ start, end, strokeStyle?, strokeWidth? })`
-
-```typescript
-line({
-  start: { x: 100, y: 100 },
-  end: { x: 500, y: 100 },
-  strokeStyle: "#666",
-  strokeWidth: 3,
-});
-```
-
-#### `text(content, { x?, y?, fontStyle?, fillStyle?, strokeStyle?, strokeWidth?, opacity?, rotate?, rotateOrigin?, scale?, scaleX?, scaleY?, scaleOrigin? })`
+#### `text(content, { x?, y?, fontStyle?, fillStyle?, strokeStyle?, strokeWidth?, opacity?, blend?, rotate?, rotateOrigin?, scale?, scaleX?, scaleY?, scaleOrigin? })`
 
 ```typescript
 text("Hello World", {
@@ -1312,6 +1461,7 @@ text("Rotated Label", {
   y: 180,
   rotate: -12,
   rotateOrigin: "center",
+  blend: "multiply",
   strokeStyle: "#222",
   strokeWidth: 2,
 });
@@ -1332,16 +1482,36 @@ Text rendering defaults:
 Apply styles within a scope:
 
 ```typescript
-withStyles({ strokeStyle: "#666", strokeWidth: 3 }, () => {
+withStyles({ strokeStyle: "#666", strokeWidth: 3, blend: "multiply" }, () => {
   circle({ cx: 100, cy: 100, radius: 50 });
   rect({ x: 200, y: 200, width: 100, height: 100 });
 });
 // Styles automatically restored after callback
 ```
 
+#### Blend Mode
+
+All shape primitives support `blend`, which maps to canvas `globalCompositeOperation`.
+
+```typescript
+withStyles({ blend: "multiply" }, () => {
+  circle({ cx: 300, cy: 200, radius: 90 });
+
+  // Per-shape blend can override scoped blend.
+  rect({
+    x: 260,
+    y: 160,
+    width: 150,
+    height: 120,
+    fillStyle: "#ff605c",
+    blend: "difference",
+  });
+});
+```
+
 #### Transform Props
 
-All shape primitives (`rect`, `circle`, `line`, `text`) support transform properties that are applied at render time:
+All shape primitives (`line`, `polygon`, `bezier`, `arc`, `circle`, `ellipse`, `rect`, `text`) support transform properties that are applied at render time:
 
 **Rotation:**
 
@@ -1515,7 +1685,7 @@ rect({
 
 #### `.animateTo(targetProps, options)`
 
-Animate shape properties over time. Available on `rect()`, `circle()`, `line()`, and `text()` primitives:
+Animate shape properties over time. Available on `line()`, `polygon()`, `bezier()`, `arc()`, `circle()`, `ellipse()`, `rect()`, and `text()` primitives:
 
 **Basic Usage:**
 

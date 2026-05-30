@@ -1,4 +1,3 @@
-import { easeOutBack } from "easing-utils";
 import { visual } from "../../../core";
 
 export const pianoKey = visual<{
@@ -37,7 +36,7 @@ export const pianoKey = visual<{
           {
             at: timeAttacked,
             duration: keyAnimationDuration,
-            easing: easeOutBack,
+            easing: "easeOutBack",
           },
         )
         .animateTo(
@@ -46,7 +45,7 @@ export const pianoKey = visual<{
             at: timeReleased,
             duration: keyAnimationDuration,
             delay: 100,
-            easing: easeOutBack,
+            easing: "easeOutBack",
           },
         );
     });

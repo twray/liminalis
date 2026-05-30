@@ -1,4 +1,3 @@
-import { easeOutBounce } from "easing-utils";
 import { visual } from "../../../core";
 
 export const springCircle = visual<{ xOffset: number }>(
@@ -15,7 +14,7 @@ export const springCircle = visual<{ xOffset: number }>(
         opacity: releaseFactor,
       }).animateTo(
         { radius: 100 },
-        { at: timeAttacked, duration: 1000, easing: easeOutBounce },
+        { at: timeAttacked, duration: 1000, easing: "easeOutBounce" },
       );
     });
   },

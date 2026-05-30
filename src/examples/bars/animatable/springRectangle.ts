@@ -1,4 +1,4 @@
-import { easeInCubic, easeOutBack } from "easing-utils";
+import { easeInCubic } from "easing-utils";
 import { visual } from "../../../core";
 
 export const springRectangle = visual<{
@@ -22,7 +22,7 @@ export const springRectangle = visual<{
       opacity,
     }).animateTo(
       { height: height, y: y },
-      { at: timeAttacked, duration: 1000, easing: easeOutBack },
+      { at: timeAttacked, duration: 1000, easing: "easeOutBack" },
     );
   });
 });

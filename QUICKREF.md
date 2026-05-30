@@ -71,6 +71,9 @@ Use this checklist when updating examples or docs:
 - Instantiate before registration (`visual(renderer)()` or `component(props)`)
 - Use keyed methods with explicit naming: `addWithKey`, `addPermanentlyWithKey`, `getByKey`
 - Use instance methods when holding references: `add`, `addPermanently`, `remove`, `has`
+- Document and demo blend mode as `blend` (including `withStyles({ blend })`)
+- Include all current primitives in docs/examples where relevant: `line`, `polygon`, `bezier`, `arc`, `circle`, `ellipse`, `rect`, `text`
+- Prefer easing string constants in quick examples when imports are unnecessary (example: `"easeOutBack"`)
 
 ---
 
