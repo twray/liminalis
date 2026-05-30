@@ -2,6 +2,16 @@
 
 This guide explains how to develop and test new features for the Liminalis library.
 
+## 🎬 Current API Baseline
+
+When changing examples, tests, or docs, keep these conventions consistent:
+
+- Use `createScene` as the scene manager entry point.
+- Use `visual(renderer)` to define components.
+- Instantiate visuals before registering them in scene methods.
+- Preserve explicit keyed naming: `addWithKey`, `addPermanentlyWithKey`, `getByKey`, `removeByKey`, `hasKey`.
+- Use instance-based scene methods (`add`, `addPermanently`, `remove`, `has`) when you hold object references directly.
+
 ## 🎯 Philosophy
 
 Test library changes against **real-world scaffolded projects** using `create-liminalis-app` to ensure production parity and catch breaking changes early.
@@ -17,10 +27,17 @@ npm run test:dev
 This will:
 
 1. Build the library
-2. Create a test project using create-liminalis-app
-3. Link your local library
-4. Install dependencies
-5. Start the dev server
+2. Run `test:create`
+3. Scaffold a test project using create-liminalis-app
+4. Link your local library
+5. Install dependencies
+6. Start the new test project's dev server
+
+If you want to create a project without launching the dev server, use:
+
+```bash
+npm run test:create -- --skip-dev
+```
 
 ### Manual Workflow
 
@@ -80,6 +97,13 @@ node scripts/create-test-project.js --skip-link
 node scripts/create-test-project.js --skip-dev
 ```
 
+Useful combinations:
+
+```bash
+npm run test:create -- --template midi-piano --name test-midi-bugfix
+npm run test:create -- --template animated-circles --skip-dev
+```
+
 ## 🎨 VS Code Integration
 
 ### Tasks (Cmd+Shift+B)
@@ -133,16 +157,31 @@ liminalis/
    ```
 
 3. **Edit library source** in `src/`
-
    - Changes automatically rebuild via TypeScript watch mode
    - Vite hot-reloads the test project instantly
 
 4. **Test the feature** in your test project
 
-5. **Validate against all templates:**
+5. **Run library validation:**
+
+   ```bash
+   npm test
+   npm run build
+   ```
+
+6. **Validate against all templates:**
    ```bash
    npm run test:all-templates
    ```
+
+### Docs and Example Consistency Check
+
+Before opening a PR, verify docs/examples still reflect the current API:
+
+- `README.md` examples use Scene naming (`createScene`, `scene` context)
+- `QUICKREF.md` and `DEVELOPMENT.md` command descriptions match `package.json`
+- Keyed scene APIs keep `WithKey` naming
+- Visuals are instantiated before scene registration
 
 ### Breaking Change Detection
 
@@ -188,7 +227,7 @@ For complex scenarios, manually create and customize test projects:
 
 ```bash
 cd test-apps
-create-liminalis-app my-custom-test
+npx create-liminalis-app my-custom-test
 cd my-custom-test
 npm link liminalis
 npm install
@@ -203,7 +242,7 @@ npm run dev
 Make sure:
 
 1. Library is built: Check `dist/lib.js` exists
-2. Library is linked: Run `npm link` in liminalis root
+2. Library is linked: Run `npm run test:link` in liminalis root
 3. Test project is linked: Run `npm link liminalis` in test project
 4. Watch mode is running: `npm run dev` in liminalis root
 
@@ -246,15 +285,17 @@ Switch between them as needed without recreating.
 
 ## 🔗 Links
 
-- Main Library: `/Users/timwray/dev/liminalis`
-- Test Apps: `/Users/timwray/dev/liminalis/test-apps`
-- CLI Tool: `/Users/timwray/dev/create-liminalis-app`
+- Main Library: `.`
+- Test Apps: `test-apps/`
+- Create Script: `scripts/create-test-project.js`
+- Template Validation Script: `scripts/test-all-templates.js`
+- API Guide: `README.md`
 
 ## 🐛 Troubleshooting
 
 **Error: "Cannot find module 'liminalis'"**
 
-- Run `npm link` in the library root
+- Run `npm run test:link` in the library root
 - Run `npm link liminalis` in the test project
 
 **Error: "Project already exists"**

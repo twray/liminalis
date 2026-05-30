@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import Visualisation from "./Visualisation";
+import Scene from "./Scene";
 import { defineVisual } from "./componentFactories";
 
 describe("midiVisual factory", () => {
@@ -13,13 +13,10 @@ describe("midiVisual factory", () => {
       },
     );
 
-    const visualisation = new Visualisation();
-    visualisation.add(
-      "note",
-      animatable({ squareDimensions: 200 }).attack(0.7),
-    );
+    const scene = new Scene();
+    scene.add(animatable({ squareDimensions: 200 }).attack(0.7));
 
-    visualisation.renderObjects(mockContext, 800, 600, 0);
+    scene.renderObjects(mockContext, 800, 600, 0);
 
     expect(renderer).toHaveBeenCalledTimes(1);
     expect(renderer).toHaveBeenCalledWith(200);
@@ -31,10 +28,10 @@ describe("midiVisual factory", () => {
       renderer(status);
     });
 
-    const visualisation = new Visualisation();
-    visualisation.add("note", animatable().attack(1));
+    const scene = new Scene();
+    scene.add(animatable().attack(1));
 
-    visualisation.renderObjects(mockContext, 800, 600, 0);
+    scene.renderObjects(mockContext, 800, 600, 0);
 
     expect(renderer).toHaveBeenCalledTimes(1);
     expect(renderer).toHaveBeenCalledWith("sustained");

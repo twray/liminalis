@@ -71,6 +71,11 @@ class Visual<TProps = {}> {
     return this;
   }
 
+  clone(): Visual<TProps> {
+    const clonedProps = this.cloneValue(this.props);
+    return new Visual<TProps>(clonedProps, this.renderer);
+  }
+
   setIsPermanent(isPermanent: boolean) {
     this.isPermanent = isPermanent;
     this.timeFirstRender = new Date();
@@ -218,6 +223,30 @@ class Visual<TProps = {}> {
         ? toNormalizedFloat(1 - msSinceReleased / releasePeriod)
         : toNormalizedFloat(0);
     }
+  }
+
+  private cloneValue<TValue>(value: TValue): TValue {
+    if (Array.isArray(value)) {
+      return value.map((item) => this.cloneValue(item)) as TValue;
+    }
+
+    if (value instanceof Date) {
+      return new Date(value.getTime()) as TValue;
+    }
+
+    if (value && typeof value === "object") {
+      const clonedObject: Record<string, unknown> = {};
+
+      Object.entries(value as Record<string, unknown>).forEach(
+        ([key, nestedValue]) => {
+          clonedObject[key] = this.cloneValue(nestedValue);
+        },
+      );
+
+      return clonedObject as TValue;
+    }
+
+    return value;
   }
 }
 

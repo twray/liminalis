@@ -1,7 +1,7 @@
-import { createVisualisation } from "../../core";
+import { createScene } from "../../core";
 import { springCircle } from "./animatable/springCircle";
 
-createVisualisation
+createScene
   .withState({
     index: 0,
   })
@@ -14,21 +14,21 @@ createVisualisation
       });
     });
 
-    onNoteDown(({ visualisation, note, attack }) => {
+    onNoteDown(({ scene, note, attack }) => {
       const { index } = state;
 
       state.index = state.index < numCircles ? (state.index += 1) : 0;
       const circleDistance = 50;
       const startXOffset = -((numCircles * circleDistance) / 2);
 
-      visualisation.add(
+      scene.addWithKey(
         note,
         springCircle({ xOffset: startXOffset + index * 50 }).attack(attack),
       );
     });
 
-    onNoteUp(({ visualisation, note }) => {
-      visualisation.get(note)?.release();
+    onNoteUp(({ scene, note }) => {
+      scene.getByKey(note)?.release();
     });
   })
   .render();

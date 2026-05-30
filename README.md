@@ -72,16 +72,16 @@ pnpm add liminalis
 Create your first MIDI-driven visualization:
 
 ```typescript
-import { createVisualisation, midiVisual } from "liminalis";
+import { createScene, visual } from "liminalis";
 import { easeOutBounce } from "easing-utils";
 
-createVisualisation
+createScene
   .setup(({ atStart, onNoteDown, onNoteUp }) => {
     // Create a circle that responds to MIDI
-    atStart(({ visualisation }) => {
-      visualisation.addPermanently(
+    atStart(({ scene }) => {
+      scene.addPermanentlyWithKey(
         "circle",
-        midiVisual().withRenderer(({ draw, timeAttacked, timeReleased }) => {
+        visual(({ draw, timeAttacked, timeReleased }) => {
           draw(({ circle, center }) => {
             circle({
               cx: center.x,
@@ -95,18 +95,18 @@ createVisualisation
               )
               .animateTo({ radius: 50 }, { at: timeReleased, duration: 1000 });
           });
-        }),
+        })(),
       );
     });
 
     // Trigger attack on MIDI note press
-    onNoteDown(({ visualisation }) => {
-      visualisation.get("circle")?.attack(1);
+    onNoteDown(({ scene }) => {
+      scene.getByKey("circle")?.attack(1);
     });
 
     // Trigger release on MIDI note release
-    onNoteUp(({ visualisation }) => {
-      visualisation.get("circle")?.release();
+    onNoteUp(({ scene }) => {
+      scene.getByKey("circle")?.release();
     });
   })
   .render();
@@ -220,9 +220,9 @@ Liminalis provides native MIDI event handlers that make it trivial to respond to
 #### `onNoteDown` - Triggered when a MIDI note is pressed
 
 ```typescript
-createVisualisation
-  .setup(({ onNoteDown, visualisation }) => {
-    onNoteDown(({ note, attack, visualisation }) => {
+createScene
+  .setup(({ onNoteDown }) => {
+    onNoteDown(({ note, attack, scene }) => {
       // 'note' is the MIDI note name (e.g., "C4", "A#3")
       // 'attack' is normalized velocity (0.0 to 1.0)
 
@@ -235,11 +235,11 @@ createVisualisation
 #### `onNoteUp` - Triggered when a MIDI note is released
 
 ```typescript
-createVisualisation
-  .setup(({ onNoteUp, visualisation }) => {
-    onNoteUp(({ note, visualisation }) => {
+createScene
+  .setup(({ onNoteUp }) => {
+    onNoteUp(({ note, scene }) => {
       // Handle note release
-      visualisation.get(note)?.release();
+      scene.getByKey(note)?.release();
     });
   })
   .render();
@@ -248,28 +248,25 @@ createVisualisation
 #### Example: Piano Keyboard Visualization
 
 ```typescript
-createVisualisation
+createScene
   .setup(({ atStart, onNoteDown, onNoteUp }) => {
     const notes = ["C4", "D4", "E4", "F4", "G4", "A4", "B4"];
 
-    atStart(({ visualisation }) => {
+    atStart(({ scene }) => {
       // Create a piano key for each note
       notes.forEach((note, index) => {
-        visualisation.addPermanently(
-          note,
-          pianoKey().withProps({ x: index * 60, y: 100 }),
-        );
+        scene.addPermanentlyWithKey(note, pianoKey({ x: index * 60, y: 100 }));
       });
     });
 
-    onNoteDown(({ visualisation, note, attack }) => {
+    onNoteDown(({ scene, note, attack }) => {
       // Trigger attack animation on the corresponding key
-      visualisation.get(note)?.attack(attack);
+      scene.getByKey(note)?.attack(attack);
     });
 
-    onNoteUp(({ visualisation, note }) => {
+    onNoteUp(({ scene, note }) => {
       // Trigger release animation
-      visualisation.get(note)?.release();
+      scene.getByKey(note)?.release();
     });
   })
   .render();
@@ -282,11 +279,11 @@ The heart of Liminalis is the **animatable object system**. Objects can respond 
 #### Creating MIDI Visuals
 
 ```typescript
-import { midiVisual } from "liminalis";
+import { visual } from "liminalis";
 import { easeOutBounce } from "easing-utils";
 
 const springCircle = () => {
-  return midiVisual<{ xOffset: number }>().withRenderer(
+  return visual<{ xOffset: number }>(
     ({
       props,
       draw,
@@ -343,7 +340,7 @@ Your renderer receives these properties automatically:
 import { easeOutBack } from "easing-utils";
 
 const pianoKey = () => {
-  return midiVisual<{ x: number; y: number }>().withRenderer(
+  return visual<{ x: number; y: number }>(
     ({ props, draw, timeAttacked, timeReleased }) => {
       draw(({ rect }) => {
         const { x, y } = props;
@@ -373,20 +370,17 @@ const pianoKey = () => {
 
 ```typescript
 // Add an object permanently (persists across frames)
-visualisation.addPermanently(
-  "my-circle",
-  springCircle().withProps({ xOffset: 50 }),
-);
+scene.addPermanentlyWithKey("my-circle", springCircle({ xOffset: 50 }));
 
 // Add an object temporarily (removed after release completes)
-visualisation.add("temp-circle", springCircle().withProps({ xOffset: 100 }));
+scene.addWithKey("temp-circle", springCircle({ xOffset: 100 }));
 
 // Trigger lifecycle events
-visualisation.get("my-circle")?.attack(0.8); // Attack with velocity 0.8
-visualisation.get("my-circle")?.release(1000); // Release over 1000ms
+scene.getByKey("my-circle")?.attack(0.8); // Attack with velocity 0.8
+scene.getByKey("my-circle")?.release(1000); // Release over 1000ms
 
 // Retrieve current object
-const obj = visualisation.get("my-circle");
+const obj = scene.getByKey("my-circle");
 ```
 
 ### Rendering Strategies
@@ -395,7 +389,7 @@ Liminalis provides a unified, composable rendering API that allows you to combin
 
 #### Composable Rendering API
 
-Both `onRender` (for static content) and `.withRenderer()` (for MIDI visuals) use the same composable structure:
+Both `onRender` (for static content) and `visual(...)` renderers (for MIDI visuals) use the same composable structure:
 
 ```typescript
 // Access both 2D and isometric rendering in the same callback
@@ -447,13 +441,13 @@ onRender(({ draw, renderIsometric }) => {
 Use MIDI visuals with lifecycle callbacks for interactive elements that respond to MIDI events:
 
 ```typescript
-createVisualisation
+createScene
   .setup(({ atStart, onNoteDown, onNoteUp }) => {
-    atStart(({ visualisation }) => {
+    atStart(({ scene }) => {
       // Add MIDI visual
-      visualisation.addPermanently(
+      scene.addPermanentlyWithKey(
         "note",
-        midiVisual().withRenderer(({ draw, timeAttacked, timeReleased }) => {
+        visual(({ draw, timeAttacked, timeReleased }) => {
           draw(({ circle, center }) => {
             circle({
               cx: center.x,
@@ -463,16 +457,16 @@ createVisualisation
               .animateTo({ radius: 100 }, { at: timeAttacked, duration: 1000 })
               .animateTo({ radius: 50 }, { at: timeReleased, duration: 1000 });
           });
-        }),
+        })(),
       );
     });
 
-    onNoteDown(({ visualisation }) => {
-      visualisation.get("note")?.attack(1);
+    onNoteDown(({ scene }) => {
+      scene.getByKey("note")?.attack(1);
     });
 
-    onNoteUp(({ visualisation }) => {
-      visualisation.get("note")?.release();
+    onNoteUp(({ scene }) => {
+      scene.getByKey("note")?.release();
     });
   })
   .render();
@@ -483,7 +477,7 @@ createVisualisation
 Use `onRender` with `draw()` for static elements that don't need lifecycle management:
 
 ```typescript
-createVisualisation
+createScene
   .setup(({ onRender }) => {
     onRender(({ draw, time }) => {
       draw(({ background, rect, circle, withStyles }) => {
@@ -514,7 +508,7 @@ createVisualisation
 #### Combined Example: Piano with UI
 
 ```typescript
-createVisualisation
+createScene
   .setup(({ atStart, onRender, onNoteDown, onNoteUp }) => {
     // Static UI rendered every frame
     onRender(({ draw }) => {
@@ -529,18 +523,18 @@ createVisualisation
     });
 
     // Dynamic piano keys respond to MIDI
-    atStart(({ visualisation }) => {
+    atStart(({ scene }) => {
       const notes = ["C4", "D4", "E4", "F4", "G4"];
       notes.forEach((note, i) => {
-        visualisation.addPermanently(
+        scene.addPermanentlyWithKey(
           note,
-          pianoKey().withProps({ x: 200 + i * 65, y: 250 })
+          pianoKey({ x: 200 + i * 65, y: 250 })
         );
       });
     });
 
-    onNoteDown(({ visualisation, note, attack }) => {
-      visualisation.get(note)?.attack(attack);
+    onNoteDown(({ scene, note, attack }) => {
+      scene.getByKey(note)?.attack(attack);
     });
 ```
 
@@ -549,7 +543,7 @@ createVisualisation
 You can seamlessly mix 2D UI elements with 3D isometric visualizations:
 
 ```typescript
-createVisualisation
+createScene
   .setup(({ onRender, onNoteDown, onNoteUp }) => {
     onRender(({ draw, renderIsometric }) => {
       // Draw 2D background and UI
@@ -594,41 +588,39 @@ createVisualisation
     });
 
     // MIDI visuals can also compose both
-    onNoteDown(({ visualisation, note }) => {
-      visualisation.add(
+    onNoteDown(({ scene, note }) => {
+      scene.addWithKey(
         note,
-        midiVisual()
-          .withRenderer(({ draw, renderIsometric, releaseFactor }) => {
-            // 2D circle
-            draw(({ center, circle }) => {
-              circle({
-                cx: center.x,
-                cy: center.y,
-                radius: 200,
-                opacity: releaseFactor,
-              });
+        visual(({ draw, renderIsometric, releaseFactor }) => {
+          // 2D circle
+          draw(({ center, circle }) => {
+            circle({
+              cx: center.x,
+              cy: center.y,
+              radius: 200,
+              opacity: releaseFactor,
             });
+          });
 
-            // 3D cuboid
-            renderIsometric(({ cuboid }) => {
-              cuboid({
-                isoX: 0,
-                isoY: 0,
-                isoZ: -2.5,
-                lengthX: 3,
-                lengthY: 3,
-                lengthZ: 3,
-                strokeStyle: "white",
-                fillStyle: "transparent",
-              });
+          // 3D cuboid
+          renderIsometric(({ cuboid }) => {
+            cuboid({
+              isoX: 0,
+              isoY: 0,
+              isoZ: -2.5,
+              lengthX: 3,
+              lengthY: 3,
+              lengthZ: 3,
+              strokeStyle: "white",
+              fillStyle: "transparent",
             });
-          })
-          .attack(1),
+          });
+        })().attack(1),
       );
     });
 
-    onNoteUp(({ visualisation, note }) => {
-      visualisation.get(note)?.release(500);
+    onNoteUp(({ scene, note }) => {
+      scene.getByKey(note)?.release(500);
     });
   })
   .render();
@@ -699,7 +691,7 @@ rect({ x: 0, y: 50, width: 20, height: 20, fillStyle: "#ff00ff" })
 Use `null` for `at` to wait for a dynamic event time. This is the foundation for MIDI-responsive animations:
 
 ```typescript
-midiVisual().withRenderer(({ draw, timeAttacked, timeReleased }) => {
+visual(({ draw, timeAttacked, timeReleased }) => {
   draw(({ rect }) => {
     rect({ x: 0, y: 50, width: 20, height: 20, fillStyle: "#ffff00" })
       .animateTo({ x: 100 }, { at: timeAttacked, duration: 500 })
@@ -795,7 +787,7 @@ This is useful for "reveal" effects where you want to animate from a final state
 When a new animation starts on a property that's already animating, the new segment **supersedes** the old one, capturing the current interpolated value as its starting point:
 
 ```typescript
-midiVisual().withRenderer(({ draw, timeAttacked, timeReleased }) => {
+visual(({ draw, timeAttacked, timeReleased }) => {
   draw(({ circle, center }) => {
     circle({ cx: center.x, cy: center.y, radius: 50 })
       .animateTo({ radius: 150 }, { at: timeAttacked, duration: 1000 })
@@ -891,46 +883,44 @@ Here's a complete example showing attack/release animation with overlapping hand
 ```typescript
 import { easeOutBounce, easeOutCubic } from "easing-utils";
 
-createVisualisation
+createScene
   .setup(({ atStart, onNoteDown, onNoteUp }) => {
-    atStart(({ visualisation }) => {
-      visualisation.addPermanently(
+    atStart(({ scene }) => {
+      scene.addPermanentlyWithKey(
         "circle",
-        midiVisual().withRenderer(
-          ({ draw, timeAttacked, timeReleased, releasePeriod }) => {
-            draw(({ circle, center }) => {
-              circle({
-                cx: center.x,
-                cy: center.y,
-                radius: 50,
-                strokeStyle: "#666",
-                strokeWidth: 2,
-              })
-                .withOptions({ duration: 500 })
-                .animateTo(
-                  { radius: 150 },
-                  { at: timeAttacked, easing: easeOutBounce },
-                )
-                .animateTo(
-                  { radius: 50 },
-                  {
-                    at: timeReleased,
-                    easing: easeOutCubic,
-                    duration: releasePeriod,
-                  },
-                );
-            });
-          },
-        ),
+        visual(({ draw, timeAttacked, timeReleased, releasePeriod }) => {
+          draw(({ circle, center }) => {
+            circle({
+              cx: center.x,
+              cy: center.y,
+              radius: 50,
+              strokeStyle: "#666",
+              strokeWidth: 2,
+            })
+              .withOptions({ duration: 500 })
+              .animateTo(
+                { radius: 150 },
+                { at: timeAttacked, easing: easeOutBounce },
+              )
+              .animateTo(
+                { radius: 50 },
+                {
+                  at: timeReleased,
+                  easing: easeOutCubic,
+                  duration: releasePeriod,
+                },
+              );
+          });
+        })(),
       );
     });
 
-    onNoteDown(({ visualisation }) => {
-      visualisation.get("circle")?.attack(1);
+    onNoteDown(({ scene }) => {
+      scene.getByKey("circle")?.attack(1);
     });
 
-    onNoteUp(({ visualisation }) => {
-      visualisation.get("circle")?.release();
+    onNoteUp(({ scene }) => {
+      scene.getByKey("circle")?.release();
     });
   })
   .render();
@@ -946,17 +936,17 @@ Demonstrates both rendering strategies in one visualization:
 - **Static circles** animated via `onRender` with staggered delays
 
 ```typescript
-createVisualisation
+createScene
   .setup(({ atStart, onRender, onNoteDown, onNoteUp }) => {
     // Dynamic MIDI-responsive circle
-    atStart(({ visualisation }) => {
-      visualisation.addPermanently(
+    atStart(({ scene }) => {
+      scene.addPermanentlyWithKey(
         "note",
-        midiVisual().withRenderer(({ draw }) => {
+        visual(({ draw }) => {
           draw(({ circle, center }) => {
             // ...rendering logic
           });
-        }),
+        })(),
       );
     });
 
@@ -976,8 +966,8 @@ createVisualisation
       });
     });
 
-    onNoteDown(({ visualisation }) => visualisation.get("note")?.attack(1));
-    onNoteUp(({ visualisation }) => visualisation.get("note")?.release());
+    onNoteDown(({ scene }) => scene.getByKey("note")?.attack(1));
+    onNoteUp(({ scene }) => scene.getByKey("note")?.release());
   })
   .render();
 ```
@@ -987,23 +977,21 @@ createVisualisation
 Creates circles on note press that bounce in with spring easing:
 
 ```typescript
-createVisualisation
+createScene
   .withState({ index: 0 })
   .setup(({ onNoteDown, onNoteUp, state }) => {
-    onNoteDown(({ visualisation, note, attack }) => {
+    onNoteDown(({ scene, note, attack }) => {
       const { index } = state;
       state.index = (state.index + 1) % 7;
 
-      visualisation.add(
+      scene.addWithKey(
         note,
-        springCircle()
-          .withProps({ xOffset: -150 + index * 50 })
-          .attack(attack),
+        springCircle({ xOffset: -150 + index * 50 }).attack(attack),
       );
     });
 
-    onNoteUp(({ visualisation, note }) => {
-      visualisation.get(note)?.release();
+    onNoteUp(({ scene, note }) => {
+      scene.getByKey(note)?.release();
     });
   })
   .render();
@@ -1014,15 +1002,15 @@ createVisualisation
 Vertical bars that spring up from the bottom with note-based positioning:
 
 ```typescript
-createVisualisation
+createScene
   .setup(({ atStart, onNoteDown, onNoteUp }) => {
     const notes = ["C", "D", "E", "F", "G", "A", "B"];
 
-    atStart(({ visualisation }) => {
+    atStart(({ scene }) => {
       notes.forEach((note, index) => {
-        visualisation.addPermanently(
+        scene.addPermanentlyWithKey(
           note,
-          springRectangle().withProps({
+          springRectangle({
             x: 100 + index * 120,
             y: 500,
             width: 80,
@@ -1032,12 +1020,12 @@ createVisualisation
       });
     });
 
-    onNoteDown(({ visualisation, note, attack }) => {
-      visualisation.get(note[0])?.attack(attack); // Use base note (C, D, etc.)
+    onNoteDown(({ scene, note, attack }) => {
+      scene.getByKey(note[0])?.attack(attack); // Use base note (C, D, etc.)
     });
 
-    onNoteUp(({ visualisation, note }) => {
-      visualisation.get(note[0])?.release(2000); // 2-second release
+    onNoteUp(({ scene, note }) => {
+      scene.getByKey(note[0])?.release(2000); // 2-second release
     });
   })
   .render();
@@ -1052,7 +1040,7 @@ Full piano keyboard with attack/release animations:
 - Keys extend downward on press, retract on release
 
 ```typescript
-createVisualisation
+createScene
   .setup(({ atStart, onRender, onNoteDown, onNoteUp }) => {
     // Static window UI
     onRender(({ draw }) => {
@@ -1064,23 +1052,23 @@ createVisualisation
     });
 
     // Dynamic piano keys
-    atStart(({ visualisation }) => {
+    atStart(({ scene }) => {
       const notes = ["C4", "C#4", "D4", "D#4", "E4", "F4", "F#4", "G4", ...];
       notes.forEach((note) => {
         const keyType = note.includes("#") ? "black" : "white";
-        visualisation.addPermanently(
+        scene.addPermanentlyWithKey(
           note,
-          pianoKey().withProps({ keyType, ... })
+          pianoKey({ keyType, ... })
         );
       });
     });
 
-    onNoteDown(({ visualisation, note, attack }) => {
-      visualisation.get(note)?.attack(attack);
+    onNoteDown(({ scene, note, attack }) => {
+      scene.getByKey(note)?.attack(attack);
     });
 
-    onNoteUp(({ visualisation, note }) => {
-      visualisation.get(note)?.release(1000);
+    onNoteUp(({ scene, note }) => {
+      scene.getByKey(note)?.release(1000);
     });
   })
   .render();
@@ -1088,7 +1076,7 @@ createVisualisation
 
 ## API Reference
 
-### `createVisualisation`
+### `createScene`
 
 Main entry point for creating visualizations.
 
@@ -1099,7 +1087,7 @@ Main entry point for creating visualizations.
 Configure canvas dimensions and behavior:
 
 ```typescript
-createVisualisation.withSettings({
+createScene.withSettings({
   width: 1080,
   height: 1920,
   fps: 60,
@@ -1112,7 +1100,7 @@ createVisualisation.withSettings({
 Provide stateful data that persists across renders:
 
 ```typescript
-createVisualisation.withState({ index: 0, score: 0 }).setup(({ state }) => {
+createScene.withState({ index: 0, score: 0 }).setup(({ state }) => {
   state.index += 1; // Mutate state directly
 });
 ```
@@ -1122,7 +1110,7 @@ createVisualisation.withState({ index: 0, score: 0 }).setup(({ state }) => {
 Configure event handlers and initialize objects:
 
 ```typescript
-createVisualisation.setup(({ atStart, onNoteDown, onNoteUp, onRender }) => {
+createScene.setup(({ atStart, onNoteDown, onNoteUp, onRender }) => {
   // Setup code
 });
 ```
@@ -1153,17 +1141,17 @@ The `onRender` callback receives an object with:
 Start the visualization loop:
 
 ```typescript
-createVisualisation
+createScene
   .setup(...)
   .render();
 ```
 
-### `midiVisual<TProps>()`
+### `visual<TProps>(renderer)`
 
-Create a MIDI-responsive visual object with custom properties.
+Create a reusable visual component factory with full TypeScript inference.
 
 ```typescript
-const myObject = midiVisual<{ color: string; size: number }>().withRenderer(
+const pulseCircle = visual<{ color: string; size: number }>(
   ({ props, draw }) => {
     draw(({ circle, center }) => {
       circle({
@@ -1175,31 +1163,54 @@ const myObject = midiVisual<{ color: string; size: number }>().withRenderer(
     });
   },
 );
+
+const myObject = pulseCircle({ color: "#FF605C", size: 80 });
 ```
 
-#### Methods
+#### Component Invocation
 
-##### `.withRenderer(renderFunction)`
-
-Define how the object should be drawn:
+For components with props, pass props when creating an instance:
 
 ```typescript
-.withRenderer(({ draw, renderIsometric }) => {
-  // Access rendering methods via draw() and renderIsometric()
-  draw(({ circle, rect, text, background }) => {
-    // 2D canvas primitives
+const springCircle = visual<{ xOffset: number }>(({ props, draw }) => {
+  draw(({ circle, center }) => {
+    circle({ cx: center.x + props.xOffset, cy: center.y, radius: 50 });
   });
+});
 
-  renderIsometric(({ cuboid, tile }) => {
-    // Isometric 3D objects
-  });
-})
+const circle = springCircle({ xOffset: 120 });
 ```
 
-**Render Context:**
+For components without props, call with no arguments:
+
+```typescript
+const flash = visual(({ draw }) => {
+  draw(({ center, circle }) => {
+    circle({ cx: center.x, cy: center.y, radius: 40 });
+  });
+});
+
+const flashInstance = flash();
+```
+
+#### Visual Instance Methods
+
+Instances created from a component support lifecycle methods:
+
+```typescript
+const instance = pulseCircle({ color: "#333", size: 120 });
+
+instance.attack(0.8);
+instance.sustain(250);
+instance.release(700);
+```
+
+#### Render Context
+
+The renderer callback passed into `visual(...)` receives:
 
 - **Lifecycle**: `status`, `attackValue`, `releaseFactor`, `timeAttacked`, `timeReleased`, `timeFirstRender`
-- **Properties**: `props` (custom props passed via `.withProps()`)
+- **Properties**: `props` (custom props passed during component invocation)
 - **Rendering**: `draw(callback)`, `renderIsometric(callback)`
 - **Timing**: `beforeTime`, `afterTime`, `duringTimeInterval`
 
@@ -1215,14 +1226,6 @@ Define how the object should be drawn:
 
 - **Isometric Primitives**: `cuboid`, `tile`
 - **Styling**: `withStyles`
-
-##### `.withProps(properties)`
-
-Attach custom properties to the object:
-
-```typescript
-springCircle().withProps({ xOffset: 100, color: "#FF0000" });
-```
 
 ##### `.attack(velocity)`
 
@@ -1582,38 +1585,76 @@ circle({ cx: 100, cy: 100, radius: 50 })
 - `easeOutCubic`
 - `easeInOutCubic`
 
-### Visualisation Manager
+### Scene Manager
 
 Manages lifecycle of animatable objects.
 
-#### `visualisation.addPermanently(id, object)`
+#### Instance-Based Operations
+
+Use these when you already hold instance references in scope.
+
+##### `scene.addPermanently(instance)`
+
+```typescript
+const permanent = floatingSquare({ squareDimensions: 200 });
+scene.addPermanently(permanent);
+```
+
+##### `scene.add(instance)`
+
+```typescript
+const transient = floatingSquare({ squareDimensions: 320 });
+scene.add(transient);
+transient.attack(1);
+```
+
+##### `scene.remove(instance)` / `scene.has(instance)`
+
+```typescript
+if (scene.has(transient)) {
+  scene.remove(transient);
+}
+```
+
+#### Key-Based Operations
+
+Use these when mapping visuals to notes or other keys.
+
+##### `scene.addPermanentlyWithKey(key, object)`
 
 Add object that persists until explicitly removed:
 
 ```typescript
-visualisation.addPermanently(
-  "my-circle",
-  springCircle().withProps({ xOffset: 50 }),
-);
+scene.addPermanentlyWithKey("my-circle", springCircle({ xOffset: 50 }));
 ```
 
-#### `visualisation.add(id, object)`
+##### `scene.addWithKey(key, object)`
 
 Add object that's removed after release completes:
 
 ```typescript
-visualisation.add(note, springCircle().withProps({ xOffset: 100 }));
+scene.addWithKey(note, springCircle({ xOffset: 100 }));
 ```
 
-#### `visualisation.get(id)`
+##### `scene.getByKey(key)`
 
 Retrieve an object by ID:
 
 ```typescript
-const obj = visualisation.get("my-circle");
+const obj = scene.getByKey("my-circle");
 obj?.attack(0.8);
 obj?.release(1000);
 ```
+
+##### `scene.removeByKey(key)` / `scene.hasKey(key)`
+
+```typescript
+if (scene.hasKey("C4")) {
+  scene.removeByKey("C4");
+}
+```
+
+> Note: key-based add methods clone the supplied object definition so each key manages an independent visual instance.
 
 ## Development
 
@@ -1727,7 +1768,7 @@ For testing without a MIDI controller, Liminalis includes keyboard debug mode (e
 Disable keyboard debug mode:
 
 ```typescript
-createVisualisation
+createScene
   .withSettings({
     computerKeyboardDebugEnabled: false,
   })

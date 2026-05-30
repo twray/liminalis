@@ -6,7 +6,14 @@
 npm run test:dev
 ```
 
-Builds library → Creates test project → Starts dev server
+Builds the library, then runs `test:create`.
+
+By default, `test:create` will:
+
+1. Link the local library
+2. Scaffold a test project in `test-apps/`
+3. Install dependencies
+4. Start the test project's dev server
 
 ---
 
@@ -18,13 +25,19 @@ Builds library → Creates test project → Starts dev server
 | -------------------------- | ------------------------ |
 | `npm run dev`              | Build in watch mode      |
 | `npm run build`            | Build once               |
+| `npm run type-check`       | Type-check without build |
 | `npm run type-check:watch` | Type-check in watch mode |
+| `npm run test:link`        | Link library globally    |
 
-### Testing
+### Validation
 
-| Command               | Description                 |
-| --------------------- | --------------------------- |
-| `npm run test:create` | Create default test project |
+| Command                      | Description                   |
+| ---------------------------- | ----------------------------- |
+| `npm test`                   | Run library test suite        |
+| `npm run test:watch`         | Run tests in watch mode       |
+| `npm run test:all-templates` | Validate all CLI templates    |
+| `npm run test:create`        | Create default test project   |
+| `npm run test:dev`           | Build + create + start an app |
 
 ---
 
@@ -46,6 +59,18 @@ npm run dev
 ```
 
 **Edit** `src/` → TypeScript rebuilds → Vite hot-reloads → See changes instantly!
+
+---
+
+## 🎬 Scene API Sanity Checks
+
+Use this checklist when updating examples or docs:
+
+- Use `createScene`, not `createVisualisation`
+- Use `visual(renderer)` component factories
+- Instantiate before registration (`visual(renderer)()` or `component(props)`)
+- Use keyed methods with explicit naming: `addWithKey`, `addPermanentlyWithKey`, `getByKey`
+- Use instance methods when holding references: `add`, `addPermanently`, `remove`, `has`
 
 ---
 
@@ -77,22 +102,26 @@ npm run test:create -- --name test-midi
 ### Hot Reload Not Working?
 
 1. Check library is built: `ls dist/lib.js`
-2. Check library is linked: `npm link`
-3. Check test project is linked: `cd test-project && npm link liminalis`
+2. Re-link library globally: `npm run test:link`
+3. Re-link in test project: `cd test-apps/<project-name> && npm link liminalis`
+4. Restart the test project's dev server
 
 ---
 
 ## 📁 Key Locations
 
-- **Library:** `/Users/timwray/dev/liminalis`
-- **Test Apps:** `/Users/timwray/dev/liminalis/test-apps`
-- **CLI Tool:** `/Users/timwray/dev/create-liminalis-app`
+- **Library root:** `.`
+- **Test apps:** `test-apps/`
+- **Project creator script:** `scripts/create-test-project.js`
+- **Template validator script:** `scripts/test-all-templates.js`
 
 ---
 
 ## 🧪 Before Releasing
 
 ```bash
+npm test
+npm run build
 npm run test:all-templates
 ```
 

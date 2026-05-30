@@ -23,29 +23,25 @@ import { eventTimeToMs, toNormalizedFloat } from "../util";
 
 import ModeManager from "./ModeManager";
 import NoteEventManager from "./NoteEventManager";
-import Visualisation from "./Visualisation";
+import Scene from "./Scene";
 
 import IsometricView from "../views/IsometricView";
 
 import keyMappings from "../data/keyMappings.json";
 
-interface WithVisualisationContext {
-  visualisation: Visualisation;
+interface WithSceneContext {
+  scene: Scene;
 }
 
 type MidiEventCallback = (event: MidiNoteEvent) => void;
 
-type NoteDownEventCallback = (
-  params: NoteDownEvent & WithVisualisationContext,
-) => void;
+type NoteDownEventCallback = (params: NoteDownEvent & WithSceneContext) => void;
 
-type NoteUpEventCallback = (
-  params: NoteUpEvent & WithVisualisationContext,
-) => void;
+type NoteUpEventCallback = (params: NoteUpEvent & WithSceneContext) => void;
 
 type FrameEventCallback = (params: FrameRenderProps) => void;
 
-type TimeEventCallback = (params: WithVisualisationContext) => void;
+type TimeEventCallback = (params: WithSceneContext) => void;
 
 interface TimeCallbackEntry {
   time: number;
@@ -62,7 +58,7 @@ interface SetUpEventListenersParams {
   noteEventManager: NoteEventManager;
 }
 
-interface VisualisationSettings {
+interface SceneSettings {
   width?: number;
   height?: number;
   fps?: number;
@@ -112,8 +108,8 @@ class VisualisationAnimationLoopHandler<TState> {
   #noteEventManager = new NoteEventManager("major");
   #modeManager = new ModeManager([], []);
 
-  #visualisation = new Visualisation();
-  #visualisationState: TState = {} as TState;
+  #scene = new Scene();
+  #sceneState: TState = {} as TState;
 
   // Callbacks from event-based handlers that
   // are registered in the 'setup' function
@@ -135,7 +131,7 @@ class VisualisationAnimationLoopHandler<TState> {
     height,
     fps = 60,
     computerKeyboardDebugEnabled = DEFAULTS.SETTINGS_COMPUTER_KEYBOARD_DEBUG_ENABLED,
-  }: VisualisationSettings) {
+  }: SceneSettings) {
     this.#settings = { ...this.#settings, fps };
 
     if (width !== undefined && height !== undefined) {
@@ -154,7 +150,7 @@ class VisualisationAnimationLoopHandler<TState> {
     state: T,
   ): VisualisationAnimationLoopHandler<T> {
     const instance = this as any as VisualisationAnimationLoopHandler<T>;
-    instance.#visualisationState = state;
+    instance.#sceneState = state;
     return instance;
   }
 
@@ -188,7 +184,7 @@ class VisualisationAnimationLoopHandler<TState> {
     const center = { x: canvasWidth / 2, y: canvasHeight / 2 };
 
     setupFunction({
-      state: this.#visualisationState,
+      state: this.#sceneState,
       width: canvasWidth,
       height: canvasHeight,
       center,
@@ -210,7 +206,7 @@ class VisualisationAnimationLoopHandler<TState> {
     canvas.setAttribute("id", "canvas-visualisation");
 
     // Create draw context scoped to this render lifecycle
-    // This persists across frames but is isolated to this visualisation
+    // This persists across frames but is isolated to this scene
     const drawContext = createDrawContext();
 
     const sketchFunction = () => {
@@ -298,16 +294,16 @@ class VisualisationAnimationLoopHandler<TState> {
           .filter((timeCallback) => !timeCallback.expired)
           .forEach((timeCallback) => {
             if (timeInMs >= timeCallback.time) {
-              timeCallback.callback({ visualisation: this.#visualisation });
+              timeCallback.callback({ scene: this.#scene });
               timeCallback.expired = true;
             }
           });
 
         // Remove objects that are either released or not visible
-        this.#visualisation.cleanUp();
+        this.#scene.cleanUp();
 
         // Render all animatable objects
-        this.#visualisation.renderObjects(context, width, height, timeInMs);
+        this.#scene.renderObjects(context, width, height, timeInMs);
       };
     };
 
@@ -439,7 +435,7 @@ class VisualisationAnimationLoopHandler<TState> {
     this.#noteDownCallbacks.forEach((callback) => {
       callback({
         ...noteDownEvent,
-        visualisation: this.#visualisation,
+        scene: this.#scene,
       });
     });
   };
@@ -448,7 +444,7 @@ class VisualisationAnimationLoopHandler<TState> {
     this.#noteUpCallbacks.forEach((callback) => {
       callback({
         ...noteUpEvent,
-        visualisation: this.#visualisation,
+        scene: this.#scene,
       });
     });
   };

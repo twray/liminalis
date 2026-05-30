@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import Scene from "./Scene";
 import Visual from "./Visual";
-import Visualisation from "./Visualisation";
 
-describe("MidiVisual", () => {
+describe("Visual", () => {
   const mockContext = {} as CanvasRenderingContext2D;
 
   beforeEach(() => {
@@ -23,14 +23,14 @@ describe("MidiVisual", () => {
       renderer,
     );
 
-    const visualisation = new Visualisation();
-    visualisation.add("note", midiVisual);
+    const scene = new Scene();
+    scene.add(midiVisual);
 
-    visualisation.renderObjects(mockContext, 800, 600, 0);
+    scene.renderObjects(mockContext, 800, 600, 0);
     expect(renderer).not.toHaveBeenCalled();
 
     midiVisual.attack(0.75);
-    visualisation.renderObjects(mockContext, 800, 600, 16);
+    scene.renderObjects(mockContext, 800, 600, 16);
 
     expect(renderer).toHaveBeenCalledTimes(1);
     expect(renderer).toHaveBeenCalledWith(
@@ -48,14 +48,14 @@ describe("MidiVisual", () => {
   it("delays release transition by sustain period", () => {
     const renderer = vi.fn();
     const midiVisual = new Visual(undefined, renderer);
-    const visualisation = new Visualisation();
+    const scene = new Scene();
 
-    visualisation.add("sustained", midiVisual);
+    scene.add(midiVisual);
 
     midiVisual.attack(1).sustain(200).release(100);
 
     vi.advanceTimersByTime(199);
-    visualisation.renderObjects(mockContext, 800, 600, 199);
+    scene.renderObjects(mockContext, 800, 600, 199);
 
     expect(midiVisual.isSustaining).toBe(true);
     expect(midiVisual.isReleasing).toBe(false);
@@ -68,7 +68,7 @@ describe("MidiVisual", () => {
     );
 
     vi.advanceTimersByTime(1);
-    visualisation.renderObjects(mockContext, 800, 600, 200);
+    scene.renderObjects(mockContext, 800, 600, 200);
 
     expect(midiVisual.isSustaining).toBe(false);
     expect(midiVisual.isReleasing).toBe(true);
@@ -85,42 +85,42 @@ describe("MidiVisual", () => {
   it("marks non-permanent visuals for cleanup once release completes", () => {
     const renderer = vi.fn();
     const midiVisual = new Visual(undefined, renderer).attack(0.8);
-    const visualisation = new Visualisation();
+    const scene = new Scene();
 
-    visualisation.add("transient", midiVisual);
+    scene.add(midiVisual);
 
     midiVisual.release(100);
 
     vi.advanceTimersByTime(0);
-    visualisation.renderObjects(mockContext, 800, 600, 0);
+    scene.renderObjects(mockContext, 800, 600, 0);
     expect(renderer).toHaveBeenCalledTimes(1);
 
     vi.advanceTimersByTime(100);
-    visualisation.renderObjects(mockContext, 800, 600, 100);
-    visualisation.cleanUp();
+    scene.renderObjects(mockContext, 800, 600, 100);
+    scene.cleanUp();
 
     expect(renderer).toHaveBeenCalledTimes(1);
     expect(midiVisual.isReleasing).toBe(false);
-    expect(visualisation.animatableObjects.has("transient")).toBe(false);
+    expect(scene.has(midiVisual)).toBe(false);
   });
 
   it("keeps permanent visuals registered after release completes", () => {
     const renderer = vi.fn();
     const midiVisual = new Visual(undefined, renderer).attack(1);
-    const visualisation = new Visualisation();
+    const scene = new Scene();
 
-    visualisation.addPermanently("persistent", midiVisual);
+    scene.addPermanently(midiVisual);
 
     midiVisual.release(100);
 
     vi.advanceTimersByTime(0);
-    visualisation.renderObjects(mockContext, 800, 600, 0);
+    scene.renderObjects(mockContext, 800, 600, 0);
 
     vi.advanceTimersByTime(100);
-    visualisation.renderObjects(mockContext, 800, 600, 100);
-    visualisation.cleanUp();
+    scene.renderObjects(mockContext, 800, 600, 100);
+    scene.cleanUp();
 
-    expect(visualisation.animatableObjects.has("persistent")).toBe(true);
+    expect(scene.has(midiVisual)).toBe(true);
     expect(renderer).toHaveBeenCalledTimes(2);
   });
 });

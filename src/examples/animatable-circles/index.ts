@@ -1,7 +1,7 @@
-import { createVisualisation, visual } from "../../core";
+import { createScene, visual } from "../../core";
 import { toNormalizedFloat } from "../../util";
 
-createVisualisation
+createScene
   .setup(({ atStart, onNoteDown, onNoteUp, onRender }) => {
     const noteVisual = visual(({ draw, timeAttacked, timeReleased }) => {
       draw(({ center, circle, withStyles }) => {
@@ -20,8 +20,8 @@ createVisualisation
       });
     });
 
-    atStart(({ visualisation }) => {
-      visualisation.addPermanently("note", noteVisual());
+    atStart(({ scene }) => {
+      scene.addPermanentlyWithKey("note", noteVisual());
     });
 
     onRender(({ draw, center }) => {
@@ -47,12 +47,12 @@ createVisualisation
       });
     });
 
-    onNoteDown(({ visualisation }) => {
-      visualisation.get("note")?.attack(toNormalizedFloat(1));
+    onNoteDown(({ scene }) => {
+      scene.getByKey("note")?.attack(toNormalizedFloat(1));
     });
 
-    onNoteUp(({ visualisation }) => {
-      visualisation.get("note")?.release();
+    onNoteUp(({ scene }) => {
+      scene.getByKey("note")?.release();
     });
   })
   .render();

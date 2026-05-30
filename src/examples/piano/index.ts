@@ -1,7 +1,7 @@
-import { createVisualisation } from "../../core";
+import { createScene } from "../../core";
 import { pianoKey } from "./animatable/pianoKey";
 
-createVisualisation
+createScene
   .withSettings({
     width: 1080,
     height: 1920,
@@ -59,7 +59,7 @@ createVisualisation
     };
 
     // Render content on a per-frame basis that is not managed by
-    // the visualisation
+    // the scene
 
     onEachFrame(({ draw, center }) => {
       const windowBorderRadius = 30;
@@ -102,15 +102,15 @@ createVisualisation
       });
     });
 
-    // Add interactive visualisation elements
+    // Add interactive scene elements
 
     let xOffset = 0;
 
-    atStart(({ visualisation }) => {
+    atStart(({ scene }) => {
       for (let i = 0; i < mappableNotes.length; i++) {
         const keyType = mappableNotes[i].includes("#") ? "black" : "white";
 
-        visualisation.addPermanently(
+        scene.addPermanentlyWithKey(
           mappableNotes[i],
           pianoKey({
             x: keyboardOrigin.x + xOffset * keyDimensions.width,
@@ -130,12 +130,12 @@ createVisualisation
       }
     });
 
-    onNoteDown(({ visualisation, note, attack }) => {
-      visualisation.get(note)?.attack(attack);
+    onNoteDown(({ scene, note, attack }) => {
+      scene.getByKey(note)?.attack(attack);
     });
 
-    onNoteUp(({ visualisation, note }) => {
-      visualisation.get(note)?.release(1000);
+    onNoteUp(({ scene, note }) => {
+      scene.getByKey(note)?.release(1000);
     });
   })
   .render();

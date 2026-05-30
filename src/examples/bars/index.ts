@@ -1,7 +1,7 @@
-import { createVisualisation } from "../../core";
+import { createScene } from "../../core";
 import { springRectangle } from "./animatable/springRectangle";
 
-createVisualisation
+createScene
   .withSettings({
     width: 1080,
     height: 1920,
@@ -12,9 +12,9 @@ createVisualisation
     const squareSize = width * 0.8;
     const barWidth = squareSize / (numBars * 2 - 1);
 
-    atStart(({ visualisation }) => {
+    atStart(({ scene }) => {
       mappableBaseNotes.forEach((mappableBaseNote, index) => {
-        visualisation.addPermanently(
+        scene.addPermanentlyWithKey(
           mappableBaseNote,
           springRectangle({
             x: (width - squareSize) / 2 + index * barWidth * 2,
@@ -27,12 +27,12 @@ createVisualisation
       });
     });
 
-    onNoteDown(({ visualisation, note, attack }) => {
-      visualisation.get(note[0])?.attack(attack);
+    onNoteDown(({ scene, note, attack }) => {
+      scene.getByKey(note[0])?.attack(attack);
     });
 
-    onNoteUp(({ visualisation, note }) => {
-      visualisation.get(note[0])?.release(2000);
+    onNoteUp(({ scene, note }) => {
+      scene.getByKey(note[0])?.release(2000);
     });
   })
   .render();

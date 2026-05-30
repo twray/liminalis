@@ -1,7 +1,7 @@
-import { createVisualisation } from "../../core";
+import { createScene } from "../../core";
 import { bouncyCuboid } from "./animatable/bouncyCuboid";
 
-createVisualisation
+createScene
   .withSettings({
     width: 1080,
     height: 1920,
@@ -9,17 +9,17 @@ createVisualisation
   .setup(({ onNoteDown, onNoteUp }) => {
     const mappableBaseNotes = ["C", "D", "E", "F", "G", "A", "B"];
 
-    onNoteDown(({ visualisation, note, attack }) => {
+    onNoteDown(({ scene, note, attack }) => {
       const positionIndex = mappableBaseNotes.indexOf(note[0]) ?? 0;
 
-      visualisation.add(
+      scene.addWithKey(
         note[0],
         bouncyCuboid({ positionIndex }).attack(attack).sustain(10000),
       );
     });
 
-    onNoteUp(({ visualisation, note }) => {
-      visualisation.get(note[0])?.release(2000);
+    onNoteUp(({ scene, note }) => {
+      scene.getByKey(note[0])?.release(2000);
     });
   })
   .render();
