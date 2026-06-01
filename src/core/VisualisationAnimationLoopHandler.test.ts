@@ -22,6 +22,14 @@ const videoRecorderMockState = {
   }>,
 };
 
+const snapshotExporterMockState = {
+  instances: [] as Array<{
+    captureAndDownload: ReturnType<
+      typeof vi.fn<(canvas: HTMLCanvasElement) => string>
+    >;
+  }>,
+};
+
 vi.mock("canvas-sketch", () => {
   return {
     default: vi.fn((sketchFactory: () => (props: any) => void) => {
@@ -126,6 +134,26 @@ vi.mock("./VideoRecorder", () => {
   };
 });
 
+vi.mock("./SnapshotExporter", () => {
+  return {
+    default: class MockSnapshotExporter {
+      #instance = {
+        captureAndDownload: vi.fn<(canvas: HTMLCanvasElement) => string>(
+          () => "liminalis-snapshot.png",
+        ),
+      };
+
+      constructor() {
+        snapshotExporterMockState.instances.push(this.#instance);
+      }
+
+      captureAndDownload(canvas: HTMLCanvasElement) {
+        return this.#instance.captureAndDownload(canvas);
+      }
+    },
+  };
+});
+
 const flushPromises = async () => {
   await Promise.resolve();
   await Promise.resolve();
@@ -190,6 +218,14 @@ const getLatestVideoRecorderMock = () => {
   return latestRecorderMock!;
 };
 
+const getLatestSnapshotExporterMock = () => {
+  const latestSnapshotExporterMock = snapshotExporterMockState.instances.at(-1);
+
+  expect(latestSnapshotExporterMock).toBeDefined();
+
+  return latestSnapshotExporterMock!;
+};
+
 describe("VisualisationAnimationLoopHandler note dispatch", () => {
   beforeEach(() => {
     vi.resetModules();
@@ -197,6 +233,7 @@ describe("VisualisationAnimationLoopHandler note dispatch", () => {
     mockState.midiListeners.noteon = [];
     mockState.midiListeners.noteoff = [];
     videoRecorderMockState.instances = [];
+    snapshotExporterMockState.instances = [];
     setupDomGlobals();
     vi.mocked(logMessage).mockReset();
   });
@@ -363,6 +400,7 @@ describe("VisualisationAnimationLoopHandler note dispatch", () => {
     handler.render();
     await flushPromises();
 
+    const snapshotExporterMock = getLatestSnapshotExporterMock();
     const keydownListener = getWindowKeyboardListener("keydown");
 
     const ctrlE = createKeyboardEvent({
@@ -380,14 +418,15 @@ describe("VisualisationAnimationLoopHandler note dispatch", () => {
     keydownListener(ctrlE);
     keydownListener(cmdE);
 
+    expect(snapshotExporterMock.captureAndDownload).toHaveBeenCalledTimes(2);
     expect(vi.mocked(logMessage)).toHaveBeenCalledTimes(2);
     expect(vi.mocked(logMessage)).toHaveBeenNthCalledWith(
       1,
-      "Snapshot exported as image",
+      "Snaspshot exported as image",
     );
     expect(vi.mocked(logMessage)).toHaveBeenNthCalledWith(
       2,
-      "Snapshot exported as image",
+      "Snaspshot exported as image",
     );
     expect(onNoteDown).not.toHaveBeenCalled();
     expect(ctrlE.preventDefault).not.toHaveBeenCalled();

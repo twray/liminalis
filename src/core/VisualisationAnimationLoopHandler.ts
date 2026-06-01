@@ -1,6 +1,7 @@
 import canvasSketch from "canvas-sketch";
 import { Utilities, WebMidi } from "webmidi";
 
+import SnapshotExporter from "./SnapshotExporter";
 import VideoRecorder from "./VideoRecorder";
 import { createDrawContext } from "./drawMethods";
 import { getRenderIsometricMethods } from "./renderIsometricMethods";
@@ -129,6 +130,7 @@ class VisualisationAnimationLoopHandler<TState> {
 
   #canvas: HTMLCanvasElement | null = null;
   #videoRecorder = new VideoRecorder();
+  #snapshotExporter = new SnapshotExporter();
   #videoRecordingScale = DEFAULTS.SETTINGS_VIDEO_RECORDING_SCALE;
 
   constructor() {}
@@ -359,7 +361,7 @@ class VisualisationAnimationLoopHandler<TState> {
         }
 
         if (isScreenshotExportKeyCombo) {
-          logMessage("Snapshot exported as image");
+          this.#exportSnapshot();
           return;
         }
 
@@ -525,6 +527,19 @@ class VisualisationAnimationLoopHandler<TState> {
     }
 
     return Date.now();
+  };
+
+  #exportSnapshot = (): void => {
+    if (!this.#canvas) {
+      return;
+    }
+
+    try {
+      this.#snapshotExporter.captureAndDownload(this.#canvas);
+      logMessage("Snaspshot exported as image");
+    } catch {
+      logMessage("Snapshot export unavailable");
+    }
   };
 
   #toggleVideoRecording = async (): Promise<void> => {
