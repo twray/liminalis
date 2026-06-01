@@ -509,7 +509,11 @@ class Animatable<TProps extends object> {
       const { startTime, duration } = entry;
       const endTime = startTime + duration;
 
-      if (atTime < startTime) continue;
+      // A segment that starts exactly at the query time has not yet
+      // contributed to the property state. Treating startTime===atTime as
+      // "not started" avoids recursive cycles when multiple segments target
+      // the same path with identical start times.
+      if (atTime <= startTime) continue;
 
       if (atTime >= endTime) {
         // Segment completed before our target time

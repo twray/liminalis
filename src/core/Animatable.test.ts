@@ -494,6 +494,37 @@ describe("Overlapping Animations", () => {
 
       expect(results[4].radius).toBe(0); // t=1000
     });
+
+    it("handles same-start overlaps without recursive overflow", () => {
+      const anim = new Animatable({ radius: 10 }, 0);
+
+      anim
+        .animateTo({ radius: 100 }, { at: 0, duration: 500 })
+        .animateTo({ radius: 40 }, { at: 0, duration: 500 });
+
+      expect(() => anim.getCurrentProps(0)).not.toThrow();
+      expect(() => anim.getCurrentProps(250)).not.toThrow();
+
+      // The latest same-start segment owns the property.
+      expect(anim.getCurrentProps(0).radius).toBe(10);
+      expect(anim.getCurrentProps(250).radius).toBe(25);
+      expect(anim.getCurrentProps(500).radius).toBe(40);
+    });
+
+    it("remains stable with dense same-start overlap definitions", () => {
+      const anim = new Animatable({ radius: 0 }, 0);
+
+      for (let i = 1; i <= 300; i++) {
+        anim.animateTo({ radius: i }, { at: 0, duration: 600 });
+      }
+
+      expect(() => anim.getCurrentProps(0)).not.toThrow();
+      expect(() => anim.getCurrentProps(300)).not.toThrow();
+
+      // Last segment should determine the rendered value.
+      expect(anim.getCurrentProps(300).radius).toBe(150);
+      expect(anim.getCurrentProps(600).radius).toBe(300);
+    });
   });
 
   describe("multi-property independence", () => {
