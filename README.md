@@ -5,6 +5,7 @@ A creative coding framework for building real-time music visualizations in TypeS
 ## Features
 
 - 🎹 **Native MIDI Support**: Built-in `onNoteDown` and `onNoteUp` event handlers for seamless MIDI integration
+- 📸🎬 **Native Media Export**: One-key PNG screenshots and WebM video capture/export directly from your running visualisation
 - 🧭 **Dual Scene Registration API**: Choose keyed (`addWithKey`) or instance-based (`add`) workflows
 - 🎨 **Lifecycle-Driven Animations**: Objects respond to attack, sustain, and release phases with automatic state management
 - ⏱️ **Timeline Animation System**: Create smooth, overlapping animations with function or string-based easing
@@ -22,6 +23,7 @@ A creative coding framework for building real-time music visualizations in TypeS
   - [Animatable Objects & Lifecycle](#animatable-objects--lifecycle)
   - [Rendering Strategies](#rendering-strategies)
   - [Shape Animations with .animateTo()](#shape-animations-with-animateto)
+  - [Media Export](#media-export)
 - [Examples](#examples)
 - [API Reference](#api-reference)
 - [Development](#development)
@@ -170,11 +172,6 @@ export default defineConfig({
 ```bash
 npm run dev
 ```
-
-### Native Runtime Note
-
-Liminalis now runs with its own native in-framework canvas renderer and no
-longer requires `canvas-sketch`.
 
 ### TypeScript Configuration
 
@@ -916,6 +913,42 @@ createScene
     onNoteUp(({ scene }) => {
       scene.getByKey("circle")?.release();
     });
+  })
+  .render();
+```
+
+### Media Export
+
+Media export is a major feature in Liminalis, with fully in-framework support
+for both images and video designed for live performance workflows and polished
+sharing output.
+
+**What you get out of the box:**
+
+- ✅ PNG screenshot export while your visualisation is running
+- ✅ Deterministic WebM recording and export with integrated start/stop
+- ✅ Keyboard-triggered capture flow with no extra tooling
+- ✅ Configurable recording scale for quality vs framerate balancing
+
+No plugin setup, no external capture package, and no additional runtime layer.
+
+#### Keyboard Shortcuts
+
+- **Screenshot export**: `Cmd/Ctrl + E`
+- **Video recording toggle** (start/stop and export): `Cmd/Ctrl + Shift + E`
+
+#### Capture Performance Tuning
+
+Use `videoRecordingScale` to tune recording fidelity and runtime throughput.
+Lower values reduce captured resolution and can improve recording performance.
+
+```typescript
+createScene
+  .withSettings({
+    videoRecordingScale: 0.75,
+  })
+  .setup(() => {
+    // Scene setup
   })
   .render();
 ```
