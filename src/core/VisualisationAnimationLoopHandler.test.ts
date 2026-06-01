@@ -183,8 +183,7 @@ const createKeyboardEvent = (
   }) as unknown as KeyboardEvent;
 
 const getLatestVideoRecorderMock = () => {
-  const latestRecorderMock =
-    videoRecorderMockState.instances.at(-1);
+  const latestRecorderMock = videoRecorderMockState.instances.at(-1);
 
   expect(latestRecorderMock).toBeDefined();
 
