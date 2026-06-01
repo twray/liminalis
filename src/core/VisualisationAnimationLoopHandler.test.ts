@@ -9,6 +9,13 @@ const mockState = {
   },
 };
 
+const canvasRendererMockState = {
+  instances: [] as Array<{
+    start: ReturnType<typeof vi.fn>;
+    stop: ReturnType<typeof vi.fn>;
+  }>,
+};
+
 const videoRecorderMockState = {
   instances: [] as Array<{
     start: ReturnType<typeof vi.fn>;
@@ -30,11 +37,30 @@ const snapshotExporterMockState = {
   }>,
 };
 
-vi.mock("canvas-sketch", () => {
+vi.mock("./CanvasRenderer", () => {
   return {
-    default: vi.fn((sketchFactory: () => (props: any) => void) => {
-      mockState.latestRenderCallback = sketchFactory();
-    }),
+    default: class MockCanvasRenderer {
+      #instance = {
+        start: vi.fn(
+          (sketchFactory: () => (props: any) => void, _settings: any) => {
+            mockState.latestRenderCallback = sketchFactory();
+          },
+        ),
+        stop: vi.fn(),
+      };
+
+      constructor() {
+        canvasRendererMockState.instances.push(this.#instance);
+      }
+
+      start(sketchFactory: () => (props: any) => void, settings: any) {
+        this.#instance.start(sketchFactory, settings);
+      }
+
+      stop() {
+        this.#instance.stop();
+      }
+    },
   };
 });
 
@@ -226,12 +252,21 @@ const getLatestSnapshotExporterMock = () => {
   return latestSnapshotExporterMock!;
 };
 
+const getLatestCanvasRendererMock = () => {
+  const latestCanvasRendererMock = canvasRendererMockState.instances.at(-1);
+
+  expect(latestCanvasRendererMock).toBeDefined();
+
+  return latestCanvasRendererMock!;
+};
+
 describe("VisualisationAnimationLoopHandler note dispatch", () => {
   beforeEach(() => {
     vi.resetModules();
     mockState.latestRenderCallback = null;
     mockState.midiListeners.noteon = [];
     mockState.midiListeners.noteoff = [];
+    canvasRendererMockState.instances = [];
     videoRecorderMockState.instances = [];
     snapshotExporterMockState.instances = [];
     setupDomGlobals();
@@ -537,6 +572,34 @@ describe("VisualisationAnimationLoopHandler note dispatch", () => {
     );
     expect(vi.mocked(logMessage)).toHaveBeenCalledWith(
       "Recording ready for download",
+    );
+  });
+
+  it("passes autoScaleDown to CanvasRenderer when configured in withSettings", async () => {
+    const { default: VisualisationAnimationLoopHandler } =
+      await import("./VisualisationAnimationLoopHandler");
+
+    const handler = new VisualisationAnimationLoopHandler()
+      .withSettings({
+        width: 1920,
+        height: 1080,
+        autoScaleDown: true,
+      })
+      .setup(() => {});
+
+    handler.render();
+    await flushPromises();
+
+    const canvasRendererMock = getLatestCanvasRendererMock();
+    expect(canvasRendererMock.start).toHaveBeenCalledTimes(1);
+
+    const receivedSettings = canvasRendererMock.start.mock.calls[0]?.[1];
+
+    expect(receivedSettings).toEqual(
+      expect.objectContaining({
+        dimensions: [1920, 1080],
+        autoScaleDown: true,
+      }),
     );
   });
 });

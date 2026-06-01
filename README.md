@@ -171,22 +171,10 @@ export default defineConfig({
 npm run dev
 ```
 
-### Alternative: canvas-sketch CLI
+### Native Runtime Note
 
-If you prefer canvas-sketch's workflow:
-
-1. **Install globally**:
-
-```bash
-npm install -g canvas-sketch-cli
-```
-
-2. **Build and run**:
-
-```bash
-npx tsc
-canvas-sketch dist/index.js --hot
-```
+Liminalis now runs with its own native in-framework canvas renderer and no
+longer requires `canvas-sketch`.
 
 ### TypeScript Configuration
 

@@ -1,4 +1,3 @@
-import { color, math } from "canvas-sketch-util";
 import type {
   IsometricCuboid,
   IsometricPosition,
@@ -7,6 +6,7 @@ import type {
   Point2D,
 } from "../types/index.js";
 import { DebugMode } from "../types/util.js";
+import { lerp, offsetColorHsl, parseColorToRgb } from "../util/index.js";
 
 interface TileData {
   type: IsometricTileFaceType;
@@ -51,7 +51,7 @@ class IsometricView {
     context: CanvasRenderingContext2D,
     contextWidth: number,
     contextHeight: number,
-    tileWidth = 50
+    tileWidth = 50,
   ) {
     const isometricGrid: TileCoordinates[][] = [];
 
@@ -141,12 +141,12 @@ class IsometricView {
 
       context.moveTo(
         startofGridXPosition + (tileWidth / 2) * (i + 1),
-        startofGridYPosition
+        startofGridYPosition,
       );
 
       context.lineTo(
         startofGridXPosition + (tileWidth / 2) * (i + 1),
-        startofGridYPosition + contextHeight + (1 - startofGridYPosition) * 2
+        startofGridYPosition + contextHeight + (1 - startofGridYPosition) * 2,
       );
 
       context.stroke();
@@ -157,12 +157,12 @@ class IsometricView {
 
       context.moveTo(
         startofGridXPosition,
-        startofGridYPosition + (tileHeight / 2) * (i + 1)
+        startofGridYPosition + (tileHeight / 2) * (i + 1),
       );
 
       context.lineTo(
         startofGridXPosition + contextWidth + (1 - startofGridXPosition) * 2,
-        startofGridYPosition + (tileHeight / 2) * (i + 1)
+        startofGridYPosition + (tileHeight / 2) * (i + 1),
       );
 
       context.stroke();
@@ -181,7 +181,7 @@ class IsometricView {
 
     let maxValuePerAxis = Math.max(
       isometricGrid.length,
-      isometricGrid[0].length
+      isometricGrid[0].length,
     );
 
     for (let x = -maxValuePerAxis; x < maxValuePerAxis / 2; x++) {
@@ -218,7 +218,7 @@ class IsometricView {
   getTileSpatialCoordinates(
     isoX: number,
     isoY: number,
-    isoZ: number
+    isoZ: number,
   ): TileCoordinates | undefined {
     const { isometricGrid } = this;
 
@@ -236,7 +236,7 @@ class IsometricView {
     isoX: number,
     isoY: number,
     isoZ: number,
-    tileData: TileData
+    tileData: TileData,
   ) {
     const originCellIndices = this.getOriginCellIndices();
 
@@ -267,12 +267,11 @@ class IsometricView {
     debugMode = false,
   }: IsometricTile & DebugMode) {
     const { tileWidth, tileHeight } = this;
-    const { lerp } = math;
 
     const tileSpatialCoordinates = this.getTileSpatialCoordinates(
       isoX,
       isoY,
-      isoZ
+      isoZ,
     );
 
     if (tileSpatialCoordinates) {
@@ -368,7 +367,7 @@ class IsometricView {
         points[0].x,
         points[0].y,
         points[2].x,
-        points[2].y
+        points[2].y,
       );
 
       if (scale !== 1.0) {
@@ -411,7 +410,7 @@ class IsometricView {
     } else {
       console.error(
         "Unable to render isometric tile. " +
-          "Please ensure that your co-ordinates are within bounds."
+          "Please ensure that your co-ordinates are within bounds.",
       );
     }
   }
@@ -488,7 +487,6 @@ class IsometricView {
     debugMode,
   }: TileData): void {
     const { context } = this;
-    const { parse, offsetHSL } = color;
 
     context.save();
     context.beginPath();
@@ -510,15 +508,15 @@ class IsometricView {
         switch (type) {
           case "base":
           default: {
-            colorRgb = parse(fillStyle).rgb;
+            colorRgb = parseColorToRgb(fillStyle);
             break;
           }
           case "side-right": {
-            colorRgb = offsetHSL(fillStyle, 0, 0, -5).rgb;
+            colorRgb = offsetColorHsl(fillStyle, 0, 0, -5);
             break;
           }
           case "side-left": {
-            colorRgb = offsetHSL(fillStyle, 0, 0, 5).rgb;
+            colorRgb = offsetColorHsl(fillStyle, 0, 0, 5);
             break;
           }
         }

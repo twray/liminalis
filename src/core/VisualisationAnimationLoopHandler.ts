@@ -1,6 +1,6 @@
-import canvasSketch from "canvas-sketch";
 import { Utilities, WebMidi } from "webmidi";
 
+import CanvasRenderer from "./CanvasRenderer";
 import SnapshotExporter from "./SnapshotExporter";
 import VideoRecorder from "./VideoRecorder";
 import { createDrawContext } from "./drawMethods";
@@ -63,6 +63,7 @@ interface SceneSettings {
   width?: number;
   height?: number;
   fps?: number;
+  autoScaleDown?: boolean;
   computerKeyboardDebugEnabled?: boolean;
   videoRecordingScale?: number;
 }
@@ -94,6 +95,7 @@ const DEFAULTS = {
   INTERNAL_CLOCK_MAX_FRAME_DELTA_IN_MS: 250,
   SETTINGS_COMPUTER_KEYBOARD_DEBUG_ENABLED: true,
   SETTINGS_FPS: 60,
+  SETTINGS_AUTO_SCALE_DOWN: true,
   SETTINGS_VIDEO_RECORDING_SCALE: 1,
 };
 
@@ -129,6 +131,7 @@ class VisualisationAnimationLoopHandler<TState> {
   #currentKeyboardDebugNumericPressedKey: string | null = null;
 
   #canvas: HTMLCanvasElement | null = null;
+  #canvasRenderer = new CanvasRenderer();
   #videoRecorder = new VideoRecorder();
   #snapshotExporter = new SnapshotExporter();
   #videoRecordingScale = DEFAULTS.SETTINGS_VIDEO_RECORDING_SCALE;
@@ -139,10 +142,11 @@ class VisualisationAnimationLoopHandler<TState> {
     width,
     height,
     fps = 60,
+    autoScaleDown = DEFAULTS.SETTINGS_AUTO_SCALE_DOWN,
     computerKeyboardDebugEnabled = DEFAULTS.SETTINGS_COMPUTER_KEYBOARD_DEBUG_ENABLED,
     videoRecordingScale = DEFAULTS.SETTINGS_VIDEO_RECORDING_SCALE,
   }: SceneSettings) {
-    this.#settings = { ...this.#settings, fps };
+    this.#settings = { ...this.#settings, fps, autoScaleDown };
 
     if (width !== undefined && height !== undefined) {
       this.#settings.dimensions = [width, height];
@@ -227,7 +231,7 @@ class VisualisationAnimationLoopHandler<TState> {
         const { context, width, height } = canvasProps;
 
         // Compute runtime from a monotonic internal clock so timing is
-        // independent from canvas-sketch playback settings.
+        // independent from renderer playback settings.
 
         const center = { x: width / 2, y: height / 2 };
         const timeInMs = this.#getInternalElapsedTimeInMs();
@@ -332,7 +336,7 @@ class VisualisationAnimationLoopHandler<TState> {
       noteEventManager: this.#noteEventManager,
     });
 
-    canvasSketch(sketchFunction, { ...this.#settings, canvas });
+    this.#canvasRenderer.start(sketchFunction, { ...this.#settings, canvas });
   }
 
   #setUpEventListeners({

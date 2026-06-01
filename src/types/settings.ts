@@ -11,6 +11,7 @@ export interface SketchSettings {
   duration?: number;
   playbackRate?: "throttle" | "fixed";
   scaleToFit?: boolean;
+  autoScaleDown?: boolean;
   attributes?: object;
   canvas: HTMLCanvasElement;
 }
