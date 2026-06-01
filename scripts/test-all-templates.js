@@ -6,8 +6,8 @@
  */
 
 import { spawn } from "child_process";
-import { existsSync } from "fs";
-import { dirname, resolve } from "path";
+import { existsSync, readdirSync, readFileSync } from "fs";
+import { dirname, extname, resolve } from "path";
 import { fileURLToPath } from "url";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -36,6 +36,50 @@ function runCommand(command, args, cwd) {
       }
     });
   });
+}
+
+function collectSourceFiles(dir) {
+  const files = [];
+  const entries = readdirSync(dir, { withFileTypes: true });
+
+  entries.forEach((entry) => {
+    const entryPath = resolve(dir, entry.name);
+
+    if (entry.isDirectory()) {
+      files.push(...collectSourceFiles(entryPath));
+      return;
+    }
+
+    const extension = extname(entry.name);
+    if ([".ts", ".tsx", ".js", ".jsx", ".mts", ".cts"].includes(extension)) {
+      files.push(entryPath);
+    }
+  });
+
+  return files;
+}
+
+function assertNoLegacyCreateVisualisation(projectDir) {
+  const srcDir = resolve(projectDir, "src");
+  if (!existsSync(srcDir)) {
+    return;
+  }
+
+  const legacyApiPattern = /\bcreateVisualisation\b|\bcreateVisualization\b/g;
+  const offendingFiles = [];
+
+  collectSourceFiles(srcDir).forEach((filePath) => {
+    const source = readFileSync(filePath, "utf8");
+    if (legacyApiPattern.test(source)) {
+      offendingFiles.push(filePath);
+    }
+  });
+
+  if (offendingFiles.length > 0) {
+    throw new Error(
+      `Legacy createVisualisation API found in scaffolded source: ${offendingFiles.join(", ")}`,
+    );
+  }
 }
 
 (async () => {
@@ -68,8 +112,10 @@ function runCommand(command, args, cwd) {
           template,
           "--skip-dev",
         ],
-        __dirname
+        __dirname,
       );
+
+      assertNoLegacyCreateVisualisation(projectDir);
 
       results.push({ template, status: "success" });
       console.log(`✅ ${template} - Success\n`);

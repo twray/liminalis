@@ -10,8 +10,14 @@
  */
 
 import { spawn } from "child_process";
-import { existsSync, mkdirSync } from "fs";
-import { dirname, resolve } from "path";
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  writeFileSync,
+} from "fs";
+import { dirname, extname, resolve } from "path";
 import { fileURLToPath } from "url";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -75,6 +81,66 @@ function runCommand(command, args, cwd, description) {
   });
 }
 
+function collectSourceFiles(dir) {
+  const files = [];
+  const entries = readdirSync(dir, { withFileTypes: true });
+
+  entries.forEach((entry) => {
+    const entryPath = resolve(dir, entry.name);
+
+    if (entry.isDirectory()) {
+      files.push(...collectSourceFiles(entryPath));
+      return;
+    }
+
+    const extension = extname(entry.name);
+    if ([".ts", ".tsx", ".js", ".jsx", ".mts", ".cts"].includes(extension)) {
+      files.push(entryPath);
+    }
+  });
+
+  return files;
+}
+
+function patchLegacyCreateVisualisationUsage(projectDir) {
+  const srcDir = resolve(projectDir, "src");
+  if (!existsSync(srcDir)) {
+    console.log(
+      "ℹ️  No src directory found, skipping API compatibility patch\n",
+    );
+    return;
+  }
+
+  const legacyApiPattern = /\bcreateVisualisation\b|\bcreateVisualization\b/g;
+  const sourceFiles = collectSourceFiles(srcDir);
+  let filesPatched = 0;
+  let referencesPatched = 0;
+
+  sourceFiles.forEach((filePath) => {
+    const source = readFileSync(filePath, "utf8");
+    const matches = source.match(legacyApiPattern);
+    if (!matches) {
+      return;
+    }
+
+    const patchedSource = source.replace(legacyApiPattern, "createScene");
+    writeFileSync(filePath, patchedSource, "utf8");
+
+    filesPatched += 1;
+    referencesPatched += matches.length;
+    console.log(`🩹 Updated deprecated API references in ${filePath}`);
+  });
+
+  if (filesPatched === 0) {
+    console.log("✅ Scaffolded source already uses createScene\n");
+    return;
+  }
+
+  console.log(
+    `✅ Patched ${referencesPatched} deprecated API reference(s) across ${filesPatched} file(s)\n`,
+  );
+}
+
 // Main execution
 (async () => {
   try {
@@ -86,7 +152,7 @@ function runCommand(command, args, cwd, description) {
         "npm",
         ["run", "build"],
         LIMINALIS_DIR,
-        "Building library"
+        "Building library",
       );
     } else {
       console.log("✅ Library already built\n");
@@ -98,7 +164,7 @@ function runCommand(command, args, cwd, description) {
         "npm",
         ["link"],
         LIMINALIS_DIR,
-        "Linking library globally"
+        "Linking library globally",
       );
     }
 
@@ -113,8 +179,11 @@ function runCommand(command, args, cwd, description) {
       "npx",
       ["create-liminalis-app", ...createArgs],
       TEST_APPS_DIR,
-      "Creating project"
+      "Creating project",
     );
+
+    // Step 3.5: Patch outdated API names from older scaffold versions
+    patchLegacyCreateVisualisationUsage(PROJECT_DIR);
 
     // Step 4: Link local library to project
     if (!skipLink) {
@@ -122,7 +191,7 @@ function runCommand(command, args, cwd, description) {
         "npm",
         ["link", "liminalis"],
         PROJECT_DIR,
-        "Linking local library"
+        "Linking local library",
       );
     }
 
@@ -132,7 +201,7 @@ function runCommand(command, args, cwd, description) {
         "npm",
         ["install"],
         PROJECT_DIR,
-        "Installing dependencies"
+        "Installing dependencies",
       );
     }
 
@@ -153,7 +222,7 @@ function runCommand(command, args, cwd, description) {
         "npm",
         ["run", "dev"],
         PROJECT_DIR,
-        "Starting dev server"
+        "Starting dev server",
       );
     }
   } catch (error) {
