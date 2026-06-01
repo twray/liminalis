@@ -492,7 +492,10 @@ describe("VisualisationAnimationLoopHandler note dispatch", () => {
     );
 
     expect(recorderMock.start).toHaveBeenCalledTimes(1);
-    expect(recorderMock.start.mock.calls[0]?.[1]).toEqual({ scale: 0.5 });
+    expect(recorderMock.start.mock.calls[0]?.[1]).toEqual({
+      scale: 0.5,
+      format: "auto",
+    });
     expect(vi.mocked(logMessage)).toHaveBeenCalledWith("Recording ...");
 
     expect(mockState.latestRenderCallback).not.toBeNull();
@@ -573,6 +576,39 @@ describe("VisualisationAnimationLoopHandler note dispatch", () => {
     expect(vi.mocked(logMessage)).toHaveBeenCalledWith(
       "Recording ready for download",
     );
+  });
+
+  it("passes configured video format to recorder start options", async () => {
+    const { default: VisualisationAnimationLoopHandler } =
+      await import("./VisualisationAnimationLoopHandler");
+
+    const handler = new VisualisationAnimationLoopHandler()
+      .withSettings({
+        videoRecordingScale: 0.75,
+        videoFormat: "mp4",
+      })
+      .setup(() => {});
+
+    handler.render();
+    await flushPromises();
+
+    const recorderMock = getLatestVideoRecorderMock();
+    const keydownListener = getWindowKeyboardListener("keydown");
+
+    keydownListener(
+      createKeyboardEvent({
+        key: "E",
+        code: "KeyE",
+        ctrlKey: true,
+        shiftKey: true,
+      }),
+    );
+
+    expect(recorderMock.start).toHaveBeenCalledTimes(1);
+    expect(recorderMock.start.mock.calls[0]?.[1]).toEqual({
+      scale: 0.75,
+      format: "mp4",
+    });
   });
 
   it("passes autoScaleDown to CanvasRenderer when configured in withSettings", async () => {

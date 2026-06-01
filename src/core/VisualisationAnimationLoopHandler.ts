@@ -31,6 +31,8 @@ import IsometricView from "../views/IsometricView";
 
 import keyMappings from "../data/keyMappings.json";
 
+type VideoFormatPreference = "auto" | "webm" | "mp4";
+
 interface WithSceneContext {
   scene: Scene;
 }
@@ -66,6 +68,7 @@ interface SceneSettings {
   autoScaleDown?: boolean;
   computerKeyboardDebugEnabled?: boolean;
   videoRecordingScale?: number;
+  videoFormat?: VideoFormatPreference;
 }
 
 interface SetupFunctionProps<TState> {
@@ -97,6 +100,7 @@ const DEFAULTS = {
   SETTINGS_FPS: 60,
   SETTINGS_AUTO_SCALE_DOWN: true,
   SETTINGS_VIDEO_RECORDING_SCALE: 1,
+  SETTINGS_VIDEO_FORMAT: "auto" as VideoFormatPreference,
 };
 
 class VisualisationAnimationLoopHandler<TState> {
@@ -135,6 +139,7 @@ class VisualisationAnimationLoopHandler<TState> {
   #videoRecorder = new VideoRecorder();
   #snapshotExporter = new SnapshotExporter();
   #videoRecordingScale = DEFAULTS.SETTINGS_VIDEO_RECORDING_SCALE;
+  #videoRecordingFormat: VideoFormatPreference = DEFAULTS.SETTINGS_VIDEO_FORMAT;
 
   constructor() {}
 
@@ -145,6 +150,7 @@ class VisualisationAnimationLoopHandler<TState> {
     autoScaleDown = DEFAULTS.SETTINGS_AUTO_SCALE_DOWN,
     computerKeyboardDebugEnabled = DEFAULTS.SETTINGS_COMPUTER_KEYBOARD_DEBUG_ENABLED,
     videoRecordingScale = DEFAULTS.SETTINGS_VIDEO_RECORDING_SCALE,
+    videoFormat = DEFAULTS.SETTINGS_VIDEO_FORMAT,
   }: SceneSettings) {
     this.#settings = { ...this.#settings, fps, autoScaleDown };
 
@@ -158,6 +164,7 @@ class VisualisationAnimationLoopHandler<TState> {
     };
 
     this.#videoRecordingScale = videoRecordingScale;
+    this.#videoRecordingFormat = videoFormat;
 
     return this;
   }
@@ -568,6 +575,7 @@ class VisualisationAnimationLoopHandler<TState> {
     try {
       this.#videoRecorder.start(this.#canvas, {
         scale: this.#videoRecordingScale,
+        format: this.#videoRecordingFormat,
       });
       logMessage("Recording ...");
     } catch {

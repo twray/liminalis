@@ -1,5 +1,9 @@
 type RecorderLifecycleStatus = "idle" | "recording" | "encoding";
 
+export type VideoFormatPreference = "auto" | "webm" | "mp4";
+
+type VideoFileExtension = "webm" | "mp4";
+
 type FrameRequestingTrack = MediaStreamTrack & {
   requestFrame?: () => void;
 };
@@ -16,19 +20,39 @@ interface VideoRecorderOptions {
 
 interface VideoRecorderStartOptions {
   scale?: number;
+  format?: VideoFormatPreference;
 }
 
 const DEFAULT_FILE_NAME_PREFIX = "liminalis-capture";
 const DEFAULT_VIDEO_BITS_PER_SECOND = 12_000_000;
 const DEFAULT_CAPTURE_SCALE = 1;
+const DEFAULT_VIDEO_FORMAT_PREFERENCE: VideoFormatPreference = "auto";
 const MAX_CAPTURE_FPS = 60;
 const MIN_CAPTURE_INTERVAL_IN_MS = 1000 / MAX_CAPTURE_FPS;
 
-const MIME_TYPE_CANDIDATES = [
+const WEBM_MIME_TYPE_CANDIDATES = [
   "video/webm;codecs=vp9",
   "video/webm;codecs=vp8",
   "video/webm",
 ];
+
+const MP4_MIME_TYPE_CANDIDATES = [
+  "video/mp4;codecs=avc1.42E01E,mp4a.40.2",
+  "video/mp4;codecs=avc1",
+  "video/mp4",
+];
+
+const MIME_TYPE_CANDIDATES_BY_FORMAT: Record<VideoFormatPreference, string[]> =
+  {
+    auto: [...MP4_MIME_TYPE_CANDIDATES, ...WEBM_MIME_TYPE_CANDIDATES],
+    webm: [...WEBM_MIME_TYPE_CANDIDATES, ...MP4_MIME_TYPE_CANDIDATES],
+    mp4: [...MP4_MIME_TYPE_CANDIDATES, ...WEBM_MIME_TYPE_CANDIDATES],
+  };
+
+interface ResolvedVideoFormat {
+  mimeType: string | undefined;
+  fileExtension: VideoFileExtension;
+}
 
 class VideoRecorder {
   #status: RecorderLifecycleStatus = "idle";
@@ -48,6 +72,9 @@ class VideoRecorder {
   #captureCanvas: HTMLCanvasElement | null = null;
   #captureContext: CanvasRenderingContext2D | null = null;
   #lastCapturedFrameTimeInMs: number | null = null;
+
+  #activeMimeType = "video/webm";
+  #activeFileExtension: VideoFileExtension = "webm";
 
   constructor(options: VideoRecorderOptions = {}) {
     this.#fileNamePrefix = options.fileNamePrefix ?? DEFAULT_FILE_NAME_PREFIX;
@@ -124,7 +151,14 @@ class VideoRecorder {
       throw new Error("Video frame capture is not supported.");
     }
 
-    const mimeType = this.#resolveSupportedMimeType();
+    const formatPreference = options.format ?? DEFAULT_VIDEO_FORMAT_PREFERENCE;
+    const { mimeType, fileExtension } =
+      this.#resolveSupportedFormat(formatPreference);
+
+    this.#activeMimeType =
+      mimeType ?? this.#mimeTypeForExtension(fileExtension);
+    this.#activeFileExtension = fileExtension;
+
     const recorderOptions: MediaRecorderOptions = {
       videoBitsPerSecond: this.#videoBitsPerSecond,
     };
@@ -159,7 +193,7 @@ class VideoRecorder {
 
       mediaRecorder.onstop = () => {
         const blob = new Blob(this.#recordedChunks, {
-          type: mimeType ?? "video/webm",
+          type: this.#activeMimeType,
         });
 
         resolve(blob);
@@ -221,18 +255,59 @@ class VideoRecorder {
     URL.revokeObjectURL(url);
   }
 
-  #resolveSupportedMimeType(): string | undefined {
+  #resolveSupportedFormat(format: VideoFormatPreference): ResolvedVideoFormat {
     if (typeof MediaRecorder === "undefined") {
-      return undefined;
+      return {
+        mimeType: undefined,
+        fileExtension: this.#defaultExtensionForFormat(format),
+      };
     }
 
-    return MIME_TYPE_CANDIDATES.find((mimeType) =>
-      MediaRecorder.isTypeSupported(mimeType),
+    const supportedMimeType = MIME_TYPE_CANDIDATES_BY_FORMAT[format].find(
+      (mimeType) => MediaRecorder.isTypeSupported(mimeType),
     );
+
+    if (!supportedMimeType) {
+      return {
+        mimeType: undefined,
+        fileExtension: this.#defaultExtensionForFormat(format),
+      };
+    }
+
+    return {
+      mimeType: supportedMimeType,
+      fileExtension: this.#extensionForMimeType(supportedMimeType),
+    };
+  }
+
+  #defaultExtensionForFormat(
+    format: VideoFormatPreference,
+  ): VideoFileExtension {
+    if (format === "mp4") {
+      return "mp4";
+    }
+
+    return "webm";
+  }
+
+  #extensionForMimeType(mimeType: string): VideoFileExtension {
+    if (mimeType.includes("mp4")) {
+      return "mp4";
+    }
+
+    return "webm";
+  }
+
+  #mimeTypeForExtension(fileExtension: VideoFileExtension): string {
+    if (fileExtension === "mp4") {
+      return "video/mp4";
+    }
+
+    return "video/webm";
   }
 
   #buildFileName(): string {
-    return `${this.#fileNamePrefix}-${Date.now()}.webm`;
+    return `${this.#fileNamePrefix}-${Date.now()}.${this.#activeFileExtension}`;
   }
 
   #resolveCaptureScale(scale: number | undefined): number {

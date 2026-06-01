@@ -1,8 +1,21 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import VideoRecorder from "./VideoRecorder";
 
+const WEBM_MIME_TYPES = [
+  "video/webm;codecs=vp9",
+  "video/webm;codecs=vp8",
+  "video/webm",
+];
+
+const MP4_MIME_TYPES = [
+  "video/mp4;codecs=avc1.42E01E,mp4a.40.2",
+  "video/mp4;codecs=avc1",
+  "video/mp4",
+];
+
 interface MockMediaRecorderInstance {
   state: "inactive" | "recording";
+  options?: MediaRecorderOptions;
   ondataavailable: ((event: BlobEvent) => void) | null;
   onerror: (() => void) | null;
   onstop: (() => void) | null;
@@ -12,13 +25,21 @@ interface MockMediaRecorderInstance {
 
 const mediaRecorderMockState = {
   instances: [] as MockMediaRecorderInstance[],
+  supportedMimeTypes: new Set<string>(),
+};
+
+const setSupportedMimeTypes = (mimeTypes: string[]) => {
+  mediaRecorderMockState.supportedMimeTypes = new Set(mimeTypes);
 };
 
 const setupMediaRecorderMock = () => {
   class MockMediaRecorder {
-    static isTypeSupported = vi.fn(() => true);
+    static isTypeSupported = vi.fn((mimeType: string) =>
+      mediaRecorderMockState.supportedMimeTypes.has(mimeType),
+    );
 
     state: "inactive" | "recording" = "inactive";
+    options?: MediaRecorderOptions;
     ondataavailable: ((event: BlobEvent) => void) | null = null;
     onerror: (() => void) | null = null;
     onstop: (() => void) | null = null;
@@ -33,7 +54,8 @@ const setupMediaRecorderMock = () => {
       this.onstop?.();
     });
 
-    constructor(_stream: MediaStream, _options?: MediaRecorderOptions) {
+    constructor(_stream: MediaStream, options?: MediaRecorderOptions) {
+      this.options = options;
       mediaRecorderMockState.instances.push(this);
     }
   }
@@ -72,6 +94,7 @@ const createMockCanvas = () => {
 describe("VideoRecorder", () => {
   beforeEach(() => {
     mediaRecorderMockState.instances = [];
+    setSupportedMimeTypes([...WEBM_MIME_TYPES, ...MP4_MIME_TYPES]);
     setupMediaRecorderMock();
     (globalThis as any).document = undefined;
   });
@@ -104,10 +127,83 @@ describe("VideoRecorder", () => {
     const encodedCapture = await encodedPromise;
 
     expect(encodedCapture.blob.size).toBeGreaterThan(0);
-    expect(encodedCapture.fileName).toContain(".webm");
+    expect(encodedCapture.blob.type).toContain("video/mp4");
+    expect(encodedCapture.fileName).toContain(".mp4");
     expect(mediaRecorderMockState.instances[0]?.stop).toHaveBeenCalledTimes(1);
     expect(stopTrack).toHaveBeenCalledTimes(1);
     expect(recorder.status).toBe("idle");
+  });
+
+  it("falls back to webm when auto format is used and mp4 is not supported", async () => {
+    setSupportedMimeTypes(WEBM_MIME_TYPES);
+
+    const { canvas } = createMockCanvas();
+    const recorder = new VideoRecorder();
+
+    recorder.start(canvas);
+
+    expect(mediaRecorderMockState.instances[0]?.options?.mimeType).toContain(
+      "video/webm",
+    );
+
+    const encodedCapture = await recorder.stopAndEncode();
+
+    expect(encodedCapture.blob.type).toContain("video/webm");
+    expect(encodedCapture.fileName).toContain(".webm");
+  });
+
+  it("uses mp4 when requested and supported", async () => {
+    setSupportedMimeTypes(MP4_MIME_TYPES);
+
+    const { canvas } = createMockCanvas();
+    const recorder = new VideoRecorder();
+
+    recorder.start(canvas, { format: "mp4" });
+
+    expect(mediaRecorderMockState.instances[0]?.options?.mimeType).toContain(
+      "video/mp4",
+    );
+
+    const encodedCapture = await recorder.stopAndEncode();
+
+    expect(encodedCapture.blob.type).toContain("video/mp4");
+    expect(encodedCapture.fileName).toContain(".mp4");
+  });
+
+  it("falls back to webm when mp4 is requested but not supported", async () => {
+    setSupportedMimeTypes(WEBM_MIME_TYPES);
+
+    const { canvas } = createMockCanvas();
+    const recorder = new VideoRecorder();
+
+    recorder.start(canvas, { format: "mp4" });
+
+    expect(mediaRecorderMockState.instances[0]?.options?.mimeType).toContain(
+      "video/webm",
+    );
+
+    const encodedCapture = await recorder.stopAndEncode();
+
+    expect(encodedCapture.blob.type).toContain("video/webm");
+    expect(encodedCapture.fileName).toContain(".webm");
+  });
+
+  it("falls back to mp4 when webm is requested but not supported", async () => {
+    setSupportedMimeTypes(MP4_MIME_TYPES);
+
+    const { canvas } = createMockCanvas();
+    const recorder = new VideoRecorder();
+
+    recorder.start(canvas, { format: "webm" });
+
+    expect(mediaRecorderMockState.instances[0]?.options?.mimeType).toContain(
+      "video/mp4",
+    );
+
+    const encodedCapture = await recorder.stopAndEncode();
+
+    expect(encodedCapture.blob.type).toContain("video/mp4");
+    expect(encodedCapture.fileName).toContain(".mp4");
   });
 
   it("caps deterministic capture at 60 fps when render callbacks exceed 60 fps", () => {
