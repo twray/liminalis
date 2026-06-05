@@ -1,5 +1,6 @@
 import { Utilities, WebMidi } from "webmidi";
 
+import AudioCapture, { type AudioCaptureSession } from "./AudioCapture";
 import CanvasRenderer from "./CanvasRenderer";
 import SnapshotExporter from "./SnapshotExporter";
 import VideoRecorder from "./VideoRecorder";
@@ -69,6 +70,8 @@ interface SceneSettings {
   computerKeyboardDebugEnabled?: boolean;
   videoRecordingScale?: number;
   videoFormat?: VideoFormatPreference;
+  enableAudioCapture?: boolean;
+  audioInputDeviceId?: string;
 }
 
 interface SetupFunctionProps<TState> {
@@ -101,6 +104,7 @@ const DEFAULTS = {
   SETTINGS_AUTO_SCALE_DOWN: true,
   SETTINGS_VIDEO_RECORDING_SCALE: 1,
   SETTINGS_VIDEO_FORMAT: "auto" as VideoFormatPreference,
+  SETTINGS_ENABLE_AUDIO_CAPTURE: false,
 };
 
 class VisualisationAnimationLoopHandler<TState> {
@@ -137,6 +141,7 @@ class VisualisationAnimationLoopHandler<TState> {
   #canvas: HTMLCanvasElement | null = null;
   #canvasRenderer = new CanvasRenderer();
   #videoRecorder = new VideoRecorder();
+  #audioCapture = new AudioCapture();
   #snapshotExporter = new SnapshotExporter();
   #videoRecordingScale = DEFAULTS.SETTINGS_VIDEO_RECORDING_SCALE;
   #videoRecordingFormat: VideoFormatPreference = DEFAULTS.SETTINGS_VIDEO_FORMAT;
@@ -151,6 +156,8 @@ class VisualisationAnimationLoopHandler<TState> {
     computerKeyboardDebugEnabled = DEFAULTS.SETTINGS_COMPUTER_KEYBOARD_DEBUG_ENABLED,
     videoRecordingScale = DEFAULTS.SETTINGS_VIDEO_RECORDING_SCALE,
     videoFormat = DEFAULTS.SETTINGS_VIDEO_FORMAT,
+    enableAudioCapture = DEFAULTS.SETTINGS_ENABLE_AUDIO_CAPTURE,
+    audioInputDeviceId,
   }: SceneSettings) {
     this.#settings = { ...this.#settings, fps, autoScaleDown };
 
@@ -165,6 +172,11 @@ class VisualisationAnimationLoopHandler<TState> {
 
     this.#videoRecordingScale = videoRecordingScale;
     this.#videoRecordingFormat = videoFormat;
+
+    this.#audioCapture.updateSettings({
+      sourceMode: enableAudioCapture ? "audio-input-device" : "none",
+      inputDeviceId: audioInputDeviceId,
+    });
 
     return this;
   }
@@ -564,21 +576,45 @@ class VisualisationAnimationLoopHandler<TState> {
       try {
         const { blob, fileName } = await this.#videoRecorder.stopAndEncode();
         this.#videoRecorder.download(blob, fileName);
+
         logMessage("Recording ready for download");
       } catch {
         logMessage("Video capture failed");
+      } finally {
+        this.#audioCapture.cleanupActiveSession();
       }
 
       return;
     }
 
+    let audioCaptureSession: AudioCaptureSession | null = null;
+    const hasConfiguredAudioSource = this.#audioCapture.hasConfiguredSource();
+
+    if (hasConfiguredAudioSource) {
+      audioCaptureSession = await this.#audioCapture.acquireSession();
+    }
+
     try {
-      this.#videoRecorder.start(this.#canvas, {
+      const recorderStartOptions: {
+        scale: number;
+        format: VideoFormatPreference;
+        audioStream?: MediaStream;
+      } = {
         scale: this.#videoRecordingScale,
         format: this.#videoRecordingFormat,
+      };
+
+      if (audioCaptureSession) {
+        recorderStartOptions.audioStream = audioCaptureSession.outputStream;
+      }
+
+      await this.#videoRecorder.start(this.#canvas, {
+        ...recorderStartOptions,
       });
+      this.#audioCapture.activateSession(audioCaptureSession);
       logMessage("Recording ...");
     } catch {
+      this.#audioCapture.disposeSession(audioCaptureSession);
       logMessage("Video capture unavailable");
     }
   };

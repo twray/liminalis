@@ -2,7 +2,7 @@ type RecorderLifecycleStatus = "idle" | "recording" | "encoding";
 
 export type VideoFormatPreference = "auto" | "webm" | "mp4";
 
-type VideoFileExtension = "webm" | "mp4";
+type CaptureFileExtension = "webm" | "mp4" | "ogg";
 
 type FrameRequestingTrack = MediaStreamTrack & {
   requestFrame?: () => void;
@@ -21,10 +21,12 @@ interface VideoRecorderOptions {
 interface VideoRecorderStartOptions {
   scale?: number;
   format?: VideoFormatPreference;
+  audioStream?: MediaStream;
 }
 
 const DEFAULT_FILE_NAME_PREFIX = "liminalis-capture";
 const DEFAULT_VIDEO_BITS_PER_SECOND = 12_000_000;
+const DEFAULT_AUDIO_BITS_PER_SECOND = 192_000;
 const DEFAULT_CAPTURE_SCALE = 1;
 const DEFAULT_VIDEO_FORMAT_PREFERENCE: VideoFormatPreference = "auto";
 const MAX_CAPTURE_FPS = 60;
@@ -49,9 +51,9 @@ const MIME_TYPE_CANDIDATES_BY_FORMAT: Record<VideoFormatPreference, string[]> =
     mp4: [...MP4_MIME_TYPE_CANDIDATES, ...WEBM_MIME_TYPE_CANDIDATES],
   };
 
-interface ResolvedVideoFormat {
+interface ResolvedCaptureFormat {
   mimeType: string | undefined;
-  fileExtension: VideoFileExtension;
+  fileExtension: CaptureFileExtension;
 }
 
 class VideoRecorder {
@@ -74,7 +76,7 @@ class VideoRecorder {
   #lastCapturedFrameTimeInMs: number | null = null;
 
   #activeMimeType = "video/webm";
-  #activeFileExtension: VideoFileExtension = "webm";
+  #activeFileExtension: CaptureFileExtension = "webm";
 
   constructor(options: VideoRecorderOptions = {}) {
     this.#fileNamePrefix = options.fileNamePrefix ?? DEFAULT_FILE_NAME_PREFIX;
@@ -94,10 +96,10 @@ class VideoRecorder {
     return this.#status;
   }
 
-  start(
+  async start(
     sourceCanvas: HTMLCanvasElement,
     options: VideoRecorderStartOptions = {},
-  ): void {
+  ): Promise<void> {
     if (this.#status !== "idle") {
       return;
     }
@@ -106,62 +108,28 @@ class VideoRecorder {
       throw new Error("MediaRecorder API is not available in this browser.");
     }
 
-    if (typeof sourceCanvas.captureStream !== "function") {
-      throw new Error("Canvas capture stream API is not available.");
-    }
+    const stream = this.#createVideoCaptureStream(
+      sourceCanvas,
+      options.scale,
+      options.audioStream,
+    );
 
-    const captureScale = this.#resolveCaptureScale(options.scale);
-    this.#captureScale = captureScale;
-
-    if (captureScale < DEFAULT_CAPTURE_SCALE) {
-      const captureCanvas = this.#createCaptureCanvas(
-        sourceCanvas,
-        captureScale,
-      );
-      const captureContext = captureCanvas.getContext("2d");
-
-      if (!captureContext) {
-        throw new Error("Unable to initialize recording capture context.");
-      }
-
-      this.#sourceCanvas = sourceCanvas;
-      this.#captureCanvas = captureCanvas;
-      this.#captureContext = captureContext;
-      this.#syncCaptureCanvasFromSource();
-    } else {
-      this.#resetCaptureSurfaces();
-    }
-
-    const recordingCanvas = this.#captureCanvas ?? sourceCanvas;
-
-    const stream = recordingCanvas.captureStream(0);
-    const [videoTrack] = stream.getVideoTracks();
-
-    if (!videoTrack) {
-      stream.getTracks().forEach((track) => track.stop());
-      this.#resetCaptureSurfaces();
-      throw new Error("Unable to obtain a video track for recording.");
-    }
-
-    const track = videoTrack as FrameRequestingTrack;
-
-    if (typeof track.requestFrame !== "function") {
-      stream.getTracks().forEach((streamTrack) => streamTrack.stop());
-      this.#resetCaptureSurfaces();
-      throw new Error("Video frame capture is not supported.");
-    }
+    const track = this.#resolveFrameRequestingTrack(stream);
 
     const formatPreference = options.format ?? DEFAULT_VIDEO_FORMAT_PREFERENCE;
     const { mimeType, fileExtension } =
-      this.#resolveSupportedFormat(formatPreference);
+      this.#resolveSupportedVideoFormat(formatPreference);
 
-    this.#activeMimeType =
-      mimeType ?? this.#mimeTypeForExtension(fileExtension);
+    this.#activeMimeType = mimeType ?? this.#videoMimeTypeForExtension(fileExtension);
     this.#activeFileExtension = fileExtension;
 
     const recorderOptions: MediaRecorderOptions = {
       videoBitsPerSecond: this.#videoBitsPerSecond,
     };
+
+    if (this.#streamHasAudioTrack(stream)) {
+      recorderOptions.audioBitsPerSecond = DEFAULT_AUDIO_BITS_PER_SECOND;
+    }
 
     if (mimeType) {
       recorderOptions.mimeType = mimeType;
@@ -255,11 +223,13 @@ class VideoRecorder {
     URL.revokeObjectURL(url);
   }
 
-  #resolveSupportedFormat(format: VideoFormatPreference): ResolvedVideoFormat {
+  #resolveSupportedVideoFormat(
+    format: VideoFormatPreference,
+  ): ResolvedCaptureFormat {
     if (typeof MediaRecorder === "undefined") {
       return {
         mimeType: undefined,
-        fileExtension: this.#defaultExtensionForFormat(format),
+        fileExtension: this.#defaultVideoExtensionForFormat(format),
       };
     }
 
@@ -270,7 +240,7 @@ class VideoRecorder {
     if (!supportedMimeType) {
       return {
         mimeType: undefined,
-        fileExtension: this.#defaultExtensionForFormat(format),
+        fileExtension: this.#defaultVideoExtensionForFormat(format),
       };
     }
 
@@ -280,9 +250,9 @@ class VideoRecorder {
     };
   }
 
-  #defaultExtensionForFormat(
+  #defaultVideoExtensionForFormat(
     format: VideoFormatPreference,
-  ): VideoFileExtension {
+  ): CaptureFileExtension {
     if (format === "mp4") {
       return "mp4";
     }
@@ -290,7 +260,11 @@ class VideoRecorder {
     return "webm";
   }
 
-  #extensionForMimeType(mimeType: string): VideoFileExtension {
+  #extensionForMimeType(mimeType: string): CaptureFileExtension {
+    if (mimeType.includes("ogg")) {
+      return "ogg";
+    }
+
     if (mimeType.includes("mp4")) {
       return "mp4";
     }
@@ -298,9 +272,13 @@ class VideoRecorder {
     return "webm";
   }
 
-  #mimeTypeForExtension(fileExtension: VideoFileExtension): string {
+  #videoMimeTypeForExtension(fileExtension: CaptureFileExtension): string {
     if (fileExtension === "mp4") {
       return "video/mp4";
+    }
+
+    if (fileExtension === "ogg") {
+      return "video/ogg";
     }
 
     return "video/webm";
@@ -308,6 +286,75 @@ class VideoRecorder {
 
   #buildFileName(): string {
     return `${this.#fileNamePrefix}-${Date.now()}.${this.#activeFileExtension}`;
+  }
+
+  #createVideoCaptureStream(
+    sourceCanvas: HTMLCanvasElement,
+    scale: number | undefined,
+    audioStream?: MediaStream,
+  ): MediaStream {
+    if (typeof sourceCanvas.captureStream !== "function") {
+      throw new Error("Canvas capture stream API is not available.");
+    }
+
+    const captureScale = this.#resolveCaptureScale(scale);
+    this.#captureScale = captureScale;
+
+    if (captureScale < DEFAULT_CAPTURE_SCALE) {
+      const captureCanvas = this.#createCaptureCanvas(
+        sourceCanvas,
+        captureScale,
+      );
+      const captureContext = captureCanvas.getContext("2d");
+
+      if (!captureContext) {
+        throw new Error("Unable to initialize recording capture context.");
+      }
+
+      this.#sourceCanvas = sourceCanvas;
+      this.#captureCanvas = captureCanvas;
+      this.#captureContext = captureContext;
+      this.#syncCaptureCanvasFromSource();
+    } else {
+      this.#resetCaptureSurfaces();
+    }
+
+    const recordingCanvas = this.#captureCanvas ?? sourceCanvas;
+    const stream = recordingCanvas.captureStream(0);
+
+    if (audioStream) {
+      this.#attachAudioTrackToStream(stream, audioStream);
+    }
+
+    const [videoTrack] = stream.getVideoTracks();
+
+    if (!videoTrack) {
+      stream.getTracks().forEach((track) => track.stop());
+      this.#resetCaptureSurfaces();
+      throw new Error("Unable to obtain a video track for recording.");
+    }
+
+    return stream;
+  }
+
+  #resolveFrameRequestingTrack(stream: MediaStream): FrameRequestingTrack {
+    const [videoTrack] = stream.getVideoTracks();
+
+    if (!videoTrack) {
+      stream.getTracks().forEach((track) => track.stop());
+      this.#resetCaptureSurfaces();
+      throw new Error("Unable to obtain a video track for recording.");
+    }
+
+    const track = videoTrack as FrameRequestingTrack;
+
+    if (typeof track.requestFrame !== "function") {
+      stream.getTracks().forEach((streamTrack) => streamTrack.stop());
+      this.#resetCaptureSurfaces();
+      throw new Error("Video frame capture is not supported.");
+    }
+
+    return track;
   }
 
   #resolveCaptureScale(scale: number | undefined): number {
@@ -409,6 +456,31 @@ class VideoRecorder {
       elapsedTimeInMs - this.#lastCapturedFrameTimeInMs >=
       MIN_CAPTURE_INTERVAL_IN_MS
     );
+  }
+
+  #attachAudioTrackToStream(
+    stream: MediaStream,
+    audioStream: MediaStream,
+  ): void {
+    const [audioTrack] = audioStream.getAudioTracks();
+
+    if (!audioTrack || typeof stream.addTrack !== "function") {
+      return;
+    }
+
+    const streamAlreadyHasTrack = stream
+      .getAudioTracks()
+      .some((track) => track === audioTrack);
+
+    if (streamAlreadyHasTrack) {
+      return;
+    }
+
+    stream.addTrack(audioTrack);
+  }
+
+  #streamHasAudioTrack(stream: MediaStream): boolean {
+    return stream.getAudioTracks().length > 0;
   }
 
   #teardownStream(): void {

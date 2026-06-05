@@ -15,6 +15,7 @@ const MP4_MIME_TYPES = [
 
 interface MockMediaRecorderInstance {
   state: "inactive" | "recording";
+  stream: MediaStream;
   options?: MediaRecorderOptions;
   ondataavailable: ((event: BlobEvent) => void) | null;
   onerror: (() => void) | null;
@@ -39,6 +40,7 @@ const setupMediaRecorderMock = () => {
     );
 
     state: "inactive" | "recording" = "inactive";
+    stream: MediaStream;
     options?: MediaRecorderOptions;
     ondataavailable: ((event: BlobEvent) => void) | null = null;
     onerror: (() => void) | null = null;
@@ -54,7 +56,8 @@ const setupMediaRecorderMock = () => {
       this.onstop?.();
     });
 
-    constructor(_stream: MediaStream, options?: MediaRecorderOptions) {
+    constructor(stream: MediaStream, options?: MediaRecorderOptions) {
+      this.stream = stream;
       this.options = options;
       mediaRecorderMockState.instances.push(this);
     }
@@ -67,14 +70,22 @@ const createMockCanvas = () => {
   const requestFrame = vi.fn();
   const stopTrack = vi.fn();
 
-  const track = {
+  const videoTrack = {
     requestFrame,
     stop: stopTrack,
   } as unknown as MediaStreamTrack & { requestFrame: () => void };
 
+  const audioTracks: MediaStreamTrack[] = [];
+
+  const addTrack = vi.fn((track: MediaStreamTrack) => {
+    audioTracks.push(track);
+  });
+
   const stream = {
-    getVideoTracks: vi.fn(() => [track]),
-    getTracks: vi.fn(() => [track]),
+    getVideoTracks: vi.fn(() => [videoTrack]),
+    getAudioTracks: vi.fn(() => audioTracks),
+    getTracks: vi.fn(() => [videoTrack, ...audioTracks]),
+    addTrack,
   } as unknown as MediaStream;
 
   const captureStream = vi.fn(() => stream);
@@ -88,6 +99,24 @@ const createMockCanvas = () => {
     requestFrame,
     stopTrack,
     captureStream,
+    addTrack,
+  };
+};
+
+const createMockAudioStream = () => {
+  const stopTrack = vi.fn();
+  const audioTrack = {
+    stop: stopTrack,
+  } as unknown as MediaStreamTrack;
+
+  return {
+    audioTrack,
+    stopTrack,
+    audioStream: {
+      getAudioTracks: vi.fn(() => [audioTrack]),
+      getVideoTracks: vi.fn(() => []),
+      getTracks: vi.fn(() => [audioTrack]),
+    } as unknown as MediaStream,
   };
 };
 
@@ -97,6 +126,16 @@ describe("VideoRecorder", () => {
     setSupportedMimeTypes([...WEBM_MIME_TYPES, ...MP4_MIME_TYPES]);
     setupMediaRecorderMock();
     (globalThis as any).document = undefined;
+
+    Object.defineProperty(globalThis, "AudioContext", {
+      configurable: true,
+      value: undefined,
+    });
+
+    Object.defineProperty(globalThis, "webkitAudioContext", {
+      configurable: true,
+      value: undefined,
+    });
   });
 
   it("starts recording and captures deterministic frames", () => {
@@ -247,9 +286,15 @@ describe("VideoRecorder", () => {
       stop: vi.fn(),
     } as unknown as MediaStreamTrack & { requestFrame: () => void };
 
+    const captureAudioTracks: MediaStreamTrack[] = [];
+
     const captureStream = {
       getVideoTracks: vi.fn(() => [captureTrack]),
-      getTracks: vi.fn(() => [captureTrack]),
+      getAudioTracks: vi.fn(() => captureAudioTracks),
+      getTracks: vi.fn(() => [captureTrack, ...captureAudioTracks]),
+      addTrack: vi.fn((track: MediaStreamTrack) => {
+        captureAudioTracks.push(track);
+      }),
     } as unknown as MediaStream;
 
     const drawImage = vi.fn();
@@ -290,15 +335,49 @@ describe("VideoRecorder", () => {
     expect(captureTrack.requestFrame).toHaveBeenCalledTimes(1);
   });
 
-  it("throws when scale is outside the supported range", () => {
+  it("throws when scale is outside the supported range", async () => {
     const { canvas } = createMockCanvas();
     const recorder = new VideoRecorder();
 
-    expect(() => recorder.start(canvas, { scale: 0 })).toThrow(
+    await expect(recorder.start(canvas, { scale: 0 })).rejects.toThrow(
       "Recording scale must be greater than 0 and less than or equal to 1.",
     );
-    expect(() => recorder.start(canvas, { scale: 1.1 })).toThrow(
+    await expect(recorder.start(canvas, { scale: 1.1 })).rejects.toThrow(
       "Recording scale must be greater than 0 and less than or equal to 1.",
     );
+  });
+
+  it("attaches an external audio track when provided", async () => {
+    const { canvas, addTrack } = createMockCanvas();
+    const { audioStream, audioTrack, stopTrack } = createMockAudioStream();
+    const recorder = new VideoRecorder();
+
+    recorder.start(canvas, { audioStream });
+
+    expect(addTrack).toHaveBeenCalledTimes(1);
+    expect(addTrack).toHaveBeenCalledWith(audioTrack);
+    expect(
+      mediaRecorderMockState.instances[0]?.options?.audioBitsPerSecond,
+    ).toBeDefined();
+
+    await recorder.stopAndEncode();
+
+    expect(stopTrack).toHaveBeenCalledTimes(1);
+  });
+
+  it("continues with video-only recording when audio stream has no tracks", () => {
+    const { canvas, addTrack } = createMockCanvas();
+    const recorder = new VideoRecorder();
+
+    recorder.start(canvas, {
+      audioStream: {
+        getAudioTracks: vi.fn(() => []),
+      } as unknown as MediaStream,
+    });
+
+    expect(addTrack).not.toHaveBeenCalled();
+    expect(
+      mediaRecorderMockState.instances[0]?.options?.audioBitsPerSecond,
+    ).toBeUndefined();
   });
 });

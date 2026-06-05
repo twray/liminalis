@@ -919,39 +919,57 @@ createScene
 
 ### Media Export
 
-Media export is a major feature in Liminalis, with fully in-framework support
-for both images and video designed for live performance workflows and polished
-sharing output.
+Media export follows a progressive setup model:
 
-**What you get out of the box:**
+- Out of the box defaults for the simplest workflow (video export with no audio).
+- Some configuration for audio integration (permissions + DAW routing).
 
-- ✅ PNG screenshot export while your visualisation is running
-- ✅ Deterministic WebM recording and export with integrated start/stop
-- ✅ Keyboard-triggered capture flow with no extra tooling
-- ✅ Configurable recording scale for quality vs framerate balancing
+#### 1. Screenshot Capture
 
-No plugin setup, no external capture package, and no additional runtime layer.
+- Shortcut: `Cmd/Ctrl + E`
+- Result: PNG snapshot of the current canvas frame.
 
-#### Keyboard Shortcuts
+#### 2. Video Capture (Default, No Audio)
 
-- **Screenshot export**: `Cmd/Ctrl + E`
-- **Video recording toggle** (start/stop and export): `Cmd/Ctrl + Shift + E`
+- Shortcut: `Cmd/Ctrl + Shift + E` to start and stop recording.
+- Default behavior: video export without audio capture.
 
-#### Capture Performance Tuning
+#### 3. Video Capture With Loopback Audio (Optional)
 
-Use `videoRecordingScale` to tune recording fidelity and runtime throughput.
-Lower values reduce captured resolution and can improve recording performance.
+- Shortcut: `Cmd/Ctrl + Shift + E` to start and stop recording.
+- Result: video export with routed DAW audio when `enableAudioCapture` is set to `true`.
+- Default: `enableAudioCapture` is `false`.
+
+Setup steps:
+
+1. Install and configure a virtual routing tool (Loopback, BlackHole, or similar).
+2. Route your DAW output to a virtual input device.
+3. Keep monitoring enabled in your routing app so you can still hear playback.
+4. Set your DAW output to the routed virtual device.
+5. Configure Liminalis to capture the routed input:
 
 ```typescript
 createScene
   .withSettings({
-    videoRecordingScale: 0.75,
+    // Default is false; set true to enable routed input audio capture.
+    enableAudioCapture: true,
+    // Optional: audioInputDeviceId: "loopback-device-id",
+    // Optional: videoRecordingScale: 0.75,
   })
   .setup(() => {
     // Scene setup
   })
   .render();
 ```
+
+6. Grant microphone permission in the browser when prompted.
+7. Press `Cmd/Ctrl + Shift + E` to start recording and press again to export.
+
+Troubleshooting:
+
+- If you see "Configured audio input device was not found", reselect the routed input device and verify it is active in macOS audio settings.
+- If recording is video-only, verify browser microphone permission and your DAW-to-virtual-input routing.
+- If levels are distorted, reduce DAW master output and loopback gain to avoid clipping.
 
 ## Examples
 
@@ -1187,6 +1205,7 @@ createScene.withSettings({
   width: 1080,
   height: 1920,
   fps: 60,
+  enableAudioCapture: false,
   computerKeyboardDebugEnabled: true,
 });
 ```

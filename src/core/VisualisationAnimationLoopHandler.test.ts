@@ -180,9 +180,27 @@ vi.mock("./SnapshotExporter", () => {
   };
 });
 
-const flushPromises = async () => {
-  await Promise.resolve();
-  await Promise.resolve();
+const flushPromises = async (ticks = 5) => {
+  for (let index = 0; index < ticks; index += 1) {
+    await Promise.resolve();
+  }
+};
+
+const setNavigatorMock = (params?: {
+  userAgent?: string;
+  mediaDevices?: {
+    getUserMedia?: ReturnType<typeof vi.fn>;
+  };
+}) => {
+  Object.defineProperty(globalThis, "navigator", {
+    configurable: true,
+    value: {
+      userAgent:
+        params?.userAgent ??
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+      mediaDevices: params?.mediaDevices,
+    },
+  });
 };
 
 const setupDomGlobals = () => {
@@ -200,6 +218,94 @@ const setupDomGlobals = () => {
 
   (globalThis as any).performance = {
     now: vi.fn(() => 0),
+  };
+
+  Object.defineProperty(globalThis, "AudioContext", {
+    configurable: true,
+    value: undefined,
+  });
+
+  Object.defineProperty(globalThis, "webkitAudioContext", {
+    configurable: true,
+    value: undefined,
+  });
+
+  setNavigatorMock();
+};
+
+const createMockAudioInputStream = (withAudio = true) => {
+  const stopAudioTrack = vi.fn();
+
+  const audioTrack = {
+    stop: stopAudioTrack,
+  } as unknown as MediaStreamTrack;
+
+  const audioTracks = withAudio ? [audioTrack] : [];
+
+  return {
+    stopAudioTrack,
+    stream: {
+      getVideoTracks: vi.fn(() => []),
+      getAudioTracks: vi.fn(() => audioTracks),
+      getTracks: vi.fn(() => [...audioTracks]),
+    } as unknown as MediaStream,
+  };
+};
+
+const setAudioContextMock = () => {
+  const stopNormalizedAudioTrack = vi.fn();
+
+  const normalizedAudioTrack = {
+    stop: stopNormalizedAudioTrack,
+  } as unknown as MediaStreamTrack;
+
+  const destinationStream = {
+    getAudioTracks: vi.fn(() => [normalizedAudioTrack]),
+    getTracks: vi.fn(() => [normalizedAudioTrack]),
+  } as unknown as MediaStream;
+
+  const close = vi.fn(async () => undefined);
+  const resume = vi.fn(async () => undefined);
+
+  class MockAudioContext {
+    state: AudioContextState = "suspended";
+
+    createMediaStreamSource = vi.fn(() => ({
+      connect: vi.fn(),
+    }));
+
+    createGain = vi.fn(() => ({
+      gain: {
+        value: 1,
+      },
+      connect: vi.fn(),
+    }));
+
+    createMediaStreamDestination = vi.fn(() => ({
+      stream: destinationStream,
+    }));
+
+    resume = vi.fn(async () => {
+      this.state = "running";
+      void resume();
+    });
+
+    close = vi.fn(async () => {
+      this.state = "closed";
+      void close();
+    });
+  }
+
+  Object.defineProperty(globalThis, "AudioContext", {
+    configurable: true,
+    value: MockAudioContext,
+  });
+
+  return {
+    destinationStream,
+    stopNormalizedAudioTrack,
+    close,
+    resume,
   };
 };
 
@@ -491,6 +597,8 @@ describe("VisualisationAnimationLoopHandler note dispatch", () => {
       }),
     );
 
+    await flushPromises(20);
+
     expect(recorderMock.start).toHaveBeenCalledTimes(1);
     expect(recorderMock.start.mock.calls[0]?.[1]).toEqual({
       scale: 0.5,
@@ -608,6 +716,392 @@ describe("VisualisationAnimationLoopHandler note dispatch", () => {
     expect(recorderMock.start.mock.calls[0]?.[1]).toEqual({
       scale: 0.75,
       format: "mp4",
+    });
+  });
+
+  it("requests audio input stream when enableAudioCapture is true", async () => {
+    const { default: VisualisationAnimationLoopHandler } =
+      await import("./VisualisationAnimationLoopHandler");
+
+    const mockInputStream = createMockAudioInputStream(true);
+    const getUserMedia = vi.fn(async () => mockInputStream.stream);
+
+    setNavigatorMock({
+      mediaDevices: {
+        getUserMedia,
+      },
+    });
+
+    const handler = new VisualisationAnimationLoopHandler()
+      .withSettings({
+        enableAudioCapture: true,
+      })
+      .setup(() => {});
+
+    handler.render();
+    await flushPromises();
+
+    const recorderMock = getLatestVideoRecorderMock();
+    const keydownListener = getWindowKeyboardListener("keydown");
+
+    keydownListener(
+      createKeyboardEvent({
+        key: "E",
+        code: "KeyE",
+        ctrlKey: true,
+        shiftKey: true,
+      }),
+    );
+
+    await flushPromises();
+
+    expect(getUserMedia).toHaveBeenCalledTimes(1);
+    expect(getUserMedia).toHaveBeenCalledWith({
+      audio: {
+        autoGainControl: false,
+        echoCancellation: false,
+        noiseSuppression: false,
+      },
+      video: false,
+    });
+    expect(recorderMock.start).toHaveBeenCalledTimes(1);
+    expect(recorderMock.start.mock.calls[0]?.[1]).toEqual({
+      scale: 1,
+      format: "auto",
+      audioStream: mockInputStream.stream,
+    });
+  });
+
+  it("passes configured audio input device id to getUserMedia", async () => {
+    const { default: VisualisationAnimationLoopHandler } =
+      await import("./VisualisationAnimationLoopHandler");
+
+    const mockInputStream = createMockAudioInputStream(true);
+    const getUserMedia = vi.fn(async () => mockInputStream.stream);
+
+    setNavigatorMock({
+      mediaDevices: {
+        getUserMedia,
+      },
+    });
+
+    const handler = new VisualisationAnimationLoopHandler()
+      .withSettings({
+        enableAudioCapture: true,
+        audioInputDeviceId: "daw-loopback-input",
+      })
+      .setup(() => {});
+
+    handler.render();
+    await flushPromises();
+
+    const keydownListener = getWindowKeyboardListener("keydown");
+
+    keydownListener(
+      createKeyboardEvent({
+        key: "E",
+        code: "KeyE",
+        ctrlKey: true,
+        shiftKey: true,
+      }),
+    );
+
+    await flushPromises();
+
+    expect(getUserMedia).toHaveBeenCalledTimes(1);
+    expect(getUserMedia).toHaveBeenCalledWith({
+      audio: {
+        autoGainControl: false,
+        deviceId: {
+          exact: "daw-loopback-input",
+        },
+        echoCancellation: false,
+        noiseSuppression: false,
+      },
+      video: false,
+    });
+  });
+
+  it("normalizes input-device audio via AudioContext when available", async () => {
+    const { default: VisualisationAnimationLoopHandler } =
+      await import("./VisualisationAnimationLoopHandler");
+
+    const mockInputStream = createMockAudioInputStream(true);
+    const getUserMedia = vi.fn(async () => mockInputStream.stream);
+    const audioContextMock = setAudioContextMock();
+
+    setNavigatorMock({
+      mediaDevices: {
+        getUserMedia,
+      },
+    });
+
+    const handler = new VisualisationAnimationLoopHandler()
+      .withSettings({
+        enableAudioCapture: true,
+      })
+      .setup(() => {});
+
+    handler.render();
+    await flushPromises();
+
+    const recorderMock = getLatestVideoRecorderMock();
+    const keydownListener = getWindowKeyboardListener("keydown");
+
+    keydownListener(
+      createKeyboardEvent({
+        key: "E",
+        code: "KeyE",
+        ctrlKey: true,
+        shiftKey: true,
+      }),
+    );
+
+    await flushPromises();
+
+    expect(recorderMock.start).toHaveBeenCalledTimes(1);
+    expect(recorderMock.start.mock.calls[0]?.[1]).toEqual({
+      scale: 1,
+      format: "auto",
+      audioStream: audioContextMock.destinationStream,
+    });
+
+    keydownListener(
+      createKeyboardEvent({
+        key: "E",
+        code: "KeyE",
+        ctrlKey: true,
+        shiftKey: true,
+      }),
+    );
+
+    await flushPromises();
+
+    expect(audioContextMock.stopNormalizedAudioTrack).toHaveBeenCalledTimes(1);
+    expect(audioContextMock.close).toHaveBeenCalledTimes(1);
+    expect(audioContextMock.resume).toHaveBeenCalledTimes(1);
+  });
+
+  it("falls back to video-only with warning when audio input capture is unsupported", async () => {
+    const { default: VisualisationAnimationLoopHandler } =
+      await import("./VisualisationAnimationLoopHandler");
+
+    setNavigatorMock({
+      mediaDevices: {},
+    });
+
+    const handler = new VisualisationAnimationLoopHandler()
+      .withSettings({ enableAudioCapture: true })
+      .setup(() => {});
+
+    handler.render();
+    await flushPromises();
+
+    const recorderMock = getLatestVideoRecorderMock();
+    const keydownListener = getWindowKeyboardListener("keydown");
+
+    keydownListener(
+      createKeyboardEvent({
+        key: "E",
+        code: "KeyE",
+        ctrlKey: true,
+        shiftKey: true,
+      }),
+    );
+
+    await flushPromises();
+
+    expect(vi.mocked(logMessage)).toHaveBeenCalledWith(
+      "Audio input capture is unavailable in this browser. Recording video only.",
+    );
+    expect(recorderMock.start.mock.calls[0]?.[1]).toEqual({
+      scale: 1,
+      format: "auto",
+    });
+  });
+
+  it("falls back to video-only with warning when audio input permission is denied", async () => {
+    const { default: VisualisationAnimationLoopHandler } =
+      await import("./VisualisationAnimationLoopHandler");
+
+    const getUserMedia = vi.fn(async () => {
+      throw {
+        name: "NotAllowedError",
+      };
+    });
+
+    setNavigatorMock({
+      mediaDevices: {
+        getUserMedia,
+      },
+    });
+
+    const handler = new VisualisationAnimationLoopHandler()
+      .withSettings({ enableAudioCapture: true })
+      .setup(() => {});
+
+    handler.render();
+    await flushPromises();
+
+    const recorderMock = getLatestVideoRecorderMock();
+    const keydownListener = getWindowKeyboardListener("keydown");
+
+    keydownListener(
+      createKeyboardEvent({
+        key: "E",
+        code: "KeyE",
+        ctrlKey: true,
+        shiftKey: true,
+      }),
+    );
+
+    await flushPromises();
+
+    expect(vi.mocked(logMessage)).toHaveBeenCalledWith(
+      "Audio input capture was denied. Recording video only.",
+    );
+    expect(recorderMock.start.mock.calls[0]?.[1]).toEqual({
+      scale: 1,
+      format: "auto",
+    });
+  });
+
+  it("falls back to video-only with warning when selected input has no audio track", async () => {
+    const { default: VisualisationAnimationLoopHandler } =
+      await import("./VisualisationAnimationLoopHandler");
+
+    const mockInputStream = createMockAudioInputStream(false);
+    const getUserMedia = vi.fn(async () => mockInputStream.stream);
+
+    setNavigatorMock({
+      mediaDevices: {
+        getUserMedia,
+      },
+    });
+
+    const handler = new VisualisationAnimationLoopHandler()
+      .withSettings({ enableAudioCapture: true })
+      .setup(() => {});
+
+    handler.render();
+    await flushPromises();
+
+    const recorderMock = getLatestVideoRecorderMock();
+    const keydownListener = getWindowKeyboardListener("keydown");
+
+    keydownListener(
+      createKeyboardEvent({
+        key: "E",
+        code: "KeyE",
+        ctrlKey: true,
+        shiftKey: true,
+      }),
+    );
+
+    await flushPromises();
+
+    expect(vi.mocked(logMessage)).toHaveBeenCalledWith(
+      "No audio track was returned from the selected input. Recording video only.",
+    );
+    expect(recorderMock.start.mock.calls[0]?.[1]).toEqual({
+      scale: 1,
+      format: "auto",
+    });
+  });
+
+  it("cleans up active audio-input stream when recording stops", async () => {
+    const { default: VisualisationAnimationLoopHandler } =
+      await import("./VisualisationAnimationLoopHandler");
+
+    const mockInputStream = createMockAudioInputStream(true);
+    const getUserMedia = vi.fn(async () => mockInputStream.stream);
+
+    setNavigatorMock({
+      mediaDevices: {
+        getUserMedia,
+      },
+    });
+
+    const handler = new VisualisationAnimationLoopHandler()
+      .withSettings({ enableAudioCapture: true })
+      .setup(() => {});
+
+    handler.render();
+    await flushPromises();
+
+    const keydownListener = getWindowKeyboardListener("keydown");
+
+    keydownListener(
+      createKeyboardEvent({
+        key: "E",
+        code: "KeyE",
+        ctrlKey: true,
+        shiftKey: true,
+      }),
+    );
+
+    await flushPromises();
+
+    keydownListener(
+      createKeyboardEvent({
+        key: "E",
+        code: "KeyE",
+        ctrlKey: true,
+        shiftKey: true,
+      }),
+    );
+
+    await flushPromises();
+
+    expect(mockInputStream.stopAudioTrack).toHaveBeenCalledTimes(1);
+  });
+
+  it("falls back to video-only with warning when configured input device is missing", async () => {
+    const { default: VisualisationAnimationLoopHandler } =
+      await import("./VisualisationAnimationLoopHandler");
+
+    const getUserMedia = vi.fn(async () => {
+      throw {
+        name: "NotFoundError",
+      };
+    });
+
+    setNavigatorMock({
+      mediaDevices: {
+        getUserMedia,
+      },
+    });
+
+    const handler = new VisualisationAnimationLoopHandler()
+      .withSettings({
+        enableAudioCapture: true,
+        audioInputDeviceId: "missing-device",
+      })
+      .setup(() => {});
+
+    handler.render();
+    await flushPromises();
+
+    const recorderMock = getLatestVideoRecorderMock();
+    const keydownListener = getWindowKeyboardListener("keydown");
+
+    keydownListener(
+      createKeyboardEvent({
+        key: "E",
+        code: "KeyE",
+        ctrlKey: true,
+        shiftKey: true,
+      }),
+    );
+
+    await flushPromises();
+
+    expect(vi.mocked(logMessage)).toHaveBeenCalledWith(
+      "Configured audio input device was not found. Recording video only.",
+    );
+    expect(recorderMock.start.mock.calls[0]?.[1]).toEqual({
+      scale: 1,
+      format: "auto",
     });
   });
 
