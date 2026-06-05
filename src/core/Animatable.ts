@@ -40,6 +40,7 @@ class Animatable<TProps extends object> {
 
   #initialProps: TProps;
   #firstInvokedTime: number;
+  #currentFrameTimeInMs: number;
   #segments: Segment<TProps>[] = [];
   #appliedOptions: Partial<AnimationSegmentOptions> = {};
   #propsSnapshot: Partial<TProps> | null = null;
@@ -50,6 +51,15 @@ class Animatable<TProps extends object> {
   constructor(props: TProps, firstInvokedTime: number) {
     this.#initialProps = this.#cloneValue(props);
     this.#firstInvokedTime = firstInvokedTime;
+    this.#currentFrameTimeInMs = firstInvokedTime;
+  }
+
+  get currentProps(): Readonly<TProps> {
+    return this.getCurrentProps(this.#currentFrameTimeInMs);
+  }
+
+  setCurrentFrameTime(timeInMs: number): void {
+    this.#currentFrameTimeInMs = timeInMs;
   }
 
   updateInitialProps(props: TProps): void {
@@ -57,6 +67,7 @@ class Animatable<TProps extends object> {
   }
 
   captureCurrentProps(timeInMs: number): void {
+    this.#currentFrameTimeInMs = timeInMs;
     this.#propsSnapshot = this.getCurrentProps(timeInMs);
   }
 
@@ -85,6 +96,7 @@ class Animatable<TProps extends object> {
   }
 
   getCurrentProps(timeInMs: number): TProps {
+    this.#currentFrameTimeInMs = timeInMs;
     const relativeTime = timeInMs - this.#firstInvokedTime;
 
     // Build timeline: calculate effective start times for all segments

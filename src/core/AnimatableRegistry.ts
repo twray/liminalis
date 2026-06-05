@@ -25,6 +25,7 @@ class AnimatableRegistry {
 
     const existing = this.#registry.get(id);
     if (existing) {
+      existing.setCurrentFrameTime(timeInMs);
       // Capture current animated state before rebuilding segments
       // This enables smooth transitions when re-attacking during release
       existing.captureCurrentProps(timeInMs);
@@ -36,13 +37,14 @@ class AnimatableRegistry {
 
     // Create new Animatable
     const animatable = new Animatable<T>(props, timeInMs);
+    animatable.setCurrentFrameTime(timeInMs);
     this.#registry.set(id, animatable);
     return animatable;
   }
 
   queue<T extends object>(
     mergedProps: T,
-    renderFn: (props: T) => void
+    renderFn: (props: T) => void,
   ): Animatable<T> {
     const animatable = this.getOrCreate(mergedProps, this.#currentTimeInMs);
     const timeInMs = this.#currentTimeInMs;

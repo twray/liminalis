@@ -719,6 +719,37 @@ circle({ cx: 100, cy: 100, radius: 50 })
   .animateTo({ radius: 100 });
 ```
 
+#### Inspecting Current Animated Values Per Frame with `currentProps`
+
+Each shape primitive returns an `Animatable` instance. You can read `currentProps`
+to inspect the interpolated numeric values for the current frame.
+
+```typescript
+visual(({ draw, timeAttacked, timeReleased }) => {
+  draw(({ rect, width, center }) => {
+    const barWidth = 80;
+    const initialProps = {
+      x: center.x - barWidth / 2,
+      y: 500,
+      width: barWidth,
+      height: 0,
+    };
+
+    const { currentProps } = rect(initialProps)
+      .withOptions({ duration: 500, easing: "easeOutBack" })
+      .animateTo({ y: 300, height: 200 }, { at: timeAttacked })
+      .animateTo(initialProps, { at: timeReleased });
+
+    const { x, y, width: currentWidth, height: currentHeight } = currentProps;
+
+    // x, y, currentWidth, currentHeight are the shape's values in this frame.
+    console.log(x, y, currentWidth, currentHeight, width);
+  });
+});
+```
+
+`currentProps` is readonly and updates automatically as frame time advances.
+
 #### Easing Functions
 
 Add natural motion with easing:

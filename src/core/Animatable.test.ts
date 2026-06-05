@@ -76,6 +76,30 @@ describe("Animatable", () => {
       expect(props.y).toBe(20); // Preserved
       expect(props.z).toBe(30); // Preserved
     });
+
+    it("exposes currentProps for the current frame", () => {
+      const anim = new Animatable({ x: 0, y: 10 }, 0);
+
+      anim
+        .withOptions({ duration: 1000 })
+        .animateTo({ x: 100 }, { at: 0 })
+        .animateTo({ y: 110 }, { at: 500 });
+
+      anim.setCurrentFrameTime(750);
+
+      expect(anim.currentProps).toEqual({ x: 75, y: 35 });
+    });
+
+    it("updates currentProps when frame time changes", () => {
+      const anim = new Animatable({ x: 0 }, 0);
+      anim.animateTo({ x: 100 }, { duration: 1000 });
+
+      anim.setCurrentFrameTime(250);
+      expect(anim.currentProps.x).toBe(25);
+
+      anim.setCurrentFrameTime(800);
+      expect(anim.currentProps.x).toBe(80);
+    });
   });
 
   describe("updateInitialProps", () => {
