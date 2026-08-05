@@ -3,6 +3,11 @@ export interface Point2D {
   y: number;
 }
 
+export interface Positioned2D {
+  x?: number;
+  y?: number;
+}
+
 export interface Dimensions2D {
   width: number;
   height: number;

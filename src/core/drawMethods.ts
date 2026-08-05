@@ -4,6 +4,7 @@ import type {
   FillStyles,
   PartialDrawStyles,
   Point2D,
+  Positioned2D,
   StrokeAlignment,
   StrokeStyles,
   WithBlend,
@@ -47,8 +48,8 @@ export interface TransformProps {
 
 export interface LineProps
   extends StrokeStyles, WithOpacity, WithBlend, TransformProps {
-  start: Partial<Point2D>;
-  end: Partial<Point2D>;
+  start: Point2D;
+  end: Point2D;
 }
 
 export interface PolygonProps
@@ -126,7 +127,7 @@ export interface EllipseProps extends EllipticGeometryProps {
 
 export interface RectProps
   extends
-    Partial<Point2D>,
+    Positioned2D,
     Dimensions2D,
     FillStyles,
     StrokeStyles,
@@ -139,7 +140,7 @@ export interface RectProps
 
 export interface TextProps
   extends
-    Partial<Point2D>,
+    Positioned2D,
     FillStyles,
     StrokeStyles,
     WithOpacity,
