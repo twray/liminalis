@@ -37,6 +37,7 @@ describe("drawMethods transform props", () => {
       fillRect: vi.fn(),
       fillText: vi.fn(),
       strokeText: vi.fn(),
+      drawImage: vi.fn(),
       measureText: vi.fn(
         (value: string) =>
           ({
@@ -1450,6 +1451,79 @@ describe("drawMethods transform props", () => {
       );
 
       expect(mockContext.globalCompositeOperation).toBe("screen");
+    });
+  });
+
+  describe("image rendering integration", () => {
+    it("draws image when ImageAssetCache returns a ready asset", async () => {
+      vi.resetModules();
+
+      const readySource = {} as CanvasImageSource;
+      const getReadyAssetMock = vi.fn(() => ({
+        source: readySource,
+        width: 320,
+        height: 180,
+      }));
+
+      vi.doMock("./ImageAssetCache", () => ({
+        imageAssetCache: {
+          preload: vi.fn(),
+          getReadyAsset: getReadyAssetMock,
+        },
+      }));
+
+      const { createDrawContext } = await import("./drawMethods");
+      const drawContext = createDrawContext();
+
+      drawContext.executeDrawCallback(
+        (d) => {
+          d.image("https://example.com/ready.png", { x: 12, y: 34 });
+        },
+        mockContext,
+        800,
+        600,
+        0,
+      );
+
+      expect(getReadyAssetMock).toHaveBeenCalledWith(
+        "https://example.com/ready.png",
+      );
+      expect(mockContext.drawImage).toHaveBeenCalledWith(readySource, 12, 34);
+
+      vi.doUnmock("./ImageAssetCache");
+    });
+
+    it("does not draw when ImageAssetCache has no ready asset", async () => {
+      vi.resetModules();
+
+      const getReadyAssetMock = vi.fn(() => null);
+
+      vi.doMock("./ImageAssetCache", () => ({
+        imageAssetCache: {
+          preload: vi.fn(),
+          getReadyAsset: getReadyAssetMock,
+        },
+      }));
+
+      const { createDrawContext } = await import("./drawMethods");
+      const drawContext = createDrawContext();
+
+      drawContext.executeDrawCallback(
+        (d) => {
+          d.image("https://example.com/pending.png", { x: 10, y: 20 });
+        },
+        mockContext,
+        800,
+        600,
+        0,
+      );
+
+      expect(getReadyAssetMock).toHaveBeenCalledWith(
+        "https://example.com/pending.png",
+      );
+      expect(mockContext.drawImage).not.toHaveBeenCalled();
+
+      vi.doUnmock("./ImageAssetCache");
     });
   });
 });

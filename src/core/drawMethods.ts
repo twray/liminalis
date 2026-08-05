@@ -19,6 +19,7 @@ import {
 } from "../util";
 import type Animatable from "./Animatable";
 import AnimatableRegistry from "./AnimatableRegistry";
+import { imageAssetCache, type LoadedImageAsset } from "./ImageAssetCache";
 
 const DEFAULT_BACKGROUND_COLOR = "#fff";
 const DEFAULT_FILL_STYLE = "transparent";
@@ -45,6 +46,8 @@ export interface TransformProps {
   scaleY?: number;
   scaleOrigin?: TransformOrigin;
 }
+
+interface ContextGlobalProps extends WithOpacity, WithBlend {}
 
 export interface LineProps
   extends StrokeStyles, WithOpacity, WithBlend, TransformProps {
@@ -149,6 +152,9 @@ export interface TextProps
   fontStyle?: string;
 }
 
+export interface ImageProps
+  extends Positioned2D, WithOpacity, WithBlend, TransformProps {}
+
 export interface DrawMethods {
   width: number;
   height: number;
@@ -164,32 +170,8 @@ export interface DrawMethods {
   ellipse: (props: EllipseProps) => Animatable<EllipseProps>;
   rect: (props: RectProps) => Animatable<RectProps>;
   text: (text: string, props?: TextProps) => Animatable<TextProps>;
+  image: (imageSrc: string, props?: ImageProps) => Animatable<ImageProps>;
 }
-
-const background = (
-  context: CanvasRenderingContext2D,
-  props: BackgroundProps,
-) => {
-  const { color: backgroundColor = DEFAULT_BACKGROUND_COLOR } = props;
-
-  context.save();
-
-  context.fillStyle = backgroundColor;
-
-  context.fillRect(
-    0,
-    0,
-    context.canvas.width * window.devicePixelRatio,
-    context.canvas.height * window.devicePixelRatio,
-  );
-
-  context.restore();
-};
-
-const centerOf = (dimensions: Dimensions2D): Point2D => {
-  const { width, height } = dimensions;
-  return { x: width / 2, y: height / 2 };
-};
 
 const resolveTransformOrigin = (
   origin: TransformOrigin | undefined,
@@ -279,6 +261,41 @@ const getTextBounds = (
   };
 };
 
+const setContextGlobals = (
+  context: CanvasRenderingContext2D,
+  props: ContextGlobalProps,
+) => {
+  const { opacity = 0, blend = DEFAULT_BLEND_MODE } = props;
+
+  context.globalAlpha = opacity;
+  context.globalCompositeOperation = blend;
+};
+
+const background = (
+  context: CanvasRenderingContext2D,
+  props: BackgroundProps,
+) => {
+  const { color: backgroundColor = DEFAULT_BACKGROUND_COLOR } = props;
+
+  context.save();
+
+  context.fillStyle = backgroundColor;
+
+  context.fillRect(
+    0,
+    0,
+    context.canvas.width * window.devicePixelRatio,
+    context.canvas.height * window.devicePixelRatio,
+  );
+
+  context.restore();
+};
+
+const centerOf = (dimensions: Dimensions2D): Point2D => {
+  const { width, height } = dimensions;
+  return { x: width / 2, y: height / 2 };
+};
+
 const line = (context: CanvasRenderingContext2D, props: LineProps) => {
   const {
     start: { x: startX = 0, y: startY = 0 },
@@ -302,8 +319,8 @@ const line = (context: CanvasRenderingContext2D, props: LineProps) => {
   renderWithTransform(context, props, bounds, () => {
     context.save();
 
-    context.globalAlpha = opacity;
-    context.globalCompositeOperation = blend;
+    setContextGlobals(context, { opacity, blend });
+
     context.strokeStyle = strokeStyle;
     context.lineWidth = strokeWidth;
 
@@ -366,8 +383,7 @@ const polygon = (context: CanvasRenderingContext2D, props: PolygonProps) => {
   renderWithTransform(context, props, bounds, () => {
     context.save();
 
-    context.globalAlpha = opacity;
-    context.globalCompositeOperation = blend;
+    setContextGlobals(context, { opacity, blend });
 
     if (strokeStyle !== "transparent" && strokeWidth > 0) {
       context.strokeStyle = strokeStyle;
@@ -566,8 +582,7 @@ const bezier = (context: CanvasRenderingContext2D, props: BezierProps) => {
   renderWithTransform(context, props, bounds, () => {
     context.save();
 
-    context.globalAlpha = opacity;
-    context.globalCompositeOperation = blend;
+    setContextGlobals(context, { opacity, blend });
 
     if (fillStyle !== "transparent") {
       context.fillStyle = fillStyle;
@@ -691,8 +706,7 @@ const arc = (context: CanvasRenderingContext2D, props: ArcProps) => {
   renderWithTransform(context, props, bounds, () => {
     context.save();
 
-    context.globalAlpha = opacity;
-    context.globalCompositeOperation = blend;
+    setContextGlobals(context, { opacity, blend });
 
     // Draw fill
     if (fillStyle !== "transparent") {
@@ -777,8 +791,7 @@ const rect = (context: CanvasRenderingContext2D, props: RectProps) => {
   renderWithTransform(context, props, bounds, () => {
     context.save();
 
-    context.globalAlpha = opacity;
-    context.globalCompositeOperation = blend;
+    setContextGlobals(context, { opacity, blend });
 
     // Draw fill
     if (fillStyle !== "transparent") {
@@ -853,8 +866,8 @@ const text = (
   renderWithTransform(context, props, bounds, () => {
     context.save();
 
-    context.globalAlpha = opacity;
-    context.globalCompositeOperation = blend;
+    setContextGlobals(context, { opacity, blend });
+
     context.font = fontStyle;
     context.textBaseline = "top";
 
@@ -868,6 +881,30 @@ const text = (
       context.lineWidth = strokeWidth;
       context.strokeText(textValue, x, y);
     }
+
+    context.restore();
+  });
+};
+
+const image = (
+  context: CanvasRenderingContext2D,
+  asset: LoadedImageAsset,
+  props: ImageProps,
+) => {
+  const { x = 0, y = 0, opacity = 1, blend = DEFAULT_BLEND_MODE } = props;
+
+  const bounds = {
+    x,
+    y,
+    width: asset.width,
+    height: asset.height,
+  };
+
+  renderWithTransform(context, props, bounds, () => {
+    context.save();
+
+    setContextGlobals(context, { opacity, blend });
+    context.drawImage(asset.source, x, y);
 
     context.restore();
   });
@@ -948,6 +985,14 @@ export const createDrawContext = (): DrawContext => {
         registry.queue(mergeStyles(props), (p) => rect(context, p)),
       text: (textValue: string, props: TextProps = {}) =>
         registry.queue(mergeStyles(props), (p) => text(context, textValue, p)),
+      image: (imageSrc: string, props: ImageProps = {}) =>
+        registry.queue(mergeStyles(props), (p) => {
+          const readyImageAsset = imageAssetCache.getReadyAsset(imageSrc);
+
+          if (readyImageAsset) {
+            image(context, readyImageAsset, p);
+          }
+        }),
     };
 
     // Execute the user's callback (queues shapes and their .to() animations)
