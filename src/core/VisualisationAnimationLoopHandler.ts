@@ -2,6 +2,7 @@ import { Utilities, WebMidi } from "webmidi";
 
 import AudioCapture, { type AudioCaptureSession } from "./AudioCapture";
 import CanvasRenderer from "./CanvasRenderer";
+import { imageAssetCache } from "./ImageAssetCache";
 import SnapshotExporter from "./SnapshotExporter";
 import VideoRecorder from "./VideoRecorder";
 import { createDrawContext } from "./drawMethods";
@@ -79,6 +80,7 @@ interface SetupFunctionProps<TState> {
   width: number;
   height: number;
   center: Point2D;
+  preload: (imageUrl: string | string[]) => void;
   onNoteDown: (callback: NoteDownEventCallback) => void;
   onNoteUp: (callback: NoteUpEventCallback) => void;
   onRender: (callback: FrameEventCallback) => void;
@@ -214,6 +216,10 @@ class VisualisationAnimationLoopHandler<TState> {
       atTime(0, callback);
     };
 
+    const preload = (imageUrl: string | string[]) => {
+      imageAssetCache.preload(imageUrl);
+    };
+
     const canvasWidth = this.#settings.dimensions?.[0] ?? window.innerWidth;
     const canvasHeight = this.#settings.dimensions?.[1] ?? window.innerHeight;
     const center = { x: canvasWidth / 2, y: canvasHeight / 2 };
@@ -223,6 +229,7 @@ class VisualisationAnimationLoopHandler<TState> {
       width: canvasWidth,
       height: canvasHeight,
       center,
+      preload,
       onNoteDown,
       onNoteUp,
       onRender,

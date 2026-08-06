@@ -217,4 +217,25 @@ describe("ImageAssetCache", () => {
     expect(FakeImage.requestCountByUrl.get(urlA)).toBe(1);
     expect(FakeImage.requestCountByUrl.get(urlB)).toBe(1);
   });
+
+  it("preload accepts a single URL string", async () => {
+    const url = "https://example.com/single.png";
+
+    FakeImage.behaviorByUrl.set(url, "success");
+
+    Object.defineProperty(globalThis, "createImageBitmap", {
+      configurable: true,
+      writable: true,
+      value: vi.fn().mockResolvedValue({ width: 10, height: 10 }),
+    });
+
+    const { imageAssetCache } = await import("./ImageAssetCache");
+
+    imageAssetCache.preload(url);
+    imageAssetCache.preload(url);
+
+    await nextTick();
+
+    expect(FakeImage.requestCountByUrl.get(url)).toBe(1);
+  });
 });

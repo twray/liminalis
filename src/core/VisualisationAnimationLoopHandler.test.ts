@@ -37,6 +37,10 @@ const snapshotExporterMockState = {
   }>,
 };
 
+const imageAssetCacheMockState = {
+  preload: vi.fn(),
+};
+
 vi.mock("./CanvasRenderer", () => {
   return {
     default: class MockCanvasRenderer {
@@ -176,6 +180,14 @@ vi.mock("./SnapshotExporter", () => {
       captureAndDownload(canvas: HTMLCanvasElement) {
         return this.#instance.captureAndDownload(canvas);
       }
+    },
+  };
+});
+
+vi.mock("./ImageAssetCache", () => {
+  return {
+    imageAssetCache: {
+      preload: imageAssetCacheMockState.preload,
     },
   };
 });
@@ -375,8 +387,23 @@ describe("VisualisationAnimationLoopHandler note dispatch", () => {
     canvasRendererMockState.instances = [];
     videoRecorderMockState.instances = [];
     snapshotExporterMockState.instances = [];
+    imageAssetCacheMockState.preload.mockReset();
     setupDomGlobals();
     vi.mocked(logMessage).mockReset();
+  });
+
+  it("exposes setup preload(imageUrl) and forwards to imageAssetCache", async () => {
+    const { default: VisualisationAnimationLoopHandler } =
+      await import("./VisualisationAnimationLoopHandler");
+
+    new VisualisationAnimationLoopHandler().setup(({ preload }) => {
+      preload("https://example.com/setup-preload.png");
+    });
+
+    expect(imageAssetCacheMockState.preload).toHaveBeenCalledTimes(1);
+    expect(imageAssetCacheMockState.preload).toHaveBeenCalledWith(
+      "https://example.com/setup-preload.png",
+    );
   });
 
   it("dispatches note callbacks immediately in MIDI arrival order", async () => {

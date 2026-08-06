@@ -10,7 +10,7 @@ A creative coding framework for building real-time music visualizations in TypeS
 - 🎨 **Lifecycle-Driven Animations**: Objects respond to attack, sustain, and release phases with automatic state management
 - ⏱️ **Timeline Animation System**: Create smooth, overlapping animations with function or string-based easing
 - 🖼️ **Unified Rendering API**: Compose 2D canvas primitives and isometric views in the same render operation
-- ✏️ **Expanded 2D Primitives**: `line`, `polygon`, `bezier`, `arc`, `ellipse`, `rect`, `circle`, and `text`
+- ✏️ **Expanded 2D Primitives**: `line`, `polygon`, `bezier`, `arc`, `ellipse`, `rect`, `circle`, `text`, and `image`
 - 🌈 **Blend Mode Styling**: Apply compositing via per-shape `blend` or scoped `withStyles({ blend })`
 - 🎲 **Isometric Rendering**: Built-in isometric projection with cuboids and tiles
 
@@ -377,12 +377,13 @@ Both `onRender` (for static content) and `visual(...)` renderers (for MIDI visua
 // Access both 2D and isometric rendering in the same callback
 onRender(({ draw, renderIsometric }) => {
   // Draw 2D canvas primitives
-  draw(({ circle, rect, background, withStyles }) => {
+  draw(({ circle, rect, image, background, withStyles }) => {
     background({ color: "#faf0e6" });
 
     withStyles({ strokeStyle: "#333", strokeWidth: 2 }, () => {
       circle({ cx: 400, cy: 300, radius: 50 });
       rect({ x: 100, y: 100, width: 200, height: 100 });
+      image("https://picsum.photos/240/160?id=1", { x: 500, y: 100 });
     });
   });
 
@@ -608,6 +609,75 @@ createScene
 ```
 
 ### Shape Animations with `.animateTo()`
+
+### Image Rendering and Preloading
+
+The `image()` primitive draws image assets by URL, and Liminalis caches loaded
+assets internally for reuse across frames and visuals.
+
+Use the setup-level `preload(imageUrl)` callback when you know assets ahead of
+time and want to warm them before they are first rendered.
+
+#### When to use `preload(imageUrl)`
+
+- Use it in `.setup(...)` or `atStart(...)` for predictable startup assets.
+- Use it when first-frame rendering should avoid waiting for network/decode.
+- Avoid changing URLs every frame (for example appending `Date.now()` in a
+  render loop), which bypasses caching.
+
+#### Example: Preload in setup, render on first note
+
+```typescript
+const photoTile = visual<{ imageUrl: string; x: number; y: number }>(
+  ({ props, draw }) => {
+    draw(({ image, rect }) => {
+      image(props.imageUrl, { x: props.x, y: props.y });
+    });
+  },
+);
+
+createScene
+  .setup(({ preload, atStart, onNoteDown, onNoteUp }) => {
+    const imageUrls = [
+      "https://picsum.photos/240/160?id=1",
+      "https://picsum.photos/240/160?id=2",
+    ];
+
+    preload(imageUrls);
+
+    atStart(({ scene }) => {
+      // Optional static frame so the app has visible content before first note.
+      scene.addPermanentlyWithKey(
+        "frame",
+        visual(({ draw }) => {
+          draw(({ background, text }) => {
+            background({ color: "#faf0e6" });
+            text("Press a key (1-9) or MIDI note to show an image", {
+              x: 40,
+              y: 40,
+              fontStyle: "18px serif",
+            });
+          });
+        })(),
+      );
+    });
+
+    onNoteDown(({ scene, note, attack }) => {
+      const imageUrl = imageUrls[note.charCodeAt(0) % imageUrls.length];
+
+      // Add a temporary visual and trigger lifecycle immediately.
+      scene.addWithKey(
+        note,
+        photoTile({ imageUrl, x: 140, y: 140 }).attack(attack),
+      );
+    });
+
+    onNoteUp(({ scene, note }) => {
+      scene.getByKey(note)?.release(500);
+    });
+  })
+  .render();
+```
 
 Liminalis features a powerful declarative animation system for shape primitives. The `.animateTo()` method (internally powered by the `Animatable` class) creates smooth, timeline-based animations with support for:
 
@@ -1254,6 +1324,7 @@ createScene.setup(({ atStart, onNoteDown, onNoteUp, onRender }) => {
 **Setup Function Parameters:**
 
 - `atStart(callback)` - Run once on initialization
+- `preload(imageUrl)` - Warm a single image URL in the shared image cache
 - `onNoteDown(callback)` - Handle MIDI note press
 - `onNoteUp(callback)` - Handle MIDI note release
 - `onRender(callback)` - Render static content each frame
@@ -1267,6 +1338,7 @@ createScene.setup(({ atStart, onNoteDown, onNoteUp, onRender }) => {
 The `onRender` callback receives an object with:
 
 - `draw(callback)` - Access 2D canvas primitives (`background`, `line`, `polygon`, `bezier`, `arc`, `circle`, `ellipse`, `rect`, `text`, `withStyles`, etc.)
+- `draw(callback)` - Access 2D canvas primitives (`background`, `line`, `polygon`, `bezier`, `arc`, `circle`, `ellipse`, `rect`, `text`, `image`, `withStyles`, etc.)
 - `renderIsometric(callback)` - Access isometric 3D primitives (cuboid, tile, withStyles)
 - `time` - Current time in milliseconds
 - `width`, `height` - Canvas dimensions
@@ -1356,6 +1428,7 @@ The renderer callback passed into `visual(...)` receives:
 
 - **Canvas**: `context`, `width`, `height`, `center`
 - **Primitives**: `background`, `line`, `polygon`, `bezier`, `arc`, `circle`, `ellipse`, `rect`, `text`
+- **Primitives**: `background`, `line`, `polygon`, `bezier`, `arc`, `circle`, `ellipse`, `rect`, `text`, `image`
 - **Styling**: `withStyles`
 
 **Render Isometric Callback (3D Projection):**
@@ -1535,6 +1608,18 @@ Text rendering defaults:
 - `strokeStyle`: `"transparent"` (no stroke unless specified)
 - Text is rendered with `textBaseline = "top"`, so `x` and `y` map to top-based positioning.
 - Center-based transforms are calculated from measured text bounds.
+
+#### `image(url, { x?, y?, opacity?, blend?, rotate?, rotateOrigin?, scale?, scaleX?, scaleY?, scaleOrigin? })`
+
+```typescript
+image("https://picsum.photos/240/160?id=3", {
+  x: 120,
+  y: 80,
+  opacity: 0.95,
+  rotate: -3,
+  blend: "source-over",
+});
+```
 
 ### Styling & Transformations
 

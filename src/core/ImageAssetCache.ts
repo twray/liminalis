@@ -91,7 +91,11 @@ class ImageAssetCache {
     return entry.asset;
   }
 
-  preload(imageSources: string[]): void {
+  preload(imageSourceOrSources: string | string[]): void {
+    const imageSources = Array.isArray(imageSourceOrSources)
+      ? imageSourceOrSources
+      : [imageSourceOrSources];
+
     const uniqueImageSources = [...new Set(imageSources)];
 
     for (const imageSource of uniqueImageSources) {
