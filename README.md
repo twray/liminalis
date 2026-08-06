@@ -270,14 +270,7 @@ import { easeOutBounce } from "easing-utils";
 
 const springCircle = () => {
   return visual<{ xOffset: number }>(
-    ({
-      props,
-      draw,
-      attackValue,
-      releaseFactor,
-      timeAttacked,
-      timeReleased,
-    }) => {
+    ({ props, draw, attackValue, timeAttacked, timeReleased }) => {
       draw(({ circle, center }) => {
         const { xOffset = 0 } = props;
         const { x: cx, y: cy } = center;
@@ -287,7 +280,6 @@ const springCircle = () => {
           cy,
           radius: 0,
           strokeStyle: "#666",
-          opacity: releaseFactor, // Fade during release
         })
           .animateTo(
             { radius: 100 * attackValue }, // Scale by attack velocity
@@ -315,7 +307,6 @@ Your renderer receives these properties automatically:
 
 - **`status`**: Current lifecycle state
 - **`attackValue`**: Attack velocity (0.0 to 1.0)
-- **`releaseFactor`**: Opacity multiplier during release (1.0 → 0.0)
 - **`timeAttacked`**: Timestamp when attack occurred
 - **`timeReleased`**: Timestamp when release occurred
 - **`timeFirstRender`**: Timestamp of first render
@@ -582,14 +573,13 @@ createScene
     onNoteDown(({ scene, note }) => {
       scene.addWithKey(
         note,
-        visual(({ draw, renderIsometric, releaseFactor }) => {
+        visual(({ draw, renderIsometric }) => {
           // 2D circle
           draw(({ center, circle }) => {
             circle({
               cx: center.x,
               cy: center.y,
               radius: 200,
-              opacity: releaseFactor,
             });
           });
 
@@ -1355,7 +1345,7 @@ instance.release(700);
 
 The renderer callback passed into `visual(...)` receives:
 
-- **Lifecycle**: `status`, `attackValue`, `releaseFactor`, `timeAttacked`, `timeReleased`, `timeFirstRender`
+- **Lifecycle**: `status`, `attackValue`, `releasePeriod`, `timeAttacked`, `timeReleased`, `timeFirstRender`
 - **Properties**: `props` (custom props passed during component invocation)
 - **Rendering**: `draw(callback)`, `renderIsometric(callback)`
 - **Timing**: `beforeTime`, `afterTime`, `duringTimeInterval`

@@ -38,7 +38,6 @@ describe("Visual", () => {
         props: { note: "C4" },
         status: "sustained",
         attackValue: 0.75,
-        releaseFactor: 1,
         timeAttacked: 0,
         timeReleased: null,
       }),

@@ -16,7 +16,6 @@ export interface VisualRenderProps<TProps> extends RenderProps {
   props: TProps;
   status: VisualStatus;
   attackValue: NormalizedFloat;
-  releaseFactor: NormalizedFloat;
   releasePeriod: number;
   timeFirstRender: number | null;
   timeAttacked: number | null;
@@ -91,7 +90,6 @@ class Visual<TProps = {}> {
     const {
       props,
       attackValue,
-      releaseFactor,
       releasePeriod,
       isSustaining,
       isReleasing,
@@ -129,7 +127,6 @@ class Visual<TProps = {}> {
       time: timeSinceFirstRender,
       status,
       attackValue,
-      releaseFactor,
       releasePeriod,
       timeFirstRender: 0,
       timeAttacked,
