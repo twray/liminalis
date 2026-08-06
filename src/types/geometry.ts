@@ -13,6 +13,11 @@ export interface Dimensions2D {
   height: number;
 }
 
+export interface OptionalDimensions2D {
+  width?: number;
+  height?: number;
+}
+
 export interface Point3D {
   x: number;
   y: number;

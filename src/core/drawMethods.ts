@@ -2,6 +2,7 @@ import type {
   Corners,
   Dimensions2D,
   FillStyles,
+  OptionalDimensions2D,
   PartialDrawStyles,
   Point2D,
   Positioned2D,
@@ -153,7 +154,14 @@ export interface TextProps
 }
 
 export interface ImageProps
-  extends Positioned2D, WithOpacity, WithBlend, TransformProps {}
+  extends
+    Positioned2D,
+    OptionalDimensions2D,
+    WithOpacity,
+    WithBlend,
+    TransformProps {
+  fit?: "cover" | "contain" | "stretch";
+}
 
 export interface DrawMethods {
   width: number;
@@ -891,22 +899,103 @@ const image = (
   asset: LoadedImageAsset,
   props: ImageProps,
 ) => {
-  const { x = 0, y = 0, opacity = 1, blend = DEFAULT_BLEND_MODE } = props;
+  const {
+    x = 0,
+    y = 0,
+    opacity = 1,
+    blend = DEFAULT_BLEND_MODE,
+    width,
+    height,
+    fit = "cover",
+  } = props;
+
+  const hasScaledDimensions = width !== undefined && height !== undefined;
+
+  if (hasScaledDimensions && (width <= 0 || height <= 0)) {
+    return;
+  }
+
+  const renderedFrameWidth = hasScaledDimensions ? width : asset.width;
+  const renderedFrameHeight = hasScaledDimensions ? height : asset.height;
 
   const bounds = {
     x,
     y,
-    width: asset.width,
-    height: asset.height,
+    width: renderedFrameWidth,
+    height: renderedFrameHeight,
   };
 
   renderWithTransform(context, props, bounds, () => {
     context.save();
 
     setContextGlobals(context, { opacity, blend });
-    context.drawImage(asset.source, x, y);
 
-    context.restore();
+    if (!hasScaledDimensions) {
+      context.drawImage(asset.source, x, y);
+      context.restore();
+      return;
+    }
+
+    switch (fit) {
+      case "stretch": {
+        context.drawImage(asset.source, x, y, width, height);
+        context.restore();
+        return;
+      }
+      case "contain": {
+        const containScale = Math.min(
+          width / asset.width,
+          height / asset.height,
+        );
+        const containedWidth = asset.width * containScale;
+        const containedHeight = asset.height * containScale;
+        const dx = x + (width - containedWidth) / 2;
+        const dy = y + (height - containedHeight) / 2;
+
+        context.drawImage(
+          asset.source,
+          dx,
+          dy,
+          containedWidth,
+          containedHeight,
+        );
+        context.restore();
+        return;
+      }
+      default:
+      case "cover": {
+        // cover (default): crop source to frame aspect ratio, then fill frame.
+        const frameAspect = width / height;
+        const sourceAspect = asset.width / asset.height;
+
+        let sx = 0;
+        let sy = 0;
+        let sourceWidth = asset.width;
+        let sourceHeight = asset.height;
+
+        if (sourceAspect > frameAspect) {
+          sourceWidth = asset.height * frameAspect;
+          sx = (asset.width - sourceWidth) / 2;
+        } else if (sourceAspect < frameAspect) {
+          sourceHeight = asset.width / frameAspect;
+          sy = (asset.height - sourceHeight) / 2;
+        }
+
+        context.drawImage(
+          asset.source,
+          sx,
+          sy,
+          sourceWidth,
+          sourceHeight,
+          x,
+          y,
+          width,
+          height,
+        );
+
+        context.restore();
+      }
+    }
   });
 };
 

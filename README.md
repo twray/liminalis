@@ -1609,15 +1609,53 @@ Text rendering defaults:
 - Text is rendered with `textBaseline = "top"`, so `x` and `y` map to top-based positioning.
 - Center-based transforms are calculated from measured text bounds.
 
-#### `image(url, { x?, y?, opacity?, blend?, rotate?, rotateOrigin?, scale?, scaleX?, scaleY?, scaleOrigin? })`
+#### `image(url, { x?, y?, width?, height?, fit?, opacity?, blend?, rotate?, rotateOrigin?, scale?, scaleX?, scaleY?, scaleOrigin? })`
 
 ```typescript
 image("https://picsum.photos/240/160?id=3", {
   x: 120,
   y: 80,
+  width: 320,
+  height: 180,
+  fit: "cover",
   opacity: 0.95,
   rotate: -3,
   blend: "source-over",
+});
+```
+
+Image scaling behavior:
+
+- `fit: "cover"` (default): fills the target frame and preserves aspect ratio by cropping from the center when needed.
+- `fit: "contain"`: preserves aspect ratio and centers the full image inside the frame (may leave empty space in one axis).
+- `fit: "stretch"`: fills the frame by stretching the image on each axis independently.
+- Scaling modes are applied only when both `width` and `height` are provided.
+
+```typescript
+// cover (default)
+image("https://picsum.photos/1200/800?id=10", {
+  x: 40,
+  y: 40,
+  width: 240,
+  height: 240,
+});
+
+// contain
+image("https://picsum.photos/1200/800?id=10", {
+  x: 320,
+  y: 40,
+  width: 240,
+  height: 240,
+  fit: "contain",
+});
+
+// stretch
+image("https://picsum.photos/1200/800?id=10", {
+  x: 600,
+  y: 40,
+  width: 240,
+  height: 240,
+  fit: "stretch",
 });
 ```
 
