@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { BezierProps } from "./drawMethods";
+import type Animatable from "../../core/Animatable";
+import type { BezierProps, RectProps } from "./types";
 
 // We test the internal functions by creating a mock canvas context
 // and verifying the transform calls
@@ -53,7 +54,7 @@ describe("drawMethods transform props", () => {
   describe("TransformOrigin resolution", () => {
     it("resolves 'center' to center of bounds", async () => {
       // Import dynamically to get fresh module
-      const { createDrawContext } = await import("./drawMethods");
+      const { createDrawContext } = await import("./index");
       const drawContext = createDrawContext();
 
       const executeDrawCallback = drawContext.executeDrawCallback;
@@ -83,7 +84,7 @@ describe("drawMethods transform props", () => {
     });
 
     it("resolves Point2D {x: 0, y: 0} to top-left corner (local coordinates)", async () => {
-      const { createDrawContext } = await import("./drawMethods");
+      const { createDrawContext } = await import("./index");
       const drawContext = createDrawContext();
 
       drawContext.executeDrawCallback(
@@ -110,7 +111,7 @@ describe("drawMethods transform props", () => {
     });
 
     it("resolves Point2D to shape's local coordinate system", async () => {
-      const { createDrawContext } = await import("./drawMethods");
+      const { createDrawContext } = await import("./index");
       const drawContext = createDrawContext();
 
       drawContext.executeDrawCallback(
@@ -137,7 +138,7 @@ describe("drawMethods transform props", () => {
     });
 
     it("resolves Point2D {x: width, y: 0} to top-right corner", async () => {
-      const { createDrawContext } = await import("./drawMethods");
+      const { createDrawContext } = await import("./index");
       const drawContext = createDrawContext();
 
       drawContext.executeDrawCallback(
@@ -166,7 +167,7 @@ describe("drawMethods transform props", () => {
 
   describe("rotate prop", () => {
     it("applies rotation around center by default", async () => {
-      const { createDrawContext } = await import("./drawMethods");
+      const { createDrawContext } = await import("./index");
       const drawContext = createDrawContext();
 
       drawContext.executeDrawCallback(
@@ -191,7 +192,7 @@ describe("drawMethods transform props", () => {
     });
 
     it("does not apply rotation when rotate is 0", async () => {
-      const { createDrawContext } = await import("./drawMethods");
+      const { createDrawContext } = await import("./index");
       const drawContext = createDrawContext();
 
       drawContext.executeDrawCallback(
@@ -214,7 +215,7 @@ describe("drawMethods transform props", () => {
     });
 
     it("does not apply rotation when rotate is undefined", async () => {
-      const { createDrawContext } = await import("./drawMethods");
+      const { createDrawContext } = await import("./index");
       const drawContext = createDrawContext();
 
       drawContext.executeDrawCallback(
@@ -237,7 +238,7 @@ describe("drawMethods transform props", () => {
 
   describe("scale props", () => {
     it("applies uniform scale with scale prop", async () => {
-      const { createDrawContext } = await import("./drawMethods");
+      const { createDrawContext } = await import("./index");
       const drawContext = createDrawContext();
 
       drawContext.executeDrawCallback(
@@ -263,7 +264,7 @@ describe("drawMethods transform props", () => {
     });
 
     it("applies non-uniform scale with scaleX and scaleY", async () => {
-      const { createDrawContext } = await import("./drawMethods");
+      const { createDrawContext } = await import("./index");
       const drawContext = createDrawContext();
 
       drawContext.executeDrawCallback(
@@ -287,7 +288,7 @@ describe("drawMethods transform props", () => {
     });
 
     it("scaleX/scaleY override uniform scale", async () => {
-      const { createDrawContext } = await import("./drawMethods");
+      const { createDrawContext } = await import("./index");
       const drawContext = createDrawContext();
 
       drawContext.executeDrawCallback(
@@ -313,7 +314,7 @@ describe("drawMethods transform props", () => {
     });
 
     it("does not apply scale when scale is 1", async () => {
-      const { createDrawContext } = await import("./drawMethods");
+      const { createDrawContext } = await import("./index");
       const drawContext = createDrawContext();
 
       drawContext.executeDrawCallback(
@@ -338,7 +339,7 @@ describe("drawMethods transform props", () => {
 
   describe("combined transforms", () => {
     it("applies scale before rotation", async () => {
-      const { createDrawContext } = await import("./drawMethods");
+      const { createDrawContext } = await import("./index");
       const drawContext = createDrawContext();
 
       const translateCalls: { x: number; y: number }[] = [];
@@ -377,7 +378,7 @@ describe("drawMethods transform props", () => {
 
   describe("line transforms", () => {
     it("calculates bounds correctly for line", async () => {
-      const { createDrawContext } = await import("./drawMethods");
+      const { createDrawContext } = await import("./index");
       const drawContext = createDrawContext();
 
       drawContext.executeDrawCallback(
@@ -403,7 +404,7 @@ describe("drawMethods transform props", () => {
 
   describe("polygon rendering", () => {
     it("renders sequential line segments from points", async () => {
-      const { createDrawContext } = await import("./drawMethods");
+      const { createDrawContext } = await import("./index");
       const drawContext = createDrawContext();
 
       drawContext.executeDrawCallback(
@@ -430,7 +431,7 @@ describe("drawMethods transform props", () => {
     });
 
     it("closes the polygon when closePath is true", async () => {
-      const { createDrawContext } = await import("./drawMethods");
+      const { createDrawContext } = await import("./index");
       const drawContext = createDrawContext();
 
       drawContext.executeDrawCallback(
@@ -455,7 +456,7 @@ describe("drawMethods transform props", () => {
     });
 
     it("applies strokeAlignment only when the polygon is closed", async () => {
-      const { createDrawContext } = await import("./drawMethods");
+      const { createDrawContext } = await import("./index");
       const drawContext = createDrawContext();
 
       drawContext.executeDrawCallback(
@@ -507,7 +508,7 @@ describe("drawMethods transform props", () => {
     });
 
     it("uses doubled stroke width for inside and outside closed polygons", async () => {
-      const { createDrawContext } = await import("./drawMethods");
+      const { createDrawContext } = await import("./index");
       const drawContext = createDrawContext();
 
       drawContext.executeDrawCallback(
@@ -558,7 +559,7 @@ describe("drawMethods transform props", () => {
     });
 
     it("keeps original stroke width for open polygons even when strokeAlignment is set", async () => {
-      const { createDrawContext } = await import("./drawMethods");
+      const { createDrawContext } = await import("./index");
       const drawContext = createDrawContext();
 
       drawContext.executeDrawCallback(
@@ -585,7 +586,7 @@ describe("drawMethods transform props", () => {
     });
 
     it("treats matching first and last points as a closed shape", async () => {
-      const { createDrawContext } = await import("./drawMethods");
+      const { createDrawContext } = await import("./index");
       const drawContext = createDrawContext();
 
       drawContext.executeDrawCallback(
@@ -613,7 +614,7 @@ describe("drawMethods transform props", () => {
     });
 
     it("animates numeric point coordinates in the points array", async () => {
-      const { createDrawContext } = await import("./drawMethods");
+      const { createDrawContext } = await import("./index");
       const drawContext = createDrawContext();
 
       const initialPoints = [
@@ -678,7 +679,7 @@ describe("drawMethods transform props", () => {
 
   describe("bezier rendering", () => {
     it("renders quadratic and cubic bezier segments in sequence", async () => {
-      const { createDrawContext } = await import("./drawMethods");
+      const { createDrawContext } = await import("./index");
       const drawContext = createDrawContext();
 
       drawContext.executeDrawCallback(
@@ -729,7 +730,7 @@ describe("drawMethods transform props", () => {
     });
 
     it("ignores bezier input when the first segment includes control points", async () => {
-      const { createDrawContext } = await import("./drawMethods");
+      const { createDrawContext } = await import("./index");
       const drawContext = createDrawContext();
 
       drawContext.executeDrawCallback(
@@ -763,7 +764,7 @@ describe("drawMethods transform props", () => {
     });
 
     it("closes the bezier shape when closePath is true", async () => {
-      const { createDrawContext } = await import("./drawMethods");
+      const { createDrawContext } = await import("./index");
       const drawContext = createDrawContext();
 
       drawContext.executeDrawCallback(
@@ -793,7 +794,7 @@ describe("drawMethods transform props", () => {
     });
 
     it("applies strokeAlignment only when the bezier shape is closed", async () => {
-      const { createDrawContext } = await import("./drawMethods");
+      const { createDrawContext } = await import("./index");
       const drawContext = createDrawContext();
 
       drawContext.executeDrawCallback(
@@ -855,7 +856,7 @@ describe("drawMethods transform props", () => {
     });
 
     it("treats matching start and end points as a closed bezier shape", async () => {
-      const { createDrawContext } = await import("./drawMethods");
+      const { createDrawContext } = await import("./index");
       const drawContext = createDrawContext();
 
       drawContext.executeDrawCallback(
@@ -888,7 +889,7 @@ describe("drawMethods transform props", () => {
     });
 
     it("animates start, control, and end points on bezier segments", async () => {
-      const { createDrawContext } = await import("./drawMethods");
+      const { createDrawContext } = await import("./index");
       const drawContext = createDrawContext();
 
       const initialPath: Pick<BezierProps, "segments"> = {
@@ -983,7 +984,7 @@ describe("drawMethods transform props", () => {
 
   describe("strokeAlignment for rect", () => {
     it("draws stroke at original bounds when strokeAlignment is 'center' (default)", async () => {
-      const { createDrawContext } = await import("./drawMethods");
+      const { createDrawContext } = await import("./index");
       const drawContext = createDrawContext();
 
       drawContext.executeDrawCallback(
@@ -1008,7 +1009,7 @@ describe("drawMethods transform props", () => {
     });
 
     it("draws stroke inset when strokeAlignment is 'inside'", async () => {
-      const { createDrawContext } = await import("./drawMethods");
+      const { createDrawContext } = await import("./index");
       const drawContext = createDrawContext();
 
       drawContext.executeDrawCallback(
@@ -1038,7 +1039,7 @@ describe("drawMethods transform props", () => {
     });
 
     it("draws stroke outset when strokeAlignment is 'outside'", async () => {
-      const { createDrawContext } = await import("./drawMethods");
+      const { createDrawContext } = await import("./index");
       const drawContext = createDrawContext();
 
       drawContext.executeDrawCallback(
@@ -1070,7 +1071,7 @@ describe("drawMethods transform props", () => {
 
   describe("strokeAlignment for circle", () => {
     it("draws stroke at original radius when strokeAlignment is 'center' (default)", async () => {
-      const { createDrawContext } = await import("./drawMethods");
+      const { createDrawContext } = await import("./index");
       const drawContext = createDrawContext();
 
       drawContext.executeDrawCallback(
@@ -1091,17 +1092,19 @@ describe("drawMethods transform props", () => {
       );
 
       // Both fill and stroke should use original radius (50)
-      expect(mockContext.arc).toHaveBeenCalledWith(
+      expect(mockContext.ellipse).toHaveBeenCalledWith(
         200,
         200,
         50,
+        50,
+        0,
         -Math.PI / 2,
         (Math.PI * 3) / 2,
       );
     });
 
     it("draws stroke with reduced radius when strokeAlignment is 'inside'", async () => {
-      const { createDrawContext } = await import("./drawMethods");
+      const { createDrawContext } = await import("./index");
       const drawContext = createDrawContext();
 
       drawContext.executeDrawCallback(
@@ -1123,25 +1126,29 @@ describe("drawMethods transform props", () => {
       );
 
       // Fill uses original radius (50)
-      expect(mockContext.arc).toHaveBeenCalledWith(
+      expect(mockContext.ellipse).toHaveBeenCalledWith(
         200,
         200,
         50,
+        50,
         0,
-        Math.PI * 2,
+        -Math.PI / 2,
+        (Math.PI * 3) / 2,
       );
       // Stroke should use radius - strokeWidth/2 = 50 - 5 = 45
-      expect(mockContext.arc).toHaveBeenCalledWith(
+      expect(mockContext.ellipse).toHaveBeenCalledWith(
         200,
         200,
         45,
+        45,
+        0,
         -Math.PI / 2,
         (Math.PI * 3) / 2,
       );
     });
 
     it("draws stroke with increased radius when strokeAlignment is 'outside'", async () => {
-      const { createDrawContext } = await import("./drawMethods");
+      const { createDrawContext } = await import("./index");
       const drawContext = createDrawContext();
 
       drawContext.executeDrawCallback(
@@ -1163,18 +1170,22 @@ describe("drawMethods transform props", () => {
       );
 
       // Fill uses original radius (50)
-      expect(mockContext.arc).toHaveBeenCalledWith(
+      expect(mockContext.ellipse).toHaveBeenCalledWith(
         200,
         200,
         50,
+        50,
         0,
-        Math.PI * 2,
+        -Math.PI / 2,
+        (Math.PI * 3) / 2,
       );
       // Stroke should use radius + strokeWidth/2 = 50 + 5 = 55
-      expect(mockContext.arc).toHaveBeenCalledWith(
+      expect(mockContext.ellipse).toHaveBeenCalledWith(
         200,
         200,
         55,
+        55,
+        0,
         -Math.PI / 2,
         (Math.PI * 3) / 2,
       );
@@ -1183,7 +1194,7 @@ describe("drawMethods transform props", () => {
 
   describe("strokeAlignment for ellipse", () => {
     it("draws stroke at original radii when strokeAlignment is 'center' (default)", async () => {
-      const { createDrawContext } = await import("./drawMethods");
+      const { createDrawContext } = await import("./index");
       const drawContext = createDrawContext();
 
       drawContext.executeDrawCallback(
@@ -1216,7 +1227,7 @@ describe("drawMethods transform props", () => {
     });
 
     it("draws stroke with reduced radii when strokeAlignment is 'inside'", async () => {
-      const { createDrawContext } = await import("./drawMethods");
+      const { createDrawContext } = await import("./index");
       const drawContext = createDrawContext();
 
       drawContext.executeDrawCallback(
@@ -1245,8 +1256,8 @@ describe("drawMethods transform props", () => {
         80,
         40,
         0,
-        0,
-        Math.PI * 2,
+        -Math.PI / 2,
+        (Math.PI * 3) / 2,
       );
 
       // Stroke radii are reduced by strokeWidth/2 per axis.
@@ -1262,7 +1273,7 @@ describe("drawMethods transform props", () => {
     });
 
     it("draws stroke with increased radii when strokeAlignment is 'outside'", async () => {
-      const { createDrawContext } = await import("./drawMethods");
+      const { createDrawContext } = await import("./index");
       const drawContext = createDrawContext();
 
       drawContext.executeDrawCallback(
@@ -1291,8 +1302,8 @@ describe("drawMethods transform props", () => {
         80,
         40,
         0,
-        0,
-        Math.PI * 2,
+        -Math.PI / 2,
+        (Math.PI * 3) / 2,
       );
 
       // Stroke radii are increased by strokeWidth/2 per axis.
@@ -1310,7 +1321,7 @@ describe("drawMethods transform props", () => {
 
   describe("text rendering", () => {
     it('uses default font style "12pt sans-serif" when fontStyle is not provided', async () => {
-      const { createDrawContext } = await import("./drawMethods");
+      const { createDrawContext } = await import("./index");
       const drawContext = createDrawContext();
 
       drawContext.executeDrawCallback(
@@ -1325,11 +1336,11 @@ describe("drawMethods transform props", () => {
 
       expect(mockContext.font).toBe("12pt sans-serif");
       expect(mockContext.fillText).toHaveBeenCalledWith("Hello", 10, 20);
-      expect(mockContext.strokeText).not.toHaveBeenCalled();
+      expect(mockContext.strokeText).toHaveBeenCalledWith("Hello", 10, 20);
     });
 
     it("applies base draw styles to text including stroke and font style", async () => {
-      const { createDrawContext } = await import("./drawMethods");
+      const { createDrawContext } = await import("./index");
       const drawContext = createDrawContext();
 
       drawContext.executeDrawCallback(
@@ -1365,7 +1376,7 @@ describe("drawMethods transform props", () => {
     });
 
     it("applies transforms to text", async () => {
-      const { createDrawContext } = await import("./drawMethods");
+      const { createDrawContext } = await import("./index");
       const drawContext = createDrawContext();
 
       drawContext.executeDrawCallback(
@@ -1389,7 +1400,7 @@ describe("drawMethods transform props", () => {
 
   describe("blend rendering", () => {
     it("defaults blend mode to source-over when blend is omitted", async () => {
-      const { createDrawContext } = await import("./drawMethods");
+      const { createDrawContext } = await import("./index");
       const drawContext = createDrawContext();
 
       mockContext.globalCompositeOperation = "multiply";
@@ -1411,7 +1422,7 @@ describe("drawMethods transform props", () => {
     });
 
     it("applies blend mode from withStyles context", async () => {
-      const { createDrawContext } = await import("./drawMethods");
+      const { createDrawContext } = await import("./index");
       const drawContext = createDrawContext();
 
       drawContext.executeDrawCallback(
@@ -1430,7 +1441,7 @@ describe("drawMethods transform props", () => {
     });
 
     it("allows shape blend to override withStyles blend", async () => {
-      const { createDrawContext } = await import("./drawMethods");
+      const { createDrawContext } = await import("./index");
       const drawContext = createDrawContext();
 
       drawContext.executeDrawCallback(
@@ -1465,14 +1476,14 @@ describe("drawMethods transform props", () => {
         height: 180,
       }));
 
-      vi.doMock("./ImageAssetCache", () => ({
+      vi.doMock("../../core/ImageAssetCache", () => ({
         imageAssetCache: {
           preload: vi.fn(),
           getReadyAsset: getReadyAssetMock,
         },
       }));
 
-      const { createDrawContext } = await import("./drawMethods");
+      const { createDrawContext } = await import("./index");
       const drawContext = createDrawContext();
 
       drawContext.executeDrawCallback(
@@ -1490,7 +1501,7 @@ describe("drawMethods transform props", () => {
       );
       expect(mockContext.drawImage).toHaveBeenCalledWith(readySource, 12, 34);
 
-      vi.doUnmock("./ImageAssetCache");
+      vi.doUnmock("../../core/ImageAssetCache");
     });
 
     it("does not draw when ImageAssetCache has no ready asset", async () => {
@@ -1498,14 +1509,14 @@ describe("drawMethods transform props", () => {
 
       const getReadyAssetMock = vi.fn(() => null);
 
-      vi.doMock("./ImageAssetCache", () => ({
+      vi.doMock("../../core/ImageAssetCache", () => ({
         imageAssetCache: {
           preload: vi.fn(),
           getReadyAsset: getReadyAssetMock,
         },
       }));
 
-      const { createDrawContext } = await import("./drawMethods");
+      const { createDrawContext } = await import("./index");
       const drawContext = createDrawContext();
 
       drawContext.executeDrawCallback(
@@ -1523,7 +1534,7 @@ describe("drawMethods transform props", () => {
       );
       expect(mockContext.drawImage).not.toHaveBeenCalled();
 
-      vi.doUnmock("./ImageAssetCache");
+      vi.doUnmock("../../core/ImageAssetCache");
     });
 
     it("uses cover fit by default when width and height are provided", async () => {
@@ -1536,14 +1547,14 @@ describe("drawMethods transform props", () => {
         height: 200,
       }));
 
-      vi.doMock("./ImageAssetCache", () => ({
+      vi.doMock("../../core/ImageAssetCache", () => ({
         imageAssetCache: {
           preload: vi.fn(),
           getReadyAsset: getReadyAssetMock,
         },
       }));
 
-      const { createDrawContext } = await import("./drawMethods");
+      const { createDrawContext } = await import("./index");
       const drawContext = createDrawContext();
 
       drawContext.executeDrawCallback(
@@ -1576,7 +1587,7 @@ describe("drawMethods transform props", () => {
         100,
       );
 
-      vi.doUnmock("./ImageAssetCache");
+      vi.doUnmock("../../core/ImageAssetCache");
     });
 
     it("uses contain fit when specified", async () => {
@@ -1589,14 +1600,14 @@ describe("drawMethods transform props", () => {
         height: 200,
       }));
 
-      vi.doMock("./ImageAssetCache", () => ({
+      vi.doMock("../../core/ImageAssetCache", () => ({
         imageAssetCache: {
           preload: vi.fn(),
           getReadyAsset: getReadyAssetMock,
         },
       }));
 
-      const { createDrawContext } = await import("./drawMethods");
+      const { createDrawContext } = await import("./index");
       const drawContext = createDrawContext();
 
       drawContext.executeDrawCallback(
@@ -1626,7 +1637,7 @@ describe("drawMethods transform props", () => {
         50,
       );
 
-      vi.doUnmock("./ImageAssetCache");
+      vi.doUnmock("../../core/ImageAssetCache");
     });
 
     it("uses stretch fit when specified", async () => {
@@ -1639,14 +1650,14 @@ describe("drawMethods transform props", () => {
         height: 200,
       }));
 
-      vi.doMock("./ImageAssetCache", () => ({
+      vi.doMock("../../core/ImageAssetCache", () => ({
         imageAssetCache: {
           preload: vi.fn(),
           getReadyAsset: getReadyAssetMock,
         },
       }));
 
-      const { createDrawContext } = await import("./drawMethods");
+      const { createDrawContext } = await import("./index");
       const drawContext = createDrawContext();
 
       drawContext.executeDrawCallback(
@@ -1676,7 +1687,7 @@ describe("drawMethods transform props", () => {
         100,
       );
 
-      vi.doUnmock("./ImageAssetCache");
+      vi.doUnmock("../../core/ImageAssetCache");
     });
 
     it("falls back to natural dimensions when only width is provided", async () => {
@@ -1689,14 +1700,14 @@ describe("drawMethods transform props", () => {
         height: 200,
       }));
 
-      vi.doMock("./ImageAssetCache", () => ({
+      vi.doMock("../../core/ImageAssetCache", () => ({
         imageAssetCache: {
           preload: vi.fn(),
           getReadyAsset: getReadyAssetMock,
         },
       }));
 
-      const { createDrawContext } = await import("./drawMethods");
+      const { createDrawContext } = await import("./index");
       const drawContext = createDrawContext();
 
       drawContext.executeDrawCallback(
@@ -1718,7 +1729,7 @@ describe("drawMethods transform props", () => {
       );
       expect(mockContext.drawImage).toHaveBeenCalledWith(readySource, 10, 20);
 
-      vi.doUnmock("./ImageAssetCache");
+      vi.doUnmock("../../core/ImageAssetCache");
     });
 
     it("does not draw when scaled width or height is non-positive", async () => {
@@ -1731,14 +1742,14 @@ describe("drawMethods transform props", () => {
         height: 200,
       }));
 
-      vi.doMock("./ImageAssetCache", () => ({
+      vi.doMock("../../core/ImageAssetCache", () => ({
         imageAssetCache: {
           preload: vi.fn(),
           getReadyAsset: getReadyAssetMock,
         },
       }));
 
-      const { createDrawContext } = await import("./drawMethods");
+      const { createDrawContext } = await import("./index");
       const drawContext = createDrawContext();
 
       drawContext.executeDrawCallback(
@@ -1761,7 +1772,7 @@ describe("drawMethods transform props", () => {
       );
       expect(mockContext.drawImage).not.toHaveBeenCalled();
 
-      vi.doUnmock("./ImageAssetCache");
+      vi.doUnmock("../../core/ImageAssetCache");
     });
 
     it("uses scaled frame dimensions for transform origin", async () => {
@@ -1774,14 +1785,14 @@ describe("drawMethods transform props", () => {
         height: 200,
       }));
 
-      vi.doMock("./ImageAssetCache", () => ({
+      vi.doMock("../../core/ImageAssetCache", () => ({
         imageAssetCache: {
           preload: vi.fn(),
           getReadyAsset: getReadyAssetMock,
         },
       }));
 
-      const { createDrawContext } = await import("./drawMethods");
+      const { createDrawContext } = await import("./index");
       const drawContext = createDrawContext();
 
       drawContext.executeDrawCallback(
@@ -1805,7 +1816,440 @@ describe("drawMethods transform props", () => {
       expect(mockContext.rotate).toHaveBeenCalledWith((45 * Math.PI) / 180);
       expect(mockContext.translate).toHaveBeenCalledWith(-60, -45);
 
-      vi.doUnmock("./ImageAssetCache");
+      vi.doUnmock("../../core/ImageAssetCache");
+    });
+  });
+
+  describe("rect clipping callback", () => {
+    it("returns an Animatable when using the frame callback", async () => {
+      const { createDrawContext } = await import("./index");
+      const drawContext = createDrawContext();
+
+      const clipMaskRef: { current: Animatable<RectProps> | null } = {
+        current: null,
+      };
+
+      drawContext.executeDrawCallback(
+        (d) => {
+          clipMaskRef.current = d.rect(
+            { x: 100, y: 100, width: 200, height: 200 },
+            () => {
+              d.circle({ cx: 100, cy: 100, radius: 50, fillStyle: "red" });
+            },
+          );
+        },
+        mockContext,
+        800,
+        600,
+        0,
+      );
+
+      expect(clipMaskRef.current).not.toBeNull();
+
+      if (!clipMaskRef.current) {
+        throw new Error("Expected rect() to return an Animatable clip mask");
+      }
+
+      expect(typeof clipMaskRef.current.animateTo).toBe("function");
+    });
+
+    it("uses rect path as a clip mask for nested primitives", async () => {
+      const { createDrawContext } = await import("./index");
+      const drawContext = createDrawContext();
+
+      drawContext.executeDrawCallback(
+        (d) => {
+          d.rect(
+            {
+              x: 100,
+              y: 100,
+              width: 200,
+              height: 200,
+              fillStyle: "#00f",
+              strokeStyle: "#0f0",
+              strokeWidth: 4,
+            },
+            () => {
+              d.circle({
+                cx: 100,
+                cy: 100,
+                radius: 50,
+                fillStyle: "red",
+              });
+            },
+          );
+        },
+        mockContext,
+        800,
+        600,
+        0,
+      );
+
+      expect(mockContext.clip).toHaveBeenCalled();
+      expect(mockContext.roundRect).toHaveBeenCalledWith(100, 100, 200, 200, 0);
+      expect(mockContext.ellipse).toHaveBeenCalled();
+
+      // Rect itself is not rendered when callback clipping mode is used.
+      expect(mockContext.stroke).toHaveBeenCalledTimes(1);
+      expect(mockContext.fill).toHaveBeenCalledTimes(1);
+    });
+
+    it("supports nested rect clip scopes", async () => {
+      const { createDrawContext } = await import("./index");
+      const drawContext = createDrawContext();
+
+      drawContext.executeDrawCallback(
+        (d) => {
+          d.rect({ x: 100, y: 100, width: 240, height: 240 }, () => {
+            d.rect({ x: 140, y: 140, width: 160, height: 160 }, () => {
+              d.circle({
+                cx: 140,
+                cy: 140,
+                radius: 90,
+                fillStyle: "red",
+              });
+            });
+          });
+        },
+        mockContext,
+        800,
+        600,
+        0,
+      );
+
+      // One clip call per active clipping mask.
+      expect(mockContext.clip).toHaveBeenCalledTimes(2);
+      expect(mockContext.ellipse).toHaveBeenCalled();
+      expect(mockContext.fill).toHaveBeenCalledTimes(1);
+    });
+
+    it("animates the clip path when the returned rect animates", async () => {
+      const { createDrawContext } = await import("./index");
+      const drawContext = createDrawContext();
+
+      drawContext.executeDrawCallback(
+        (d) => {
+          d.rect({ x: 100, y: 100, width: 200, height: 200 }, () => {
+            d.circle({
+              cx: 100,
+              cy: 100,
+              radius: 50,
+              fillStyle: "red",
+            }).animateTo({ radius: 70 }, { duration: 1000 });
+          }).animateTo({ x: 300 }, { duration: 1000 });
+        },
+        mockContext,
+        800,
+        600,
+        0,
+      );
+
+      expect(mockContext.roundRect).toHaveBeenCalledWith(100, 100, 200, 200, 0);
+
+      vi.clearAllMocks();
+
+      drawContext.executeDrawCallback(
+        (d) => {
+          d.rect({ x: 100, y: 100, width: 200, height: 200 }, () => {
+            d.circle({
+              cx: 100,
+              cy: 100,
+              radius: 50,
+              fillStyle: "red",
+            }).animateTo({ radius: 70 }, { duration: 1000 });
+          }).animateTo({ x: 300 }, { duration: 1000 });
+        },
+        mockContext,
+        800,
+        600,
+        500,
+      );
+
+      // Midway through x animation from 100 -> 300.
+      expect(mockContext.roundRect).toHaveBeenCalledWith(200, 100, 200, 200, 0);
+      expect(mockContext.ellipse).toHaveBeenCalled();
+      expect(mockContext.fill).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe("framed clipping for closed path primitives", () => {
+    it("supports circle as a clipping frame", async () => {
+      const { createDrawContext } = await import("./index");
+      const drawContext = createDrawContext();
+
+      drawContext.executeDrawCallback(
+        (d) => {
+          d.circle({ cx: 200, cy: 200, radius: 100 }, () => {
+            d.line({
+              start: { x: 0, y: 0 },
+              end: { x: 400, y: 400 },
+              strokeStyle: "#f00",
+            });
+          });
+        },
+        mockContext,
+        800,
+        600,
+        0,
+      );
+
+      expect(mockContext.clip).toHaveBeenCalled();
+      expect(mockContext.arc).toHaveBeenCalledWith(
+        200,
+        200,
+        100,
+        0,
+        Math.PI * 2,
+      );
+      expect(mockContext.lineTo).toHaveBeenCalledWith(400, 400);
+    });
+
+    it("supports ellipse as a clipping frame", async () => {
+      const { createDrawContext } = await import("./index");
+      const drawContext = createDrawContext();
+
+      drawContext.executeDrawCallback(
+        (d) => {
+          d.ellipse({ cx: 250, cy: 220, radiusX: 120, radiusY: 80 }, () => {
+            d.line({
+              start: { x: 0, y: 220 },
+              end: { x: 500, y: 220 },
+              strokeStyle: "#0f0",
+            });
+          });
+        },
+        mockContext,
+        800,
+        600,
+        0,
+      );
+
+      expect(mockContext.clip).toHaveBeenCalled();
+      expect(mockContext.ellipse).toHaveBeenCalledWith(
+        250,
+        220,
+        120,
+        80,
+        0,
+        0,
+        Math.PI * 2,
+      );
+      expect(mockContext.lineTo).toHaveBeenCalledWith(500, 220);
+    });
+
+    it("supports closed arc as a clipping frame", async () => {
+      const { createDrawContext } = await import("./index");
+      const drawContext = createDrawContext();
+
+      drawContext.executeDrawCallback(
+        (d) => {
+          d.arc(
+            {
+              cx: 240,
+              cy: 240,
+              radius: 120,
+              start: 30,
+              end: 320,
+              closePath: true,
+            },
+            () => {
+              d.line({
+                start: { x: 80, y: 240 },
+                end: { x: 400, y: 240 },
+                strokeStyle: "#0a0",
+              });
+            },
+          );
+        },
+        mockContext,
+        800,
+        600,
+        0,
+      );
+
+      expect(mockContext.clip).toHaveBeenCalled();
+      const clippedArcCall = vi.mocked(mockContext.ellipse).mock.calls[0];
+      expect(clippedArcCall[0]).toBe(240);
+      expect(clippedArcCall[1]).toBe(240);
+      expect(clippedArcCall[2]).toBe(120);
+      expect(clippedArcCall[3]).toBe(120);
+      expect(clippedArcCall[4]).toBe(0);
+      expect(clippedArcCall[5]).toBeCloseTo(
+        (30 * Math.PI) / 180 - Math.PI / 2,
+        12,
+      );
+      expect(clippedArcCall[6]).toBeCloseTo(
+        (320 * Math.PI) / 180 - Math.PI / 2,
+        12,
+      );
+      expect(mockContext.closePath).toHaveBeenCalled();
+      expect(mockContext.lineTo).toHaveBeenCalledWith(400, 240);
+    });
+
+    it("supports closed polygon as a clipping frame", async () => {
+      const { createDrawContext } = await import("./index");
+      const drawContext = createDrawContext();
+
+      drawContext.executeDrawCallback(
+        (d) => {
+          d.polygon(
+            {
+              points: [
+                { x: 100, y: 100 },
+                { x: 300, y: 100 },
+                { x: 200, y: 280 },
+              ],
+              closePath: true,
+            },
+            () => {
+              d.circle({ cx: 200, cy: 150, radius: 120, fillStyle: "#00f" });
+            },
+          );
+        },
+        mockContext,
+        800,
+        600,
+        0,
+      );
+
+      expect(mockContext.clip).toHaveBeenCalled();
+      expect(mockContext.closePath).toHaveBeenCalled();
+      expect(mockContext.ellipse).toHaveBeenCalled();
+    });
+
+    it("supports closed bezier as a clipping frame", async () => {
+      const { createDrawContext } = await import("./index");
+      const drawContext = createDrawContext();
+
+      drawContext.executeDrawCallback(
+        (d) => {
+          d.bezier(
+            {
+              segments: [
+                {
+                  point: { x: 100, y: 120 },
+                },
+                {
+                  control: { x: 140, y: 80 },
+                  point: { x: 180, y: 120 },
+                },
+                {
+                  control: { x: 220, y: 160 },
+                  point: { x: 100, y: 120 },
+                },
+              ],
+            },
+            () => {
+              d.circle({ cx: 150, cy: 120, radius: 60, fillStyle: "#00f" });
+            },
+          );
+        },
+        mockContext,
+        800,
+        600,
+        0,
+      );
+
+      expect(mockContext.clip).toHaveBeenCalled();
+      expect(mockContext.quadraticCurveTo).toHaveBeenCalled();
+      expect(mockContext.closePath).toHaveBeenCalled();
+      expect(mockContext.ellipse).toHaveBeenCalled();
+    });
+
+    it("treats non-closed polygon frame as empty clip region", async () => {
+      const { createDrawContext } = await import("./index");
+      const drawContext = createDrawContext();
+
+      drawContext.executeDrawCallback(
+        (d) => {
+          d.polygon(
+            {
+              points: [
+                { x: 100, y: 100 },
+                { x: 300, y: 100 },
+                { x: 200, y: 280 },
+              ],
+              closePath: false,
+            },
+            () => {
+              d.circle({ cx: 200, cy: 150, radius: 120, fillStyle: "#00f" });
+            },
+          );
+        },
+        mockContext,
+        800,
+        600,
+        0,
+      );
+
+      expect(mockContext.rect).toHaveBeenCalledWith(0, 0, 0, 0);
+      expect(mockContext.clip).toHaveBeenCalled();
+    });
+
+    it("treats non-closed bezier frame as empty clip region", async () => {
+      const { createDrawContext } = await import("./index");
+      const drawContext = createDrawContext();
+
+      drawContext.executeDrawCallback(
+        (d) => {
+          d.bezier(
+            {
+              segments: [
+                {
+                  point: { x: 100, y: 120 },
+                },
+                {
+                  control: { x: 140, y: 80 },
+                  point: { x: 180, y: 120 },
+                },
+              ],
+              closePath: false,
+            },
+            () => {
+              d.circle({ cx: 150, cy: 120, radius: 60, fillStyle: "#00f" });
+            },
+          );
+        },
+        mockContext,
+        800,
+        600,
+        0,
+      );
+
+      expect(mockContext.rect).toHaveBeenCalledWith(0, 0, 0, 0);
+      expect(mockContext.clip).toHaveBeenCalled();
+    });
+
+    it("uses a closed path for arc clipping even when closePath is false", async () => {
+      const { createDrawContext } = await import("./index");
+      const drawContext = createDrawContext();
+
+      drawContext.executeDrawCallback(
+        (d) => {
+          d.arc(
+            {
+              cx: 240,
+              cy: 240,
+              radius: 120,
+              start: 30,
+              end: 320,
+              closePath: false,
+            },
+            () => {
+              d.circle({ cx: 240, cy: 240, radius: 80, fillStyle: "#f80" });
+            },
+          );
+        },
+        mockContext,
+        800,
+        600,
+        0,
+      );
+
+      expect(mockContext.rect).not.toHaveBeenCalledWith(0, 0, 0, 0);
+      expect(mockContext.closePath).toHaveBeenCalled();
+      expect(mockContext.clip).toHaveBeenCalled();
+      expect(mockContext.ellipse).toHaveBeenCalled();
     });
   });
 });

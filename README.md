@@ -1580,6 +1580,49 @@ rect({
 });
 ```
 
+#### `rect(props, frame?)` clipping mode
+
+Use the optional `frame` callback form of `rect()` to treat the rectangle path as a clipping
+mask for everything drawn inside the callback.
+
+```typescript
+draw(({ rect, circle }) => {
+  const dimensions = 200;
+  const originX = 300;
+  const originY = 200;
+
+  rect(
+    {
+      x: originX,
+      y: originY,
+      width: dimensions,
+      height: dimensions,
+    },
+    () => {
+      circle({
+        cx: originX,
+        cy: originY,
+        radius: 50,
+        fillStyle: "red",
+      });
+    },
+  );
+});
+```
+
+Clipping mode behavior:
+
+- The `rect` mask itself is not rendered (no fill or stroke from that call).
+- Nested primitives are clipped to the rectangle path.
+- Clip scopes are nestable (a clipped block can contain another clipping block).
+- `rect(props, frame)` still returns an `Animatable`, so the clip path itself can be animated with `.animateTo(...)`.
+
+The same `frame` callback clipping pattern is also supported by:
+
+- `polygon(props, frame)` for closed polygons (`closePath: true`, or matching start/end point)
+- `circle(props, frame)`
+- `ellipse(props, frame)`
+
 #### `text(content, { x?, y?, fontStyle?, fillStyle?, strokeStyle?, strokeWidth?, opacity?, blend?, rotate?, rotateOrigin?, scale?, scaleX?, scaleY?, scaleOrigin? })`
 
 ```typescript

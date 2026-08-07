@@ -1,3 +1,4 @@
+import { createDrawContext } from "../contexts/draw";
 import {
   DrawCallback,
   NormalizedFloat,
@@ -5,7 +6,6 @@ import {
   RenderProps,
 } from "../types";
 import IsometricView from "../views/IsometricView";
-import { createDrawContext } from "./drawMethods";
 import { getRenderIsometricMethods } from "./renderIsometricMethods";
 
 import { toNormalizedFloat } from "../util";

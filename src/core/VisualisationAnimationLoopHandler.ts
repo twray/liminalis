@@ -1,12 +1,12 @@
 import { Utilities, WebMidi } from "webmidi";
 
+import { createDrawContext } from "../contexts/draw";
 import AudioCapture, { type AudioCaptureSession } from "./AudioCapture";
 import CanvasRenderer from "./CanvasRenderer";
 import { imageAssetCache } from "./ImageAssetCache";
+import { getRenderIsometricMethods } from "./renderIsometricMethods";
 import SnapshotExporter from "./SnapshotExporter";
 import VideoRecorder from "./VideoRecorder";
-import { createDrawContext } from "./drawMethods";
-import { getRenderIsometricMethods } from "./renderIsometricMethods";
 
 import type {
   AppSettings,

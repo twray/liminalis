@@ -1,4 +1,4 @@
-import type { DrawMethods } from "../core/drawMethods";
+import type { DrawMethods } from "../contexts/draw";
 import type { RenderIsometricMethods } from "../core/renderIsometricMethods";
 import type { Point2D } from "./";
 
