@@ -1,7 +1,7 @@
-import type Animatable from "../../core/Animatable";
-import AnimatableRegistry from "../../core/AnimatableRegistry";
-import { imageAssetCache } from "../../core/ImageAssetCache";
-import type { PartialDrawStyles } from "../../types";
+import type Animatable from "../core/Animatable";
+import AnimatableRegistry from "../core/AnimatableRegistry";
+import { imageAssetCache } from "../core/ImageAssetCache";
+import type { PartialDrawStyles } from "../types";
 import ClipManager, { type ClipScope } from "./ClipManager";
 
 import {
@@ -35,11 +35,15 @@ import type {
   ArcProps,
   BackgroundProps,
   BezierProps,
+  Bounds,
   CircleProps,
   ClosedPathDescriptor,
   DrawContext,
   DrawMethods,
   EllipseProps,
+  FrameCallback,
+  FrameContext,
+  FrameProps,
   ImageProps,
   LineProps,
   PolygonProps,
@@ -48,7 +52,24 @@ import type {
   TransformProps,
 } from "./types";
 
-const createClipScope = <T extends TransformProps>(
+const toFrameContext = (
+  bounds: Bounds,
+  newCoordinateSpace: boolean,
+): FrameContext => {
+  const center = newCoordinateSpace
+    ? { x: bounds.width / 2, y: bounds.height / 2 }
+    : { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 };
+
+  return {
+    width: bounds.width,
+    height: bounds.height,
+    center,
+  };
+};
+
+const createClipScope = <
+  T extends TransformProps & { newCoordinateSpace?: boolean },
+>(
   getProps: () => T,
   getPathDescriptor: (props: T) => ClosedPathDescriptor,
 ): ClipScope => {
@@ -73,6 +94,10 @@ const createClipScope = <T extends TransformProps>(
       context.clip();
 
       undoForwardTransform(context, transformState);
+
+      if (props.newCoordinateSpace) {
+        context.translate(descriptor.bounds.x, descriptor.bounds.y);
+      }
     },
   };
 };
@@ -128,16 +153,24 @@ export const createDrawContext = (): DrawContext => {
       });
     };
 
-    const createFramedMethod = <T extends PartialDrawStyles & TransformProps>(
+    const createFramedMethod = <
+      T extends PartialDrawStyles &
+        TransformProps & { newCoordinateSpace?: boolean },
+    >(
       renderFn: (props: T) => void,
       getPathDescriptor: (props: T) => ClosedPathDescriptor,
-    ): ((props: T, frame?: () => void) => Animatable<T>) => {
-      return (props: T, frame?: () => void): Animatable<T> => {
+    ): ((props: T, frame?: FrameCallback) => Animatable<T>) => {
+      return (props: T, frame?: FrameCallback): Animatable<T> => {
         if (!frame) {
           return queueDraw(props, renderFn);
         }
 
         const mergedProps = mergeStyles(props);
+        const frameDescriptor = getPathDescriptor(mergedProps);
+        const frameContext = toFrameContext(
+          frameDescriptor.bounds,
+          !!mergedProps.newCoordinateSpace,
+        );
         let currentClipProps = mergedProps;
 
         const clipAnimatable = registry.queue(mergedProps, (animatedProps) => {
@@ -149,11 +182,16 @@ export const createDrawContext = (): DrawContext => {
           getPathDescriptor,
         );
 
-        clipManager.withScope(clipScope, frame);
+        clipManager.withScope(clipScope, () => frame(frameContext));
 
         return clipAnimatable;
       };
     };
+
+    const rectFramedMethod = createFramedMethod(
+      (p: RectProps) => rect(context, p),
+      rectPathDescriptor,
+    );
 
     const methods: DrawMethods = {
       width,
@@ -183,10 +221,9 @@ export const createDrawContext = (): DrawContext => {
         (p: ArcProps) => arc(context, p),
         arcPathDescriptor,
       ),
-      rect: createFramedMethod(
-        (p: RectProps) => rect(context, p),
-        rectPathDescriptor,
-      ),
+      rect: rectFramedMethod,
+      frame: (props: FrameProps, frame: FrameCallback) =>
+        rectFramedMethod({ ...props, newCoordinateSpace: true }, frame),
       text: (textValue: string, props: TextProps = {}) =>
         queueDraw(props, (p) => text(context, textValue, p)),
       image: (imageSrc: string, props: ImageProps = {}) =>

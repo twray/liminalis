@@ -1,4 +1,4 @@
-import type { Point2D } from "../../../types";
+import type { Point2D } from "../../types";
 import {
   DEFAULT_BLEND_MODE,
   DEFAULT_STROKE_ALIGNMENT,

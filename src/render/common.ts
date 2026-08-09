@@ -1,5 +1,5 @@
-import type { Dimensions2D, Point2D } from "../../types";
-import { degreesToRadians } from "../../util";
+import type { Dimensions2D, Point2D } from "../types";
+import { degreesToRadians } from "../util";
 import type {
   Bounds,
   ContextGlobalProps,

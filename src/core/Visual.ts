@@ -1,4 +1,4 @@
-import { createDrawContext } from "../contexts/draw";
+import { createDrawContext } from "../render";
 import {
   DrawCallback,
   NormalizedFloat,

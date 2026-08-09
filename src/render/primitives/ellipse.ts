@@ -1,4 +1,4 @@
-import { clampNonNegativeValue } from "../../../util";
+import { clampNonNegativeValue } from "../../util";
 import type { ClosedPathDescriptor, EllipseProps } from "../types";
 import { arc } from "./arc";
 

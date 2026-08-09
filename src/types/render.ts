@@ -1,5 +1,5 @@
-import type { DrawMethods } from "../contexts/draw";
 import type { RenderIsometricMethods } from "../core/renderIsometricMethods";
+import type { DrawMethods } from "../render";
 import type { Point2D } from "./";
 
 export type DrawCallback = (methods: DrawMethods) => void;

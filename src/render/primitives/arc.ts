@@ -2,7 +2,7 @@ import {
   clampNonNegativeValue,
   clampWithinRange,
   degreesToRadians,
-} from "../../../util";
+} from "../../util";
 import {
   DEFAULT_BLEND_MODE,
   DEFAULT_STROKE_ALIGNMENT,

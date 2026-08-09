@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type Animatable from "../../core/Animatable";
+import type Animatable from "../core/Animatable";
 import type { BezierProps, RectProps } from "./types";
 
 // We test the internal functions by creating a mock canvas context
@@ -1476,7 +1476,7 @@ describe("drawMethods transform props", () => {
         height: 180,
       }));
 
-      vi.doMock("../../core/ImageAssetCache", () => ({
+      vi.doMock("../core/ImageAssetCache", () => ({
         imageAssetCache: {
           preload: vi.fn(),
           getReadyAsset: getReadyAssetMock,
@@ -1501,7 +1501,7 @@ describe("drawMethods transform props", () => {
       );
       expect(mockContext.drawImage).toHaveBeenCalledWith(readySource, 12, 34);
 
-      vi.doUnmock("../../core/ImageAssetCache");
+      vi.doUnmock("../core/ImageAssetCache");
     });
 
     it("does not draw when ImageAssetCache has no ready asset", async () => {
@@ -1509,7 +1509,7 @@ describe("drawMethods transform props", () => {
 
       const getReadyAssetMock = vi.fn(() => null);
 
-      vi.doMock("../../core/ImageAssetCache", () => ({
+      vi.doMock("../core/ImageAssetCache", () => ({
         imageAssetCache: {
           preload: vi.fn(),
           getReadyAsset: getReadyAssetMock,
@@ -1534,7 +1534,7 @@ describe("drawMethods transform props", () => {
       );
       expect(mockContext.drawImage).not.toHaveBeenCalled();
 
-      vi.doUnmock("../../core/ImageAssetCache");
+      vi.doUnmock("../core/ImageAssetCache");
     });
 
     it("uses cover fit by default when width and height are provided", async () => {
@@ -1547,7 +1547,7 @@ describe("drawMethods transform props", () => {
         height: 200,
       }));
 
-      vi.doMock("../../core/ImageAssetCache", () => ({
+      vi.doMock("../core/ImageAssetCache", () => ({
         imageAssetCache: {
           preload: vi.fn(),
           getReadyAsset: getReadyAssetMock,
@@ -1587,7 +1587,7 @@ describe("drawMethods transform props", () => {
         100,
       );
 
-      vi.doUnmock("../../core/ImageAssetCache");
+      vi.doUnmock("../core/ImageAssetCache");
     });
 
     it("uses contain fit when specified", async () => {
@@ -1600,7 +1600,7 @@ describe("drawMethods transform props", () => {
         height: 200,
       }));
 
-      vi.doMock("../../core/ImageAssetCache", () => ({
+      vi.doMock("../core/ImageAssetCache", () => ({
         imageAssetCache: {
           preload: vi.fn(),
           getReadyAsset: getReadyAssetMock,
@@ -1637,7 +1637,7 @@ describe("drawMethods transform props", () => {
         50,
       );
 
-      vi.doUnmock("../../core/ImageAssetCache");
+      vi.doUnmock("../core/ImageAssetCache");
     });
 
     it("uses stretch fit when specified", async () => {
@@ -1650,7 +1650,7 @@ describe("drawMethods transform props", () => {
         height: 200,
       }));
 
-      vi.doMock("../../core/ImageAssetCache", () => ({
+      vi.doMock("../core/ImageAssetCache", () => ({
         imageAssetCache: {
           preload: vi.fn(),
           getReadyAsset: getReadyAssetMock,
@@ -1687,7 +1687,7 @@ describe("drawMethods transform props", () => {
         100,
       );
 
-      vi.doUnmock("../../core/ImageAssetCache");
+      vi.doUnmock("../core/ImageAssetCache");
     });
 
     it("falls back to natural dimensions when only width is provided", async () => {
@@ -1700,7 +1700,7 @@ describe("drawMethods transform props", () => {
         height: 200,
       }));
 
-      vi.doMock("../../core/ImageAssetCache", () => ({
+      vi.doMock("../core/ImageAssetCache", () => ({
         imageAssetCache: {
           preload: vi.fn(),
           getReadyAsset: getReadyAssetMock,
@@ -1729,7 +1729,7 @@ describe("drawMethods transform props", () => {
       );
       expect(mockContext.drawImage).toHaveBeenCalledWith(readySource, 10, 20);
 
-      vi.doUnmock("../../core/ImageAssetCache");
+      vi.doUnmock("../core/ImageAssetCache");
     });
 
     it("does not draw when scaled width or height is non-positive", async () => {
@@ -1742,7 +1742,7 @@ describe("drawMethods transform props", () => {
         height: 200,
       }));
 
-      vi.doMock("../../core/ImageAssetCache", () => ({
+      vi.doMock("../core/ImageAssetCache", () => ({
         imageAssetCache: {
           preload: vi.fn(),
           getReadyAsset: getReadyAssetMock,
@@ -1772,7 +1772,7 @@ describe("drawMethods transform props", () => {
       );
       expect(mockContext.drawImage).not.toHaveBeenCalled();
 
-      vi.doUnmock("../../core/ImageAssetCache");
+      vi.doUnmock("../core/ImageAssetCache");
     });
 
     it("uses scaled frame dimensions for transform origin", async () => {
@@ -1785,7 +1785,7 @@ describe("drawMethods transform props", () => {
         height: 200,
       }));
 
-      vi.doMock("../../core/ImageAssetCache", () => ({
+      vi.doMock("../core/ImageAssetCache", () => ({
         imageAssetCache: {
           preload: vi.fn(),
           getReadyAsset: getReadyAssetMock,
@@ -1816,7 +1816,7 @@ describe("drawMethods transform props", () => {
       expect(mockContext.rotate).toHaveBeenCalledWith((45 * Math.PI) / 180);
       expect(mockContext.translate).toHaveBeenCalledWith(-60, -45);
 
-      vi.doUnmock("../../core/ImageAssetCache");
+      vi.doUnmock("../core/ImageAssetCache");
     });
   });
 
@@ -1969,6 +1969,290 @@ describe("drawMethods transform props", () => {
       expect(mockContext.roundRect).toHaveBeenCalledWith(200, 100, 200, 200, 0);
       expect(mockContext.ellipse).toHaveBeenCalled();
       expect(mockContext.fill).toHaveBeenCalledTimes(1);
+    });
+
+    it("uses canvas coordinates inside a frame by default", async () => {
+      const { createDrawContext } = await import("./index");
+      const drawContext = createDrawContext();
+
+      drawContext.executeDrawCallback(
+        (d) => {
+          d.rect({ x: 100, y: 100, width: 200, height: 200 }, () => {
+            d.circle({ cx: 50, cy: 50, radius: 30, fillStyle: "red" });
+          });
+        },
+        mockContext,
+        800,
+        600,
+        0,
+      );
+
+      expect(mockContext.ellipse).toHaveBeenCalledWith(
+        50,
+        50,
+        30,
+        30,
+        0,
+        -Math.PI / 2,
+        (Math.PI * 3) / 2,
+      );
+    });
+
+    it("uses local frame coordinates when newCoordinateSpace is true", async () => {
+      const { createDrawContext } = await import("./index");
+      const drawContext = createDrawContext();
+
+      drawContext.executeDrawCallback(
+        (d) => {
+          d.rect(
+            {
+              x: 100,
+              y: 100,
+              width: 200,
+              height: 200,
+              newCoordinateSpace: true,
+            },
+            () => {
+              d.circle({ cx: 50, cy: 50, radius: 30, fillStyle: "red" });
+            },
+          );
+        },
+        mockContext,
+        800,
+        600,
+        0,
+      );
+
+      expect(mockContext.translate).toHaveBeenCalledWith(100, 100);
+      expect(mockContext.ellipse).toHaveBeenCalledWith(
+        50,
+        50,
+        30,
+        30,
+        0,
+        -Math.PI / 2,
+        (Math.PI * 3) / 2,
+      );
+    });
+
+    it("exposes frame width, height, and center to the callback", async () => {
+      const { createDrawContext } = await import("./index");
+      const drawContext = createDrawContext();
+      const frameValues = {
+        width: -1,
+        height: -1,
+        centerX: -1,
+        centerY: -1,
+      };
+
+      drawContext.executeDrawCallback(
+        (d) => {
+          d.rect(
+            {
+              x: 100,
+              y: 120,
+              width: 200,
+              height: 160,
+              newCoordinateSpace: true,
+            },
+            ({ width, height, center }) => {
+              frameValues.width = width;
+              frameValues.height = height;
+              frameValues.centerX = center.x;
+              frameValues.centerY = center.y;
+            },
+          );
+        },
+        mockContext,
+        800,
+        600,
+        0,
+      );
+
+      expect(frameValues).toEqual({
+        width: 200,
+        height: 160,
+        centerX: 100,
+        centerY: 80,
+      });
+    });
+
+    it("exposes center in parent coordinate space when newCoordinateSpace is false", async () => {
+      const { createDrawContext } = await import("./index");
+      const drawContext = createDrawContext();
+      const frameValues = {
+        width: -1,
+        height: -1,
+        centerX: -1,
+        centerY: -1,
+      };
+
+      drawContext.executeDrawCallback(
+        (d) => {
+          d.rect(
+            {
+              x: 50,
+              y: 50,
+              width: 100,
+              height: 100,
+            },
+            ({ width, height, center }) => {
+              frameValues.width = width;
+              frameValues.height = height;
+              frameValues.centerX = center.x;
+              frameValues.centerY = center.y;
+            },
+          );
+        },
+        mockContext,
+        800,
+        600,
+        0,
+      );
+
+      expect(frameValues).toEqual({
+        width: 100,
+        height: 100,
+        centerX: 100,
+        centerY: 100,
+      });
+    });
+
+    it("keeps local coordinates aligned while animating a new coordinate space frame", async () => {
+      const { createDrawContext } = await import("./index");
+      const drawContext = createDrawContext();
+
+      drawContext.executeDrawCallback(
+        (d) => {
+          d.rect(
+            {
+              x: 100,
+              y: 100,
+              width: 200,
+              height: 200,
+              newCoordinateSpace: true,
+            },
+            () => {
+              d.circle({ cx: 50, cy: 50, radius: 20, fillStyle: "red" });
+            },
+          ).animateTo({ x: 300 }, { duration: 1000 });
+        },
+        mockContext,
+        800,
+        600,
+        0,
+      );
+
+      expect(mockContext.translate).toHaveBeenCalledWith(100, 100);
+      expect(mockContext.ellipse).toHaveBeenCalledWith(
+        50,
+        50,
+        20,
+        20,
+        0,
+        -Math.PI / 2,
+        (Math.PI * 3) / 2,
+      );
+
+      vi.clearAllMocks();
+
+      drawContext.executeDrawCallback(
+        (d) => {
+          d.rect(
+            {
+              x: 100,
+              y: 100,
+              width: 200,
+              height: 200,
+              newCoordinateSpace: true,
+            },
+            () => {
+              d.circle({ cx: 50, cy: 50, radius: 20, fillStyle: "red" });
+            },
+          ).animateTo({ x: 300 }, { duration: 1000 });
+        },
+        mockContext,
+        800,
+        600,
+        500,
+      );
+
+      expect(mockContext.translate).toHaveBeenCalledWith(200, 100);
+      expect(mockContext.ellipse).toHaveBeenCalledWith(
+        50,
+        50,
+        20,
+        20,
+        0,
+        -Math.PI / 2,
+        (Math.PI * 3) / 2,
+      );
+    });
+
+    it("frame() creates a rectangular clipping frame with local coordinates", async () => {
+      const { createDrawContext } = await import("./index");
+      const drawContext = createDrawContext();
+
+      drawContext.executeDrawCallback(
+        (d) => {
+          d.frame({ x: 100, y: 100, width: 200, height: 200 }, () => {
+            d.circle({ cx: 50, cy: 50, radius: 30, fillStyle: "red" });
+          });
+        },
+        mockContext,
+        800,
+        600,
+        0,
+      );
+
+      expect(mockContext.clip).toHaveBeenCalled();
+      expect(mockContext.roundRect).toHaveBeenCalledWith(100, 100, 200, 200, 0);
+      expect(mockContext.translate).toHaveBeenCalledWith(100, 100);
+      expect(mockContext.ellipse).toHaveBeenCalledWith(
+        50,
+        50,
+        30,
+        30,
+        0,
+        -Math.PI / 2,
+        (Math.PI * 3) / 2,
+      );
+    });
+
+    it("frame() callback context exposes local center", async () => {
+      const { createDrawContext } = await import("./index");
+      const drawContext = createDrawContext();
+      const frameValues = {
+        width: -1,
+        height: -1,
+        centerX: -1,
+        centerY: -1,
+      };
+
+      drawContext.executeDrawCallback(
+        (d) => {
+          d.frame(
+            { x: 50, y: 50, width: 100, height: 100 },
+            ({ width, height, center }) => {
+              frameValues.width = width;
+              frameValues.height = height;
+              frameValues.centerX = center.x;
+              frameValues.centerY = center.y;
+            },
+          );
+        },
+        mockContext,
+        800,
+        600,
+        0,
+      );
+
+      expect(frameValues).toEqual({
+        width: 100,
+        height: 100,
+        centerX: 50,
+        centerY: 50,
+      });
     });
   });
 

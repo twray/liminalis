@@ -7,7 +7,7 @@ describe("ClipManager", () => {
     ({
       save: vi.fn(),
       restore: vi.fn(),
-    } as unknown as CanvasRenderingContext2D);
+    }) as unknown as CanvasRenderingContext2D;
 
   describe("captureScopes", () => {
     it("returns a snapshot copy of currently active scopes", () => {

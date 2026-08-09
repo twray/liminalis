@@ -1,4 +1,4 @@
-import type Animatable from "../../core/Animatable";
+import type Animatable from "../core/Animatable";
 import type {
   Corners,
   Dimensions2D,
@@ -12,7 +12,7 @@ import type {
   WithBlend,
   WithOpacity,
   XOR,
-} from "../../types";
+} from "../types";
 
 export interface Bounds {
   x: number;
@@ -44,6 +44,18 @@ export interface TransformProps {
 
 export interface ContextGlobalProps extends WithOpacity, WithBlend {}
 
+export interface FrameContext {
+  width: number;
+  height: number;
+  center: Point2D;
+}
+
+export type FrameCallback = (context: FrameContext) => void;
+
+interface ClippableFrameProps {
+  newCoordinateSpace?: boolean;
+}
+
 export interface LineProps
   extends StrokeStyles, WithOpacity, WithBlend, TransformProps {
   start: Point2D;
@@ -51,7 +63,12 @@ export interface LineProps
 }
 
 export interface PolygonProps
-  extends StrokeStyles, WithOpacity, WithBlend, TransformProps {
+  extends
+    StrokeStyles,
+    WithOpacity,
+    WithBlend,
+    TransformProps,
+    ClippableFrameProps {
   points: Point2D[];
   closePath?: boolean;
   strokeAlignment?: StrokeAlignment;
@@ -82,7 +99,13 @@ export type BezierSegment = BezierStartSegment | BezierCurveSegment;
 export type BezierSegments = BezierSegment[];
 
 export interface BezierProps
-  extends FillStyles, StrokeStyles, WithOpacity, WithBlend, TransformProps {
+  extends
+    FillStyles,
+    StrokeStyles,
+    WithOpacity,
+    WithBlend,
+    TransformProps,
+    ClippableFrameProps {
   segments: BezierSegments;
   closePath?: boolean;
   strokeAlignment?: StrokeAlignment;
@@ -111,14 +134,16 @@ export type ArcProps = EllipticGeometryProps &
     end: number;
     closePath?: boolean;
     strokeAlignment?: StrokeAlignment;
-  };
+  } & ClippableFrameProps;
 
-export interface CircleProps extends EllipticGeometryProps {
+export interface CircleProps
+  extends EllipticGeometryProps, ClippableFrameProps {
   radius: number;
   strokeAlignment?: StrokeAlignment;
 }
 
-export interface EllipseProps extends EllipticGeometryProps {
+export interface EllipseProps
+  extends EllipticGeometryProps, ClippableFrameProps {
   radiusX: number;
   radiusY: number;
   strokeAlignment?: StrokeAlignment;
@@ -132,7 +157,8 @@ export interface RectProps
     StrokeStyles,
     WithOpacity,
     WithBlend,
-    TransformProps {
+    TransformProps,
+    ClippableFrameProps {
   cornerRadius?: Corners | number;
   strokeAlignment?: StrokeAlignment;
 }
@@ -158,6 +184,9 @@ export interface ImageProps
   fit?: "cover" | "contain" | "stretch";
 }
 
+export interface FrameProps
+  extends Positioned2D, Dimensions2D, TransformProps {}
+
 export interface DrawMethods {
   width: number;
   height: number;
@@ -168,16 +197,23 @@ export interface DrawMethods {
   line: (props: LineProps) => Animatable<LineProps>;
   polygon: (
     props: PolygonProps,
-    frame?: () => void,
+    frame?: FrameCallback,
   ) => Animatable<PolygonProps>;
-  bezier: (props: BezierProps, frame?: () => void) => Animatable<BezierProps>;
-  arc: (props: ArcProps, frame?: () => void) => Animatable<ArcProps>;
-  circle: (props: CircleProps, frame?: () => void) => Animatable<CircleProps>;
+  bezier: (
+    props: BezierProps,
+    frame?: FrameCallback,
+  ) => Animatable<BezierProps>;
+  arc: (props: ArcProps, frame?: FrameCallback) => Animatable<ArcProps>;
+  circle: (
+    props: CircleProps,
+    frame?: FrameCallback,
+  ) => Animatable<CircleProps>;
   ellipse: (
     props: EllipseProps,
-    frame?: () => void,
+    frame?: FrameCallback,
   ) => Animatable<EllipseProps>;
-  rect: (props: RectProps, frame?: () => void) => Animatable<RectProps>;
+  rect: (props: RectProps, frame?: FrameCallback) => Animatable<RectProps>;
+  frame: (props: FrameProps, frame: FrameCallback) => Animatable<FrameProps>;
   text: (text: string, props?: TextProps) => Animatable<TextProps>;
   image: (imageSrc: string, props?: ImageProps) => Animatable<ImageProps>;
 }

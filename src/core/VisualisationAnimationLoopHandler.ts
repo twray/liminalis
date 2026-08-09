@@ -1,6 +1,6 @@
 import { Utilities, WebMidi } from "webmidi";
 
-import { createDrawContext } from "../contexts/draw";
+import { createDrawContext } from "../render";
 import AudioCapture, { type AudioCaptureSession } from "./AudioCapture";
 import CanvasRenderer from "./CanvasRenderer";
 import { imageAssetCache } from "./ImageAssetCache";

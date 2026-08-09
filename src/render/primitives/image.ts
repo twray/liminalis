@@ -1,4 +1,4 @@
-import type { LoadedImageAsset } from "../../../core/ImageAssetCache";
+import type { LoadedImageAsset } from "../../core/ImageAssetCache";
 import {
   DEFAULT_BLEND_MODE,
   renderWithTransform,

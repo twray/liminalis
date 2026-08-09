@@ -1,5 +1,5 @@
-import type { Corners } from "../../../types";
-import { isCorners } from "../../../util";
+import type { Corners } from "../../types";
+import { isCorners } from "../../util";
 import {
   DEFAULT_BLEND_MODE,
   DEFAULT_FILL_STYLE,
