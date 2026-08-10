@@ -188,11 +188,11 @@ export interface FrameProps
   extends Positioned2D, Dimensions2D, TransformProps {}
 
 export interface DrawMethods {
-  width: number;
-  height: number;
+  sceneWidth: number;
+  sceneHeight: number;
   withStyles: (styles: PartialDrawStyles, callback: () => void) => void;
   background: (props: BackgroundProps) => void;
-  center: Point2D;
+  sceneCenter: Point2D;
   centerOf: (props: Dimensions2D) => Point2D;
   line: (props: LineProps) => Animatable<LineProps>;
   polygon: (

@@ -215,11 +215,11 @@ export const createDrawContext = (): DrawContext => {
     };
 
     const methods: DrawMethods = {
-      width,
-      height,
+      sceneWidth: width,
+      sceneHeight: height,
       withStyles,
       background: (props: BackgroundProps) => background(context, props),
-      center: { x: width / 2, y: height / 2 },
+      sceneCenter: { x: width / 2, y: height / 2 },
       centerOf,
       line: (props: LineProps) =>
         queueAnimatable(props, (p) => line(context, p)),
