@@ -1998,7 +1998,7 @@ describe("drawMethods transform props", () => {
       );
     });
 
-    it("uses local frame coordinates when newCoordinateSpace is true", async () => {
+    it("uses local frame coordinates when useLocalCoordinateContext is true", async () => {
       const { createDrawContext } = await import("./index");
       const drawContext = createDrawContext();
 
@@ -2010,7 +2010,7 @@ describe("drawMethods transform props", () => {
               y: 100,
               width: 200,
               height: 200,
-              newCoordinateSpace: true,
+              useLocalCoordinateContext: true,
             },
             () => {
               d.circle({ cx: 50, cy: 50, radius: 30, fillStyle: "red" });
@@ -2053,13 +2053,13 @@ describe("drawMethods transform props", () => {
               y: 120,
               width: 200,
               height: 160,
-              newCoordinateSpace: true,
+              useLocalCoordinateContext: true,
             },
-            ({ width, height, center }) => {
-              frameValues.width = width;
-              frameValues.height = height;
-              frameValues.centerX = center.x;
-              frameValues.centerY = center.y;
+            ({ contextWidth, contextHeight, contextCenter }) => {
+              frameValues.width = contextWidth;
+              frameValues.height = contextHeight;
+              frameValues.centerX = contextCenter.x;
+              frameValues.centerY = contextCenter.y;
             },
           );
         },
@@ -2077,7 +2077,7 @@ describe("drawMethods transform props", () => {
       });
     });
 
-    it("exposes center in parent coordinate space when newCoordinateSpace is false", async () => {
+    it("exposes center in parent coordinate space when useLocalCoordinateContext is false", async () => {
       const { createDrawContext } = await import("./index");
       const drawContext = createDrawContext();
       const frameValues = {
@@ -2096,11 +2096,11 @@ describe("drawMethods transform props", () => {
               width: 100,
               height: 100,
             },
-            ({ width, height, center }) => {
-              frameValues.width = width;
-              frameValues.height = height;
-              frameValues.centerX = center.x;
-              frameValues.centerY = center.y;
+            ({ contextWidth, contextHeight, contextCenter }) => {
+              frameValues.width = contextWidth;
+              frameValues.height = contextHeight;
+              frameValues.centerX = contextCenter.x;
+              frameValues.centerY = contextCenter.y;
             },
           );
         },
@@ -2130,7 +2130,7 @@ describe("drawMethods transform props", () => {
               y: 100,
               width: 200,
               height: 200,
-              newCoordinateSpace: true,
+              useLocalCoordinateContext: true,
             },
             () => {
               d.circle({ cx: 50, cy: 50, radius: 20, fillStyle: "red" });
@@ -2164,7 +2164,7 @@ describe("drawMethods transform props", () => {
               y: 100,
               width: 200,
               height: 200,
-              newCoordinateSpace: true,
+              useLocalCoordinateContext: true,
             },
             () => {
               d.circle({ cx: 50, cy: 50, radius: 20, fillStyle: "red" });
@@ -2233,11 +2233,11 @@ describe("drawMethods transform props", () => {
         (d) => {
           d.frame(
             { x: 50, y: 50, width: 100, height: 100 },
-            ({ width, height, center }) => {
-              frameValues.width = width;
-              frameValues.height = height;
-              frameValues.centerX = center.x;
-              frameValues.centerY = center.y;
+            ({ contextWidth, contextHeight, contextCenter }) => {
+              frameValues.width = contextWidth;
+              frameValues.height = contextHeight;
+              frameValues.centerX = contextCenter.x;
+              frameValues.centerY = contextCenter.y;
             },
           );
         },

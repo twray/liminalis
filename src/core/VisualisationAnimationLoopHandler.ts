@@ -77,9 +77,9 @@ interface SceneSettings {
 
 interface SetupFunctionProps<TState> {
   state: TState;
-  width: number;
-  height: number;
-  center: Point2D;
+  sceneWidth: number;
+  sceneHeight: number;
+  sceneCenter: Point2D;
   preload: (imageUrl: string | string[]) => void;
   onNoteDown: (callback: NoteDownEventCallback) => void;
   onNoteUp: (callback: NoteUpEventCallback) => void;
@@ -222,13 +222,13 @@ class VisualisationAnimationLoopHandler<TState> {
 
     const canvasWidth = this.#settings.dimensions?.[0] ?? window.innerWidth;
     const canvasHeight = this.#settings.dimensions?.[1] ?? window.innerHeight;
-    const center = { x: canvasWidth / 2, y: canvasHeight / 2 };
+    const canvasCenter = { x: canvasWidth / 2, y: canvasHeight / 2 };
 
     setupFunction({
       state: this.#sceneState,
-      width: canvasWidth,
-      height: canvasHeight,
-      center,
+      sceneWidth: canvasWidth,
+      sceneHeight: canvasHeight,
+      sceneCenter: canvasCenter,
       preload,
       onNoteDown,
       onNoteUp,
@@ -252,7 +252,7 @@ class VisualisationAnimationLoopHandler<TState> {
     // This persists across frames but is isolated to this scene
     const drawContext = createDrawContext();
 
-    const sketchFunction = () => {
+    const renderer = () => {
       return (canvasProps: CanvasProps) => {
         const { context, width, height } = canvasProps;
 
@@ -299,9 +299,9 @@ class VisualisationAnimationLoopHandler<TState> {
 
           frameRenderCallback({
             context,
-            width,
-            height,
-            center,
+            sceneWidth: width,
+            sceneHeight: height,
+            sceneCenter: center,
             time: timeInMs,
             beforeTime,
             afterTime,
@@ -362,7 +362,7 @@ class VisualisationAnimationLoopHandler<TState> {
       noteEventManager: this.#noteEventManager,
     });
 
-    this.#canvasRenderer.start(sketchFunction, { ...this.#settings, canvas });
+    this.#canvasRenderer.start(renderer, { ...this.#settings, canvas });
   }
 
   #setUpEventListeners({

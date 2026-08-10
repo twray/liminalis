@@ -45,15 +45,15 @@ export interface TransformProps {
 export interface ContextGlobalProps extends WithOpacity, WithBlend {}
 
 export interface FrameContext {
-  width: number;
-  height: number;
-  center: Point2D;
+  contextWidth: number;
+  contextHeight: number;
+  contextCenter: Point2D;
 }
 
 export type FrameCallback = (context: FrameContext) => void;
 
 export interface ClippableFrameProps {
-  newCoordinateSpace?: boolean;
+  useLocalCoordinateContext?: boolean;
 }
 
 export interface LineProps

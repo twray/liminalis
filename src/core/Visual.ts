@@ -121,9 +121,9 @@ class Visual<TProps = {}> {
     this.renderer({
       props,
       context,
-      width,
-      height,
-      center,
+      sceneWidth: width,
+      sceneHeight: height,
+      sceneCenter: center,
       time: timeSinceFirstRender,
       status,
       attackValue,

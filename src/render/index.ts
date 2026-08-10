@@ -57,22 +57,20 @@ import type {
 
 const toFrameContext = (
   bounds: Bounds,
-  newCoordinateSpace: boolean,
+  useLocalCoordinateContext: boolean,
 ): FrameContext => {
-  const center = newCoordinateSpace
+  const center = useLocalCoordinateContext
     ? { x: bounds.width / 2, y: bounds.height / 2 }
     : { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 };
 
   return {
-    width: bounds.width,
-    height: bounds.height,
-    center,
+    contextWidth: bounds.width,
+    contextHeight: bounds.height,
+    contextCenter: center,
   };
 };
 
-const createClipScope = <
-  T extends TransformProps & { newCoordinateSpace?: boolean },
->(
+const createClipScope = <T extends TransformProps & ClippableFrameProps>(
   getProps: () => T,
   getPathDescriptor: (props: T) => ClosedPathDescriptor,
 ): ClipScope => {
@@ -98,7 +96,7 @@ const createClipScope = <
 
       undoForwardTransform(context, transformState);
 
-      if (props.newCoordinateSpace) {
+      if (props.useLocalCoordinateContext) {
         context.translate(descriptor.bounds.x, descriptor.bounds.y);
       }
     },
@@ -146,8 +144,10 @@ export const createDrawContext = (): DrawContext => {
 
     // Queues a standard animatable draw operation.
     // Use for primitives that only need deferred animation + style resolution.
+    //
     // - props: public primitive props captured for this frame
     // - renderFn: receives animated props during registry.flush() and performs drawing
+    //
     // The queued closure also snapshots active clip scopes so nested clipping remains stable.
     const queueAnimatable = <T extends PartialDrawStyles>(
       props: T,
@@ -163,10 +163,12 @@ export const createDrawContext = (): DrawContext => {
 
     // Queues a clippable + animatable operation that can also create a frame scope.
     // Use for primitives that may be invoked with a frame callback (rect/circle/arc/etc).
+    //
     // - renderFn: draws the primitive from lifecycle props (possibly normalized)
     // - getPathDescriptor: builds the closed path used for clip masking and frame metrics
     // - normalizeProps: maps public props to lifecycle props (for example, frame injects
-    //   newCoordinateSpace before frame context + clip scope are derived)
+    //   useLocalCoordinateContext before frame context + clip scope are derived)
+    //
     // Without a frame callback, this behaves like queueDraw with lifecycle normalization.
     // With a frame callback, it computes frame context, queues clip animation state, and
     // applies the clip scope to nested deferred draws.
@@ -193,7 +195,7 @@ export const createDrawContext = (): DrawContext => {
         const frameDescriptor = getPathDescriptor(lifecycleProps);
         const frameContext = toFrameContext(
           frameDescriptor.bounds,
-          !!lifecycleProps.newCoordinateSpace,
+          !!lifecycleProps.useLocalCoordinateContext,
         );
         let currentClipProps = lifecycleProps;
 
@@ -254,7 +256,7 @@ export const createDrawContext = (): DrawContext => {
       frame: queueAnimatableAndClippable(
         (p: FrameProps) => frame(context, p),
         framePathDescriptor,
-        (p: FrameProps) => ({ ...p, newCoordinateSpace: true }),
+        (p: FrameProps) => ({ ...p, useLocalCoordinateContext: true }),
       ),
       text: (textValue: string, props: TextProps = {}) =>
         queueAnimatable(props, (p) => text(context, textValue, p)),
