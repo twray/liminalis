@@ -52,7 +52,7 @@ export interface FrameContext {
 
 export type FrameCallback = (context: FrameContext) => void;
 
-interface ClippableFrameProps {
+export interface ClippableFrameProps {
   newCoordinateSpace?: boolean;
 }
 

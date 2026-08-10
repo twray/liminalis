@@ -23,6 +23,8 @@ import {
   circlePathDescriptor,
   ellipse,
   ellipsePathDescriptor,
+  frame,
+  framePathDescriptor,
   image,
   line,
   polygon,
@@ -37,6 +39,7 @@ import type {
   BezierProps,
   Bounds,
   CircleProps,
+  ClippableFrameProps,
   ClosedPathDescriptor,
   DrawContext,
   DrawMethods,
@@ -141,7 +144,12 @@ export const createDrawContext = (): DrawContext => {
       }
     };
 
-    const queueDraw = <T extends PartialDrawStyles>(
+    // Queues a standard animatable draw operation.
+    // Use for primitives that only need deferred animation + style resolution.
+    // - props: public primitive props captured for this frame
+    // - renderFn: receives animated props during registry.flush() and performs drawing
+    // The queued closure also snapshots active clip scopes so nested clipping remains stable.
+    const queueAnimatable = <T extends PartialDrawStyles>(
       props: T,
       renderFn: (props: T) => void,
     ): Animatable<T> => {
@@ -153,28 +161,44 @@ export const createDrawContext = (): DrawContext => {
       });
     };
 
-    const createFramedMethod = <
-      T extends PartialDrawStyles &
-        TransformProps & { newCoordinateSpace?: boolean },
+    // Queues a clippable + animatable operation that can also create a frame scope.
+    // Use for primitives that may be invoked with a frame callback (rect/circle/arc/etc).
+    // - renderFn: draws the primitive from lifecycle props (possibly normalized)
+    // - getPathDescriptor: builds the closed path used for clip masking and frame metrics
+    // - normalizeProps: maps public props to lifecycle props (for example, frame injects
+    //   newCoordinateSpace before frame context + clip scope are derived)
+    // Without a frame callback, this behaves like queueDraw with lifecycle normalization.
+    // With a frame callback, it computes frame context, queues clip animation state, and
+    // applies the clip scope to nested deferred draws.
+    const queueAnimatableAndClippable = <
+      TPublic extends PartialDrawStyles & TransformProps,
+      TLifecycle extends TPublic & ClippableFrameProps,
     >(
-      renderFn: (props: T) => void,
-      getPathDescriptor: (props: T) => ClosedPathDescriptor,
-    ): ((props: T, frame?: FrameCallback) => Animatable<T>) => {
-      return (props: T, frame?: FrameCallback): Animatable<T> => {
-        if (!frame) {
-          return queueDraw(props, renderFn);
+      renderFn: (props: TLifecycle) => void,
+      getPathDescriptor: (props: TLifecycle) => ClosedPathDescriptor,
+      normalizeProps: (props: TPublic) => TLifecycle,
+    ): ((props: TPublic, frame?: FrameCallback) => Animatable<TPublic>) => {
+      return (
+        props: TPublic,
+        frameCallback?: FrameCallback,
+      ): Animatable<TPublic> => {
+        if (!frameCallback) {
+          return queueAnimatable(props, (drawProps) =>
+            renderFn(normalizeProps(drawProps)),
+          );
         }
 
         const mergedProps = mergeStyles(props);
-        const frameDescriptor = getPathDescriptor(mergedProps);
+        const lifecycleProps = normalizeProps(mergedProps);
+        const frameDescriptor = getPathDescriptor(lifecycleProps);
         const frameContext = toFrameContext(
           frameDescriptor.bounds,
-          !!mergedProps.newCoordinateSpace,
+          !!lifecycleProps.newCoordinateSpace,
         );
-        let currentClipProps = mergedProps;
+        let currentClipProps = lifecycleProps;
 
         const clipAnimatable = registry.queue(mergedProps, (animatedProps) => {
-          currentClipProps = animatedProps;
+          currentClipProps = normalizeProps(animatedProps);
         });
 
         const clipScope = createClipScope(
@@ -182,16 +206,11 @@ export const createDrawContext = (): DrawContext => {
           getPathDescriptor,
         );
 
-        clipManager.withScope(clipScope, () => frame(frameContext));
+        clipManager.withScope(clipScope, () => frameCallback(frameContext));
 
         return clipAnimatable;
       };
     };
-
-    const rectFramedMethod = createFramedMethod(
-      (p: RectProps) => rect(context, p),
-      rectPathDescriptor,
-    );
 
     const methods: DrawMethods = {
       width,
@@ -200,34 +219,47 @@ export const createDrawContext = (): DrawContext => {
       background: (props: BackgroundProps) => background(context, props),
       center: { x: width / 2, y: height / 2 },
       centerOf,
-      line: (props: LineProps) => queueDraw(props, (p) => line(context, p)),
-      polygon: createFramedMethod(
+      line: (props: LineProps) =>
+        queueAnimatable(props, (p) => line(context, p)),
+      polygon: queueAnimatableAndClippable(
         (p: PolygonProps) => polygon(context, p),
         polygonPathDescriptor,
+        (p: PolygonProps) => p,
       ),
-      bezier: createFramedMethod(
+      bezier: queueAnimatableAndClippable(
         (p: BezierProps) => bezier(context, p),
         bezierPathDescriptor,
+        (p: BezierProps) => p,
       ),
-      circle: createFramedMethod(
+      circle: queueAnimatableAndClippable(
         (p: CircleProps) => circle(context, p),
         circlePathDescriptor,
+        (p: CircleProps) => p,
       ),
-      ellipse: createFramedMethod(
+      ellipse: queueAnimatableAndClippable(
         (p: EllipseProps) => ellipse(context, p),
         ellipsePathDescriptor,
+        (p: EllipseProps) => p,
       ),
-      arc: createFramedMethod(
+      arc: queueAnimatableAndClippable(
         (p: ArcProps) => arc(context, p),
         arcPathDescriptor,
+        (p: ArcProps) => p,
       ),
-      rect: rectFramedMethod,
-      frame: (props: FrameProps, frame: FrameCallback) =>
-        rectFramedMethod({ ...props, newCoordinateSpace: true }, frame),
+      rect: queueAnimatableAndClippable(
+        (p: RectProps) => rect(context, p),
+        rectPathDescriptor,
+        (p: RectProps) => p,
+      ),
+      frame: queueAnimatableAndClippable(
+        (p: FrameProps) => frame(context, p),
+        framePathDescriptor,
+        (p: FrameProps) => ({ ...p, newCoordinateSpace: true }),
+      ),
       text: (textValue: string, props: TextProps = {}) =>
-        queueDraw(props, (p) => text(context, textValue, p)),
+        queueAnimatable(props, (p) => text(context, textValue, p)),
       image: (imageSrc: string, props: ImageProps = {}) =>
-        queueDraw(props, (p) => {
+        queueAnimatable(props, (p) => {
           const readyImageAsset = imageAssetCache.getReadyAsset(imageSrc);
 
           if (readyImageAsset) {
