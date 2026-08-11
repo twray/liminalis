@@ -14,10 +14,6 @@ export const DEFAULT_STROKE_WIDTH = 1;
 export const DEFAULT_STROKE_ALIGNMENT = "center";
 export const DEFAULT_BLEND_MODE: GlobalCompositeOperation = "source-over";
 
-export const DEFAULT_TEXT_FILL_STYLE = "#333";
-export const DEFAULT_TEXT_STROKE_STYLE = "transparent";
-export const DEFAULT_TEXT_FONT_STYLE = "12pt sans-serif";
-
 export const resolveTransformOrigin = (
   origin: TransformOrigin | undefined,
   bounds: Bounds,

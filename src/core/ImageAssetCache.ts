@@ -1,107 +1,40 @@
+import AsyncAssetCache, { type AssetCacheEntry } from "./AsyncAssetCache";
+
 export interface LoadedImageAsset {
   source: CanvasImageSource;
   width: number;
   height: number;
 }
+class ImageAssetCache extends AsyncAssetCache<string, LoadedImageAsset> {
+  ensureLoaded(imageSrc: string): AssetCacheEntry<LoadedImageAsset> {
+    return super.ensureLoadedByKey(imageSrc);
+  }
 
-interface ImageCacheLoadingEntry {
-  status: "loading";
-  promise: Promise<void>;
-}
+  getReadyAsset(imageSrc: string): LoadedImageAsset | null {
+    return super.getReadyAssetByKey(imageSrc);
+  }
 
-interface ImageCacheReadyEntry {
-  status: "ready";
-  asset: LoadedImageAsset;
-}
+  preload(imageSourceOrSources: string | string[]): void {
+    super.preloadKeys(imageSourceOrSources);
+  }
 
-interface ImageCacheErrorEntry {
-  status: "error";
-  error: unknown;
-}
+  protected loadAsset = async (imageSrc: string): Promise<LoadedImageAsset> => {
+    const imageElement = await this.#loadImageElement(imageSrc);
+    return this.#toLoadedImageAsset(imageElement);
+  };
 
-type ImageCacheEntry =
-  | ImageCacheLoadingEntry
-  | ImageCacheReadyEntry
-  | ImageCacheErrorEntry;
-
-class ImageAssetCache {
-  #cache = new Map<string, ImageCacheEntry>();
-
-  ensureLoaded(imageSrc: string): ImageCacheEntry {
-    const cachedEntry = this.#cache.get(imageSrc);
-
-    // Single-attempt policy: once a URL is cached in any state,
-    // do not issue another network request.
-    if (cachedEntry) {
-      return cachedEntry;
-    }
-
-    const loadingPromise = new Promise<void>((resolve) => {
+  #loadImageElement = (imageSrc: string): Promise<HTMLImageElement> =>
+    new Promise<HTMLImageElement>((resolve, reject) => {
       const imageElement = new Image();
       imageElement.crossOrigin = "anonymous";
 
-      imageElement.onload = () => {
-        void this.#toLoadedImageAsset(imageElement)
-          .then((asset) => {
-            this.#cache.set(imageSrc, {
-              status: "ready",
-              asset,
-            });
-          })
-          .catch((error: unknown) => {
-            this.#cache.set(imageSrc, {
-              status: "error",
-              error,
-            });
-          })
-          .finally(() => {
-            resolve();
-          });
-      };
-
+      imageElement.onload = () => resolve(imageElement);
       imageElement.onerror = () => {
-        this.#cache.set(imageSrc, {
-          status: "error",
-          error: new Error(`Failed to load image: ${imageSrc}`),
-        });
-
-        resolve();
+        reject(new Error(`Failed to load image: ${imageSrc}`));
       };
 
       imageElement.src = imageSrc;
     });
-
-    const loadingEntry: ImageCacheLoadingEntry = {
-      status: "loading",
-      promise: loadingPromise,
-    };
-
-    this.#cache.set(imageSrc, loadingEntry);
-
-    return loadingEntry;
-  }
-
-  getReadyAsset(imageSrc: string): LoadedImageAsset | null {
-    const entry = this.ensureLoaded(imageSrc);
-
-    if (entry.status !== "ready") {
-      return null;
-    }
-
-    return entry.asset;
-  }
-
-  preload(imageSourceOrSources: string | string[]): void {
-    const imageSources = Array.isArray(imageSourceOrSources)
-      ? imageSourceOrSources
-      : [imageSourceOrSources];
-
-    const uniqueImageSources = [...new Set(imageSources)];
-
-    for (const imageSource of uniqueImageSources) {
-      this.ensureLoaded(imageSource);
-    }
-  }
 
   #toLoadedImageAsset = async (
     imageElement: HTMLImageElement,

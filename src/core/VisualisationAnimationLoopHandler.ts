@@ -1,8 +1,10 @@
 import { Utilities, WebMidi } from "webmidi";
 
 import { createDrawContext } from "../render";
+import type { AssetCacheEntry } from "./AsyncAssetCache";
 import AudioCapture, { type AudioCaptureSession } from "./AudioCapture";
 import CanvasRenderer from "./CanvasRenderer";
+import { fontAssetCache, type FontAssetDefinition } from "./FontAssetCache";
 import { imageAssetCache } from "./ImageAssetCache";
 import { getRenderIsometricMethods } from "./renderIsometricMethods";
 import SnapshotExporter from "./SnapshotExporter";
@@ -80,12 +82,24 @@ interface SetupFunctionProps<TState> {
   sceneWidth: number;
   sceneHeight: number;
   sceneCenter: Point2D;
-  preload: (imageUrl: string | string[]) => void;
+  load: (
+    callback: (loaders: SetupAssetLoaders) => void,
+    options?: SetupAssetLoadOptions,
+  ) => void;
   onNoteDown: (callback: NoteDownEventCallback) => void;
   onNoteUp: (callback: NoteUpEventCallback) => void;
   onRender: (callback: FrameEventCallback) => void;
   atTime: (time: EventTime, callback: TimeEventCallback) => void;
   atStart: (callback: TimeEventCallback) => void;
+}
+
+interface SetupAssetLoaders {
+  image: (imageUrl: string | string[]) => void;
+  font: (font: FontAssetDefinition | FontAssetDefinition[]) => void;
+}
+
+interface SetupAssetLoadOptions {
+  deferRender?: boolean;
 }
 
 interface FrameRenderProps extends RenderProps {
@@ -147,6 +161,7 @@ class VisualisationAnimationLoopHandler<TState> {
   #snapshotExporter = new SnapshotExporter();
   #videoRecordingScale = DEFAULTS.SETTINGS_VIDEO_RECORDING_SCALE;
   #videoRecordingFormat: VideoFormatPreference = DEFAULTS.SETTINGS_VIDEO_FORMAT;
+  #deferredAssetLoadPromises: Promise<void>[] = [];
 
   constructor() {}
 
@@ -192,6 +207,8 @@ class VisualisationAnimationLoopHandler<TState> {
   }
 
   setup(setupFunction: (props: SetupFunctionProps<TState>) => void) {
+    this.#deferredAssetLoadPromises = [];
+
     const onNoteDown = (callback: NoteDownEventCallback) => {
       this.#noteDownCallbacks.push(callback);
     };
@@ -216,8 +233,41 @@ class VisualisationAnimationLoopHandler<TState> {
       atTime(0, callback);
     };
 
-    const preload = (imageUrl: string | string[]) => {
-      imageAssetCache.preload(imageUrl);
+    const toLoadPromise = (entry: AssetCacheEntry<unknown>): Promise<void> =>
+      entry.status === "loading" ? entry.promise : Promise.resolve();
+
+    const load = (
+      callback: (loaders: SetupAssetLoaders) => void,
+      options: SetupAssetLoadOptions = {},
+    ) => {
+      const batchPromises: Promise<void>[] = [];
+
+      callback({
+        image: (imageUrl: string | string[]) => {
+          const imageUrls = Array.isArray(imageUrl) ? imageUrl : [imageUrl];
+
+          for (const imageSrc of imageUrls) {
+            batchPromises.push(
+              toLoadPromise(imageAssetCache.ensureLoaded(imageSrc)),
+            );
+          }
+        },
+        font: (font: FontAssetDefinition | FontAssetDefinition[]) => {
+          const fonts = Array.isArray(font) ? font : [font];
+
+          for (const fontDefinition of fonts) {
+            batchPromises.push(
+              toLoadPromise(fontAssetCache.ensureLoaded(fontDefinition)),
+            );
+          }
+        },
+      });
+
+      if (options.deferRender !== false && batchPromises.length > 0) {
+        this.#deferredAssetLoadPromises.push(
+          Promise.all(batchPromises).then(() => undefined),
+        );
+      }
     };
 
     const canvasWidth = this.#settings.dimensions?.[0] ?? window.innerWidth;
@@ -229,7 +279,7 @@ class VisualisationAnimationLoopHandler<TState> {
       sceneWidth: canvasWidth,
       sceneHeight: canvasHeight,
       sceneCenter: canvasCenter,
-      preload,
+      load,
       onNoteDown,
       onNoteUp,
       onRender,
@@ -362,7 +412,18 @@ class VisualisationAnimationLoopHandler<TState> {
       noteEventManager: this.#noteEventManager,
     });
 
-    this.#canvasRenderer.start(renderer, { ...this.#settings, canvas });
+    const startRenderer = () => {
+      this.#canvasRenderer.start(renderer, { ...this.#settings, canvas });
+    };
+
+    if (this.#deferredAssetLoadPromises.length === 0) {
+      startRenderer();
+      return;
+    }
+
+    void Promise.allSettled(this.#deferredAssetLoadPromises).then(() => {
+      startRenderer();
+    });
   }
 
   #setUpEventListeners({

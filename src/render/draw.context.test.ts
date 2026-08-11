@@ -1320,7 +1320,7 @@ describe("drawMethods transform props", () => {
   });
 
   describe("text rendering", () => {
-    it('uses default font style "12pt sans-serif" when fontStyle is not provided', async () => {
+    it("uses default text font properties when no font properties are provided", async () => {
       const { createDrawContext } = await import("./index");
       const drawContext = createDrawContext();
 
@@ -1334,12 +1334,12 @@ describe("drawMethods transform props", () => {
         0,
       );
 
-      expect(mockContext.font).toBe("12pt sans-serif");
+      expect(mockContext.font).toBe("normal normal 12px Arial, sans-serif");
       expect(mockContext.fillText).toHaveBeenCalledWith("Hello", 10, 20);
       expect(mockContext.strokeText).toHaveBeenCalledWith("Hello", 10, 20);
     });
 
-    it("applies base draw styles to text including stroke and font style", async () => {
+    it("applies base draw styles to text including stroke and decomposed font properties", async () => {
       const { createDrawContext } = await import("./index");
       const drawContext = createDrawContext();
 
@@ -1350,7 +1350,10 @@ describe("drawMethods transform props", () => {
               fillStyle: "#ff0000",
               strokeStyle: "#00ff00",
               strokeWidth: 3,
-              fontStyle: "18px monospace",
+              fontStyle: "italic",
+              fontWeight: 700,
+              fontSize: "18px",
+              fontFamily: "monospace",
               opacity: 0.4,
               blend: "screen",
             },
@@ -1365,7 +1368,7 @@ describe("drawMethods transform props", () => {
         0,
       );
 
-      expect(mockContext.font).toBe("18px monospace");
+      expect(mockContext.font).toBe("italic 700 18px monospace");
       expect(mockContext.globalAlpha).toBe(0.4);
       expect(mockContext.globalCompositeOperation).toBe("screen");
       expect(mockContext.fillStyle).toBe("#ff0000");
@@ -1373,6 +1376,33 @@ describe("drawMethods transform props", () => {
       expect(mockContext.lineWidth).toBe(3);
       expect(mockContext.fillText).toHaveBeenCalledWith("Styled", 30, 40);
       expect(mockContext.strokeText).toHaveBeenCalledWith("Styled", 30, 40);
+    });
+
+    it("supports text() fontStyle, fontSize, fontWeight and fontFamily props", async () => {
+      const { createDrawContext } = await import("./index");
+      const drawContext = createDrawContext();
+
+      drawContext.executeDrawCallback(
+        (d) => {
+          d.text("Typed", {
+            x: 16,
+            y: 24,
+            fontStyle: "oblique 12deg",
+            fontWeight: "bold",
+            fontSize: "20ch",
+            fontFamily: '"Fredericka the Great", sans-serif',
+          });
+        },
+        mockContext,
+        800,
+        600,
+        0,
+      );
+
+      expect(mockContext.font).toBe(
+        'oblique 12deg bold 20ch "Fredericka the Great", sans-serif',
+      );
+      expect(mockContext.fillText).toHaveBeenCalledWith("Typed", 16, 24);
     });
 
     it("applies transforms to text", async () => {

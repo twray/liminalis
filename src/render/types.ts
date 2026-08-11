@@ -9,6 +9,7 @@ import type {
   Positioned2D,
   StrokeAlignment,
   StrokeStyles,
+  TextStyles,
   WithBlend,
   WithOpacity,
   XOR,
@@ -166,13 +167,12 @@ export interface RectProps
 export interface TextProps
   extends
     Positioned2D,
+    TextStyles,
     FillStyles,
     StrokeStyles,
     WithOpacity,
     WithBlend,
-    TransformProps {
-  fontStyle?: string;
-}
+    TransformProps {}
 
 export interface ImageProps
   extends

@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { logMessage } from "../util/log";
+import type { AssetCacheEntry } from "./AsyncAssetCache";
+import type { FontAssetDefinition } from "./FontAssetCache";
 
 const mockState = {
   latestRenderCallback: null as ((props: any) => void) | null,
@@ -38,7 +40,19 @@ const snapshotExporterMockState = {
 };
 
 const imageAssetCacheMockState = {
-  preload: vi.fn(),
+  ensureLoaded: vi.fn<(imageSrc: string) => AssetCacheEntry<{}>>(() => ({
+    status: "ready",
+    asset: {},
+  })),
+};
+
+const fontAssetCacheMockState = {
+  ensureLoaded: vi.fn<(font: FontAssetDefinition) => AssetCacheEntry<{}>>(
+    () => ({
+      status: "ready",
+      asset: {},
+    }),
+  ),
 };
 
 vi.mock("./CanvasRenderer", () => {
@@ -187,7 +201,15 @@ vi.mock("./SnapshotExporter", () => {
 vi.mock("./ImageAssetCache", () => {
   return {
     imageAssetCache: {
-      preload: imageAssetCacheMockState.preload,
+      ensureLoaded: imageAssetCacheMockState.ensureLoaded,
+    },
+  };
+});
+
+vi.mock("./FontAssetCache", () => {
+  return {
+    fontAssetCache: {
+      ensureLoaded: fontAssetCacheMockState.ensureLoaded,
     },
   };
 });
@@ -387,23 +409,122 @@ describe("VisualisationAnimationLoopHandler note dispatch", () => {
     canvasRendererMockState.instances = [];
     videoRecorderMockState.instances = [];
     snapshotExporterMockState.instances = [];
-    imageAssetCacheMockState.preload.mockReset();
+    imageAssetCacheMockState.ensureLoaded.mockReset();
+    imageAssetCacheMockState.ensureLoaded.mockReturnValue({
+      status: "ready",
+      asset: {},
+    });
+    fontAssetCacheMockState.ensureLoaded.mockReset();
+    fontAssetCacheMockState.ensureLoaded.mockReturnValue({
+      status: "ready",
+      asset: {},
+    });
     setupDomGlobals();
     vi.mocked(logMessage).mockReset();
   });
 
-  it("exposes setup preload(imageUrl) and forwards to imageAssetCache", async () => {
+  it("exposes setup load(callback) and forwards image loader to imageAssetCache", async () => {
     const { default: VisualisationAnimationLoopHandler } =
       await import("./VisualisationAnimationLoopHandler");
 
-    new VisualisationAnimationLoopHandler().setup(({ preload }) => {
-      preload("https://example.com/setup-preload.png");
+    new VisualisationAnimationLoopHandler().setup(({ load }) => {
+      load(({ image }) => {
+        image("https://example.com/setup-preload.png");
+      });
     });
 
-    expect(imageAssetCacheMockState.preload).toHaveBeenCalledTimes(1);
-    expect(imageAssetCacheMockState.preload).toHaveBeenCalledWith(
+    expect(imageAssetCacheMockState.ensureLoaded).toHaveBeenCalledTimes(1);
+    expect(imageAssetCacheMockState.ensureLoaded).toHaveBeenCalledWith(
       "https://example.com/setup-preload.png",
     );
+  });
+
+  it("exposes setup load(callback) and forwards font loader to fontAssetCache", async () => {
+    const { default: VisualisationAnimationLoopHandler } =
+      await import("./VisualisationAnimationLoopHandler");
+
+    new VisualisationAnimationLoopHandler().setup(({ load }) => {
+      load(({ font }) => {
+        font({
+          family: "Inter",
+          source: "url(https://example.com/fonts/inter.woff2)",
+          descriptors: { weight: "400", style: "normal" },
+        });
+      });
+    });
+
+    expect(fontAssetCacheMockState.ensureLoaded).toHaveBeenCalledTimes(1);
+    expect(fontAssetCacheMockState.ensureLoaded).toHaveBeenCalledWith({
+      family: "Inter",
+      source: "url(https://example.com/fonts/inter.woff2)",
+      descriptors: { weight: "400", style: "normal" },
+    });
+  });
+
+  it("defers renderer start by default until load() assets finish", async () => {
+    const { default: VisualisationAnimationLoopHandler } =
+      await import("./VisualisationAnimationLoopHandler");
+
+    let resolveImageLoad!: () => void;
+
+    imageAssetCacheMockState.ensureLoaded.mockImplementationOnce(() => ({
+      status: "loading",
+      promise: new Promise<void>((resolve) => {
+        resolveImageLoad = () => {
+          resolve();
+        };
+      }),
+    }));
+
+    const handler = new VisualisationAnimationLoopHandler().setup(
+      ({ load }) => {
+        load(({ image }) => {
+          image("https://example.com/deferred.png");
+        });
+      },
+    );
+
+    handler.render();
+
+    const canvasRendererMock = getLatestCanvasRendererMock();
+
+    await flushPromises();
+    expect(canvasRendererMock.start).toHaveBeenCalledTimes(0);
+
+    resolveImageLoad();
+
+    await flushPromises();
+    expect(canvasRendererMock.start).toHaveBeenCalledTimes(1);
+  });
+
+  it("allows opting out of deferred renderer start with load(..., { deferRender: false })", async () => {
+    const { default: VisualisationAnimationLoopHandler } =
+      await import("./VisualisationAnimationLoopHandler");
+
+    imageAssetCacheMockState.ensureLoaded.mockReturnValueOnce({
+      status: "loading",
+      promise: new Promise<void>(() => {
+        // Intentionally unresolved to prove renderer starts immediately.
+      }),
+    });
+
+    const handler = new VisualisationAnimationLoopHandler().setup(
+      ({ load }) => {
+        load(
+          ({ image }) => {
+            image("https://example.com/non-deferred.png");
+          },
+          { deferRender: false },
+        );
+      },
+    );
+
+    handler.render();
+
+    await flushPromises();
+
+    const canvasRendererMock = getLatestCanvasRendererMock();
+    expect(canvasRendererMock.start).toHaveBeenCalledTimes(1);
   });
 
   it("dispatches note callbacks immediately in MIDI arrival order", async () => {
