@@ -1,6 +1,6 @@
 const prettifyJSON = (
   obj: Record<string, any>,
-  truncateNumericValues?: number
+  truncateNumericValues?: number,
 ): string => {
   const entries = Object.entries(obj);
 
@@ -42,23 +42,45 @@ export const logMessage = (() => {
 
   return (message: Loggable, truncateNumericValues?: number) => {
     const canvas = document.querySelector("#canvas-visualisation");
+    const hasCanvas = !!canvas;
 
-    if (!canvas) return;
+    if (!document?.body) {
+      return;
+    }
 
     let logWindow = document.querySelector("#log-window");
 
     if (!logWindow) {
-      const canvasBoundingRect = canvas.getBoundingClientRect();
-      const { top } = canvasBoundingRect;
-
       logWindow = document.createElement("div") as HTMLDivElement;
       logWindow.setAttribute("id", "log-window");
 
+      if (hasCanvas) {
+        const canvasBoundingRect = (canvas as Element).getBoundingClientRect();
+        const { top } = canvasBoundingRect;
+
+        Object.assign((logWindow as HTMLDivElement).style, {
+          position: "absolute",
+          top: `${top + 10}px`,
+          left: `${canvasBoundingRect.left + 10}px`,
+          right: `${canvasBoundingRect.left + 10}px`,
+          maxWidth: "500px",
+        });
+
+        (canvas as Element).after(logWindow);
+      } else {
+        Object.assign((logWindow as HTMLDivElement).style, {
+          position: "fixed",
+          top: "10px",
+          left: "10px",
+          right: "10px",
+          maxWidth: "min(500px, calc(100vw - 20px))",
+          zIndex: "9999",
+        });
+
+        document.body.appendChild(logWindow);
+      }
+
       Object.assign((logWindow as HTMLDivElement).style, {
-        position: "absolute",
-        top: `${top + 10}px`,
-        left: `${canvasBoundingRect.left + 10}px`,
-        right: `${canvasBoundingRect.left + 10}px`,
         padding: "10px",
         borderRadius: "6px",
         color: "#555",
@@ -66,12 +88,9 @@ export const logMessage = (() => {
         border: "1px solid #EEE",
         fontFamily: "monospace",
         fontSize: "10px",
-        maxWidth: "500px",
         lineHeight: "1.6",
         whiteSpace: "pre-wrap",
       });
-
-      canvas.after(logWindow);
     }
 
     let displayedMessage;

@@ -233,8 +233,34 @@ class VisualisationAnimationLoopHandler<TState> {
       atTime(0, callback);
     };
 
-    const toLoadPromise = (entry: AssetCacheEntry<unknown>): Promise<void> =>
-      entry.status === "loading" ? entry.promise : Promise.resolve();
+    const toLoadPromise = (
+      ensure: () => AssetCacheEntry<unknown>,
+      assetLabel: string,
+    ): Promise<void> => {
+      const entry = ensure();
+
+      if (entry.status === "error") {
+        return Promise.reject(
+          entry.error instanceof Error
+            ? entry.error
+            : new Error(`Failed to load asset: ${assetLabel}`),
+        );
+      }
+
+      if (entry.status === "ready") {
+        return Promise.resolve();
+      }
+
+      return entry.promise.then(() => {
+        const settledEntry = ensure();
+
+        if (settledEntry.status === "error") {
+          throw settledEntry.error instanceof Error
+            ? settledEntry.error
+            : new Error(`Failed to load asset: ${assetLabel}`);
+        }
+      });
+    };
 
     const load = (
       callback: (loaders: SetupAssetLoaders) => void,
@@ -248,7 +274,10 @@ class VisualisationAnimationLoopHandler<TState> {
 
           for (const imageSrc of imageUrls) {
             batchPromises.push(
-              toLoadPromise(imageAssetCache.ensureLoaded(imageSrc)),
+              toLoadPromise(
+                () => imageAssetCache.ensureLoaded(imageSrc),
+                `image:${imageSrc}`,
+              ),
             );
           }
         },
@@ -256,8 +285,13 @@ class VisualisationAnimationLoopHandler<TState> {
           const fonts = Array.isArray(font) ? font : [font];
 
           for (const fontDefinition of fonts) {
+            const fontLabel = `${fontDefinition.family}:${fontDefinition.source}`;
+
             batchPromises.push(
-              toLoadPromise(fontAssetCache.ensureLoaded(fontDefinition)),
+              toLoadPromise(
+                () => fontAssetCache.ensureLoaded(fontDefinition),
+                `font:${fontLabel}`,
+              ),
             );
           }
         },
@@ -265,7 +299,12 @@ class VisualisationAnimationLoopHandler<TState> {
 
       if (options.deferRender !== false && batchPromises.length > 0) {
         this.#deferredAssetLoadPromises.push(
-          Promise.all(batchPromises).then(() => undefined),
+          Promise.all(batchPromises)
+            .then(() => {})
+            .catch((error: unknown) => {
+              console.error("Asset loading failed", error);
+              throw error;
+            }),
         );
       }
     };
@@ -421,9 +460,18 @@ class VisualisationAnimationLoopHandler<TState> {
       return;
     }
 
-    void Promise.allSettled(this.#deferredAssetLoadPromises).then(() => {
-      startRenderer();
-    });
+    void Promise.all(this.#deferredAssetLoadPromises)
+      .then(() => {
+        startRenderer();
+      })
+      .catch((error: unknown) => {
+        console.error("Unable to load assets, check console for details");
+        console.error(
+          "Unable to load assets, check console for details",
+          error,
+        );
+        logMessage("Unable to load assets, check console for details");
+      });
   }
 
   #setUpEventListeners({

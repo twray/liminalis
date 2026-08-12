@@ -527,6 +527,61 @@ describe("VisualisationAnimationLoopHandler note dispatch", () => {
     expect(canvasRendererMock.start).toHaveBeenCalledTimes(1);
   });
 
+  it("blocks renderer start and logs when deferred asset load resolves to cache error", async () => {
+    const { default: VisualisationAnimationLoopHandler } =
+      await import("./VisualisationAnimationLoopHandler");
+
+    let resolveImageLoad!: () => void;
+    let hasSettledWithError = false;
+    const consoleErrorSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
+
+    imageAssetCacheMockState.ensureLoaded.mockImplementation(() => {
+      if (hasSettledWithError) {
+        return {
+          status: "error",
+          error: new Error("Image cache failed"),
+        };
+      }
+
+      return {
+        status: "loading",
+        promise: new Promise<void>((resolve) => {
+          resolveImageLoad = () => {
+            hasSettledWithError = true;
+            resolve();
+          };
+        }),
+      };
+    });
+
+    const handler = new VisualisationAnimationLoopHandler().setup(
+      ({ load }) => {
+        load(({ image }) => {
+          image("https://example.com/failing-deferred.png");
+        });
+      },
+    );
+
+    handler.render();
+
+    const canvasRendererMock = getLatestCanvasRendererMock();
+
+    await flushPromises();
+    expect(canvasRendererMock.start).toHaveBeenCalledTimes(0);
+
+    resolveImageLoad();
+
+    await flushPromises(20);
+
+    expect(canvasRendererMock.start).toHaveBeenCalledTimes(0);
+    expect(vi.mocked(logMessage)).toHaveBeenCalledWith("Unable to load assets, check console for details");
+    expect(consoleErrorSpy).toHaveBeenCalled();
+
+    consoleErrorSpy.mockRestore();
+  });
+
   it("dispatches note callbacks immediately in MIDI arrival order", async () => {
     const { default: VisualisationAnimationLoopHandler } =
       await import("./VisualisationAnimationLoopHandler");

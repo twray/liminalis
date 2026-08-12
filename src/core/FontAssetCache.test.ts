@@ -78,9 +78,11 @@ const waitForReadyAsset = async (
 describe("FontAssetCache", () => {
   const originalFontFace = globalThis.FontFace;
   const originalDocument = globalThis.document;
+  const originalFetch = globalThis.fetch;
 
   const mockDocumentFontsAdd = vi.fn();
   const mockDocumentFontsLoad = vi.fn();
+  const mockFetch = vi.fn();
 
   let mockDocumentCreateElement: ReturnType<typeof vi.fn>;
   let mockDocumentHeadAppendChild: ReturnType<typeof vi.fn>;
@@ -128,6 +130,18 @@ describe("FontAssetCache", () => {
         },
       },
     });
+
+    Object.defineProperty(globalThis, "fetch", {
+      configurable: true,
+      writable: true,
+      value: mockFetch,
+    });
+
+    mockFetch.mockResolvedValue({
+      ok: true,
+      text: async () =>
+        "@font-face { font-family: 'Fredericka the Great'; src: url('https://example.com/fred.woff2') format('woff2'); }",
+    });
   });
 
   afterEach(() => {
@@ -142,16 +156,22 @@ describe("FontAssetCache", () => {
       writable: true,
       value: originalDocument,
     });
+
+    Object.defineProperty(globalThis, "fetch", {
+      configurable: true,
+      writable: true,
+      value: originalFetch,
+    });
   });
 
   it("loads and registers a font once", async () => {
     const definition = {
       family: "Inter",
-      source: "url(https://example.com/inter.woff2)",
+      source: "https://example.com/inter.woff2",
       descriptors: { weight: "400", style: "normal" } as FontFaceDescriptors,
     };
 
-    const key = `${definition.family}|${definition.source}|${JSON.stringify(
+    const key = `${definition.family}|url('${definition.source}')|${JSON.stringify(
       definition.descriptors,
     )}`;
 
@@ -174,11 +194,11 @@ describe("FontAssetCache", () => {
   it("does not retry a failed font load", async () => {
     const definition = {
       family: "Inter",
-      source: "url(https://example.com/inter-error.woff2)",
+      source: "https://example.com/inter-error.woff2",
       descriptors: { weight: "400", style: "normal" } as FontFaceDescriptors,
     };
 
-    const key = `${definition.family}|${definition.source}|${JSON.stringify(
+    const key = `${definition.family}|url('${definition.source}')|${JSON.stringify(
       definition.descriptors,
     )}`;
 
@@ -198,17 +218,17 @@ describe("FontAssetCache", () => {
   it("preload deduplicates equivalent font definitions", async () => {
     const definition = {
       family: "Inter",
-      source: "url(https://example.com/inter-dup.woff2)",
+      source: "https://example.com/inter-dup.woff2",
       descriptors: { weight: "400", style: "normal" } as FontFaceDescriptors,
     };
 
     const duplicateDefinition = {
       family: "Inter",
-      source: "url(https://example.com/inter-dup.woff2)",
+      source: "https://example.com/inter-dup.woff2",
       descriptors: { weight: "400", style: "normal" } as FontFaceDescriptors,
     };
 
-    const key = `${definition.family}|${definition.source}|${JSON.stringify(
+    const key = `${definition.family}|url('${definition.source}')|${JSON.stringify(
       definition.descriptors,
     )}`;
 
@@ -245,15 +265,70 @@ describe("FontAssetCache", () => {
     expect(FakeFontFace.constructed).toHaveLength(0);
     expect(mockDocumentCreateElement).toHaveBeenCalledWith("link");
     expect(mockDocumentHeadAppendChild).toHaveBeenCalledTimes(1);
+    expect(mockFetch).toHaveBeenCalledWith(definition.source);
     expect(mockDocumentFontsLoad).toHaveBeenCalledWith(
       'normal 400 16px "Fredericka the Great"',
     );
   });
 
-  it("marks unsupported source strings as error", async () => {
+  it("marks stylesheet font load as error when family is not declared in stylesheet", async () => {
+    mockDocumentFontsLoad.mockResolvedValue([{}]);
+    mockFetch.mockResolvedValue({
+      ok: true,
+      text: async () =>
+        "@font-face { font-family: 'Actual Font'; src: url('https://example.com/actual.woff2') format('woff2'); }",
+    });
+
+    const definition = {
+      family: "Wrong Font",
+      source:
+        "https://fonts.googleapis.com/css2?family=Actual+Font&display=swap",
+      descriptors: { weight: "400", style: "normal" } as FontFaceDescriptors,
+    };
+
+    const { fontAssetCache } = await import("./FontAssetCache");
+
+    const firstEntry = fontAssetCache.ensureLoaded(definition);
+    expect(firstEntry.status).toBe("loading");
+
+    await nextTick();
+
+    const secondEntry = fontAssetCache.ensureLoaded(definition);
+    expect(secondEntry.status).toBe("error");
+
+    expect(mockFetch).toHaveBeenCalledWith(definition.source);
+    expect(mockDocumentFontsLoad).not.toHaveBeenCalled();
+  });
+
+  it("accepts direct font URLs with common font extensions", async () => {
     const definition = {
       family: "Inter",
       source: "https://example.com/fonts/inter.woff2",
+      descriptors: { weight: "400", style: "normal" } as FontFaceDescriptors,
+    };
+
+    const key = `${definition.family}|url('${definition.source}')|${JSON.stringify(
+      definition.descriptors,
+    )}`;
+
+    const { fontAssetCache } = await import("./FontAssetCache");
+
+    expect(fontAssetCache.getReadyAsset(definition)).toBe(null);
+
+    const readyAsset = await waitForReadyAsset(() =>
+      fontAssetCache.getReadyAsset(definition),
+    );
+
+    expect(readyAsset).not.toBeNull();
+    expect(FakeFontFace.loadCountByKey.get(key)).toBe(1);
+    expect(mockDocumentFontsAdd).toHaveBeenCalledTimes(1);
+    expect(mockDocumentHeadAppendChild).toHaveBeenCalledTimes(0);
+  });
+
+  it("marks unsupported source strings as error", async () => {
+    const definition = {
+      family: "Inter",
+      source: "https://example.com/fonts/inter.txt",
     };
 
     const { fontAssetCache } = await import("./FontAssetCache");
