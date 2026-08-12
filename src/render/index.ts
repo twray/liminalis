@@ -215,12 +215,15 @@ export const createDrawContext = (): DrawContext => {
       };
     };
 
-    const methods: DrawMethods = {
+    const drawProperties = {
       sceneWidth: width,
       sceneHeight: height,
+      sceneCenter: { x: width / 2, y: height / 2 },
+    };
+
+    const drawPrimitives = {
       withStyles,
       background: (props: BackgroundProps) => background(context, props),
-      sceneCenter: { x: width / 2, y: height / 2 },
       centerOf,
       line: (props: LineProps) =>
         queueAnimatable(props, (p) => line(context, p)),
@@ -275,7 +278,26 @@ export const createDrawContext = (): DrawContext => {
         }),
     };
 
-    callback(methods);
+    const drawPrimitivePropHelpers = {
+      defineBackgroundProps: (props: BackgroundProps) => props,
+      defineLineProps: (props: LineProps) => props,
+      definePolygonProps: (props: PolygonProps) => props,
+      defineBezierProps: (props: BezierProps) => props,
+      defineArcProps: (props: ArcProps) => props,
+      defineCircleProps: (props: CircleProps) => props,
+      defineEllipseProps: (props: EllipseProps) => props,
+      defineRectProps: (props: RectProps) => props,
+      defineFrameProps: (props: FrameProps) => props,
+      defineTextProps: (props: TextProps) => props,
+    };
+
+    const drawMethods: DrawMethods = {
+      ...drawProperties,
+      ...drawPrimitives,
+      ...drawPrimitivePropHelpers,
+    };
+
+    callback(drawMethods);
     registry.flush();
     registry.endFrame();
   };

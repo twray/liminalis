@@ -1,3 +1,5 @@
+import type { FontSize, FontStyle, FontWeight } from "./text";
+
 export interface FillStyles {
   fillStyle?: string;
 }
@@ -11,9 +13,9 @@ export type StrokeAlignment = "center" | "inside" | "outside";
 
 export interface TextStyles {
   font?: string;
-  fontStyle?: string;
-  fontSize?: string;
-  fontWeight?: string | number;
+  fontStyle?: FontStyle;
+  fontSize?: FontSize;
+  fontWeight?: FontWeight;
   fontFamily?: string;
 }
 

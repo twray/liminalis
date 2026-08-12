@@ -187,12 +187,15 @@ export interface ImageProps
 export interface FrameProps
   extends Positioned2D, Dimensions2D, TransformProps {}
 
-export interface DrawMethods {
+export interface DrawProperties {
   sceneWidth: number;
   sceneHeight: number;
+  sceneCenter: Point2D;
+}
+
+export interface DrawPrimitives {
   withStyles: (styles: PartialDrawStyles, callback: () => void) => void;
   background: (props: BackgroundProps) => void;
-  sceneCenter: Point2D;
   centerOf: (props: Dimensions2D) => Point2D;
   line: (props: LineProps) => Animatable<LineProps>;
   polygon: (
@@ -218,6 +221,24 @@ export interface DrawMethods {
   getTextBounds: (text: string, props?: TextProps) => Bounds;
   image: (imageSrc: string, props?: ImageProps) => Animatable<ImageProps>;
 }
+
+export interface DrawPrimitivePropHelpers {
+  defineBackgroundProps: (props: BackgroundProps) => BackgroundProps;
+  defineLineProps: (props: LineProps) => LineProps;
+  definePolygonProps: (props: PolygonProps) => PolygonProps;
+  defineBezierProps: (props: BezierProps) => BezierProps;
+  defineArcProps: (props: ArcProps) => ArcProps;
+  defineCircleProps: (props: CircleProps) => CircleProps;
+  defineEllipseProps: (props: EllipseProps) => EllipseProps;
+  defineRectProps: (props: RectProps) => RectProps;
+  defineFrameProps: (props: FrameProps) => FrameProps;
+  defineTextProps: (props: TextProps) => TextProps;
+}
+
+export interface DrawMethods
+  extends DrawProperties, DrawPrimitives, DrawPrimitivePropHelpers {}
+
+export interface DrawMethods extends DrawProperties, DrawPrimitives {}
 
 export interface DrawContext {
   executeDrawCallback: (
