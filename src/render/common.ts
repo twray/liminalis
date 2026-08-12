@@ -67,34 +67,6 @@ export const renderWithTransform = (
   context.restore();
 };
 
-export const getTextBounds = (
-  context: CanvasRenderingContext2D,
-  text: string,
-  x: number,
-  y: number,
-  fontStyle: string,
-): Bounds => {
-  context.save();
-  context.font = fontStyle;
-
-  const metrics = context.measureText(text);
-
-  context.restore();
-
-  const width = metrics.width ?? 0;
-
-  const fallbackHeightMatch = fontStyle.match(/(\d+(?:\.\d+)?)px/);
-  const fallbackHeight = fallbackHeightMatch
-    ? Number(fallbackHeightMatch[1])
-    : 12;
-
-  const ascent = metrics.actualBoundingBoxAscent ?? fallbackHeight;
-  const descent = metrics.actualBoundingBoxDescent ?? 0;
-  const height = Math.max(ascent + descent, fallbackHeight);
-
-  return { x, y, width, height };
-};
-
 export const setContextGlobals = (
   context: CanvasRenderingContext2D,
   props: ContextGlobalProps,

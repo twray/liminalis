@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type Animatable from "../core/Animatable";
-import type { BezierProps, RectProps } from "./types";
+import type { BezierProps, Bounds, RectProps } from "./types";
 
 // We test the internal functions by creating a mock canvas context
 // and verifying the transform calls
@@ -1403,6 +1403,119 @@ describe("drawMethods transform props", () => {
         'oblique 12deg bold 20ch "Fredericka the Great", sans-serif',
       );
       expect(mockContext.fillText).toHaveBeenCalledWith("Typed", 16, 24);
+    });
+
+    it("supports shorthand text() font prop and prioritizes it over decomposed font properties", async () => {
+      const { createDrawContext } = await import("./index");
+      const drawContext = createDrawContext();
+
+      drawContext.executeDrawCallback(
+        (d) => {
+          d.text("Shorthand", {
+            x: 50,
+            y: 60,
+            font: 'italic 500 24px "Fira Code", monospace',
+            fontStyle: "normal",
+            fontWeight: "normal",
+            fontSize: "12px",
+            fontFamily: "Arial, sans-serif",
+          });
+        },
+        mockContext,
+        800,
+        600,
+        0,
+      );
+
+      expect(mockContext.font).toBe('italic 500 24px "Fira Code", monospace');
+      expect(mockContext.fillText).toHaveBeenCalledWith("Shorthand", 50, 60);
+    });
+
+    it("exposes getTextBounds() with accurate bounds and stroke inflation", async () => {
+      const { createDrawContext } = await import("./index");
+      const drawContext = createDrawContext();
+
+      let measuredBounds: Bounds | undefined;
+
+      drawContext.executeDrawCallback(
+        (d) => {
+          measuredBounds = d.getTextBounds("Hello", {
+            x: 10,
+            y: 20,
+            fontStyle: "italic",
+            fontWeight: 700,
+            fontSize: "18px",
+            fontFamily: "monospace",
+            strokeStyle: "#00ff00",
+            strokeWidth: 4,
+          });
+        },
+        mockContext,
+        800,
+        600,
+        0,
+      );
+
+      expect(measuredBounds).toEqual({
+        x: 8,
+        y: 18,
+        width: 54,
+        height: 22,
+      });
+    });
+
+    it("applies withStyles() font props when measuring with getTextBounds()", async () => {
+      const { createDrawContext } = await import("./index");
+      const drawContext = createDrawContext();
+      const measuredFonts: string[] = [];
+
+      mockContext.measureText = vi.fn(function (
+        this: CanvasRenderingContext2D,
+        value: string,
+      ) {
+        measuredFonts.push(this.font);
+
+        return {
+          width: value.length * 10,
+          actualBoundingBoxAscent: 10,
+          actualBoundingBoxDescent: 2,
+        } as TextMetrics;
+      });
+
+      let measuredBounds: Bounds | undefined;
+
+      drawContext.executeDrawCallback(
+        (d) => {
+          d.withStyles(
+            {
+              font: 'oblique 14deg bold 16px "Fredericka the Great", serif',
+              strokeStyle: "#123456",
+              strokeWidth: 2,
+            },
+            () => {
+              measuredBounds = d.getTextBounds("Hi", {
+                x: 100,
+                y: 40,
+              });
+            },
+          );
+        },
+        mockContext,
+        800,
+        600,
+        0,
+      );
+
+      expect(mockContext.measureText).toHaveBeenCalledWith("Hi");
+      expect(measuredFonts).toContain(
+        'oblique 14deg bold 16px "Fredericka the Great", serif',
+      );
+      expect(measuredBounds).toEqual({
+        x: 99,
+        y: 39,
+        width: 22,
+        height: 18,
+      });
     });
 
     it("applies transforms to text", async () => {

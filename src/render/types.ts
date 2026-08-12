@@ -215,6 +215,7 @@ export interface DrawMethods {
   rect: (props: RectProps, frame?: FrameCallback) => Animatable<RectProps>;
   frame: (props: FrameProps, frame: FrameCallback) => Animatable<FrameProps>;
   text: (text: string, props?: TextProps) => Animatable<TextProps>;
+  getTextBounds: (text: string, props?: TextProps) => Bounds;
   image: (imageSrc: string, props?: ImageProps) => Animatable<ImageProps>;
 }
 

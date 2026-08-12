@@ -25,6 +25,7 @@ import {
   ellipsePathDescriptor,
   frame,
   framePathDescriptor,
+  getTextBounds,
   image,
   line,
   polygon,
@@ -260,6 +261,10 @@ export const createDrawContext = (): DrawContext => {
       ),
       text: (textValue: string, props: TextProps = {}) =>
         queueAnimatable(props, (p) => text(context, textValue, p)),
+      getTextBounds: (textValue: string, props: TextProps = {}) => {
+        const mergedProps = mergeStyles(props);
+        return getTextBounds(context, textValue, mergedProps);
+      },
       image: (imageSrc: string, props: ImageProps = {}) =>
         queueAnimatable(props, (p) => {
           const readyImageAsset = imageAssetCache.getReadyAsset(imageSrc);
