@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type Animatable from "../core/Animatable";
 import type { BezierProps, Bounds, RectProps } from "./types";
 
@@ -1538,6 +1538,241 @@ describe("drawMethods transform props", () => {
       expect(mockContext.translate).toHaveBeenCalledWith(110, 56);
       expect(mockContext.rotate).toHaveBeenCalledWith((45 * Math.PI) / 180);
       expect(mockContext.translate).toHaveBeenCalledWith(-110, -56);
+    });
+
+    describe("text clipping callback", () => {
+      const originalDocument = globalThis.document;
+
+      const createOffscreenContext = (): CanvasRenderingContext2D =>
+        ({
+          save: vi.fn(),
+          restore: vi.fn(),
+          translate: vi.fn(),
+          rotate: vi.fn(),
+          scale: vi.fn(),
+          font: "",
+          globalAlpha: 1,
+          globalCompositeOperation: "source-over",
+          fillStyle: "",
+          strokeStyle: "",
+          lineWidth: 1,
+          beginPath: vi.fn(),
+          closePath: vi.fn(),
+          clip: vi.fn(),
+          rect: vi.fn(),
+          arc: vi.fn(),
+          ellipse: vi.fn(),
+          quadraticCurveTo: vi.fn(),
+          bezierCurveTo: vi.fn(),
+          roundRect: vi.fn(),
+          moveTo: vi.fn(),
+          lineTo: vi.fn(),
+          fill: vi.fn(),
+          stroke: vi.fn(),
+          fillRect: vi.fn(),
+          fillText: vi.fn(),
+          strokeText: vi.fn(),
+          drawImage: vi.fn(),
+          measureText: vi.fn(
+            (value: string) =>
+              ({
+                width: value.length * 10,
+                actualBoundingBoxAscent: 10,
+                actualBoundingBoxDescent: 2,
+              }) as TextMetrics,
+          ),
+          canvas: { width: 800, height: 600 },
+        }) as unknown as CanvasRenderingContext2D;
+
+      afterEach(() => {
+        Object.defineProperty(globalThis, "document", {
+          configurable: true,
+          writable: true,
+          value: originalDocument,
+        });
+      });
+
+      it("returns an Animatable when text() is used with a frame callback", async () => {
+        const { createDrawContext } = await import("./index");
+        const drawContext = createDrawContext();
+
+        const offscreenContext = createOffscreenContext();
+        const offscreenCanvas = {
+          width: 0,
+          height: 0,
+          getContext: vi.fn(() => offscreenContext),
+        };
+
+        Object.defineProperty(globalThis, "document", {
+          configurable: true,
+          writable: true,
+          value: {
+            createElement: vi.fn(() => offscreenCanvas),
+          },
+        });
+
+        const textClipRef: { current: Animatable<any> | null } = {
+          current: null,
+        };
+
+        drawContext.executeDrawCallback(
+          (d) => {
+            textClipRef.current = d.text(
+              "Mask",
+              { x: 120, y: 140, fontSize: "48px" },
+              () => {
+                d.circle({ cx: 130, cy: 150, radius: 20, fillStyle: "red" });
+              },
+            );
+          },
+          mockContext,
+          800,
+          600,
+          0,
+        );
+
+        expect(textClipRef.current).not.toBeNull();
+
+        if (!textClipRef.current) {
+          throw new Error("Expected text() clip callback to return Animatable");
+        }
+
+        expect(typeof textClipRef.current.animateTo).toBe("function");
+      });
+
+      it("uses fillText-only masking and renders nested draws to offscreen context", async () => {
+        const { createDrawContext } = await import("./index");
+        const drawContext = createDrawContext();
+
+        const offscreenContext = createOffscreenContext();
+        const offscreenCanvas = {
+          width: 0,
+          height: 0,
+          getContext: vi.fn(() => offscreenContext),
+        };
+
+        Object.defineProperty(globalThis, "document", {
+          configurable: true,
+          writable: true,
+          value: {
+            createElement: vi.fn(() => offscreenCanvas),
+          },
+        });
+
+        drawContext.executeDrawCallback(
+          (d) => {
+            d.text("Mask", { x: 120, y: 140, fontSize: "48px" }, () => {
+              d.circle({ cx: 130, cy: 150, radius: 20, fillStyle: "red" });
+            });
+          },
+          mockContext,
+          800,
+          600,
+          0,
+        );
+
+        expect(offscreenContext.ellipse).toHaveBeenCalled();
+        expect(offscreenContext.fillText).toHaveBeenCalledWith(
+          "Mask",
+          120,
+          140,
+        );
+        expect(offscreenContext.strokeText).not.toHaveBeenCalled();
+        expect(mockContext.drawImage).toHaveBeenCalledWith(
+          offscreenCanvas,
+          0,
+          0,
+        );
+      });
+
+      it("supports mixed scope nesting: text mask containing rect clip containing image", async () => {
+        vi.resetModules();
+
+        const readySource = {} as CanvasImageSource;
+        const getReadyAssetMock = vi.fn(() => ({
+          source: readySource,
+          width: 320,
+          height: 180,
+        }));
+
+        vi.doMock("../core/ImageAssetCache", () => ({
+          imageAssetCache: {
+            preload: vi.fn(),
+            getReadyAsset: getReadyAssetMock,
+          },
+        }));
+
+        const { createDrawContext } = await import("./index");
+        const drawContext = createDrawContext();
+
+        const offscreenContext = createOffscreenContext();
+        const offscreenCanvas = {
+          width: 0,
+          height: 0,
+          getContext: vi.fn(() => offscreenContext),
+        };
+
+        Object.defineProperty(globalThis, "document", {
+          configurable: true,
+          writable: true,
+          value: {
+            createElement: vi.fn(() => offscreenCanvas),
+          },
+        });
+
+        drawContext.executeDrawCallback(
+          (d) => {
+            d.text("Mask", { x: 80, y: 90, fontSize: "36px" }, () => {
+              d.rect({ x: 100, y: 100, width: 120, height: 80 }, () => {
+                d.image("https://example.com/masked.png", {
+                  x: 90,
+                  y: 90,
+                  width: 140,
+                  height: 100,
+                });
+              });
+            });
+          },
+          mockContext,
+          800,
+          600,
+          0,
+        );
+
+        expect(getReadyAssetMock).toHaveBeenCalledWith(
+          "https://example.com/masked.png",
+        );
+
+        expect(offscreenContext.roundRect).toHaveBeenCalledWith(
+          100,
+          100,
+          120,
+          80,
+          0,
+        );
+        expect(offscreenContext.clip).toHaveBeenCalled();
+
+        expect(offscreenContext.drawImage).toHaveBeenCalled();
+        const drawImageCalls = vi.mocked(offscreenContext.drawImage).mock.calls;
+        const latestDrawImageCall = drawImageCalls[drawImageCalls.length - 1];
+
+        if (!latestDrawImageCall) {
+          throw new Error("Expected offscreen drawImage call");
+        }
+
+        expect(latestDrawImageCall[0]).toBe(readySource);
+        expect(latestDrawImageCall.slice(-4)).toEqual([90, 90, 140, 100]);
+
+        expect(offscreenContext.fillText).toHaveBeenCalledWith("Mask", 80, 90);
+        expect(offscreenContext.strokeText).not.toHaveBeenCalled();
+        expect(mockContext.drawImage).toHaveBeenCalledWith(
+          offscreenCanvas,
+          0,
+          0,
+        );
+
+        vi.doUnmock("../core/ImageAssetCache");
+      });
     });
   });
 

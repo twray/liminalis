@@ -5,7 +5,7 @@ import {
   setContextGlobals,
 } from "../common";
 
-import type { Bounds, TextProps } from "../types";
+import type { Bounds, ClipScope, TextProps } from "../types";
 
 const DEFAULT_TEXT_FILL_STYLE = "#333";
 const DEFAULT_TEXT_STROKE_STYLE = "transparent";
@@ -83,6 +83,109 @@ export const getTextBounds = (
     width: width + strokeWidth,
     height: height + strokeWidth,
   };
+};
+
+export const createTextMaskScope = ({
+  textValue,
+  getProps,
+}: {
+  textValue: string;
+  getProps: () => TextProps;
+}): ClipScope => {
+  return {
+    renderWithScope: ({
+      context,
+      renderWithinScope,
+      contextController,
+    }): void => {
+      const renderTarget =
+        typeof document !== "undefined"
+          ? document.createElement("canvas")
+          : null;
+
+      if (!renderTarget) {
+        renderWithinScope();
+        return;
+      }
+
+      renderTarget.width = context.canvas.width;
+      renderTarget.height = context.canvas.height;
+
+      const renderTargetContext = renderTarget.getContext("2d");
+
+      if (!renderTargetContext) {
+        renderWithinScope();
+        return;
+      }
+
+      const sourceTransform =
+        typeof context.getTransform === "function"
+          ? context.getTransform()
+          : null;
+
+      if (
+        sourceTransform &&
+        typeof renderTargetContext.setTransform === "function"
+      ) {
+        renderTargetContext.setTransform(sourceTransform);
+      }
+
+      const props = getProps();
+      const previousContext = contextController.getContext();
+
+      contextController.setContext(renderTargetContext);
+
+      if (props.useLocalCoordinateContext) {
+        const bounds = getTextBounds(renderTargetContext, textValue, props);
+        renderTargetContext.save();
+        renderTargetContext.translate(bounds.x, bounds.y);
+        renderWithinScope();
+        renderTargetContext.restore();
+      } else {
+        renderWithinScope();
+      }
+
+      contextController.setContext(previousContext);
+
+      renderTargetContext.save();
+      renderTargetContext.globalCompositeOperation = "destination-in";
+      drawTextMask(renderTargetContext, textValue, props);
+      renderTargetContext.restore();
+
+      context.save();
+
+      if (typeof context.setTransform === "function") {
+        context.setTransform(1, 0, 0, 1, 0, 0);
+      }
+
+      context.drawImage(renderTarget, 0, 0);
+      context.restore();
+    },
+  };
+};
+
+export const drawTextMask = (
+  context: CanvasRenderingContext2D,
+  textValue: string,
+  props: TextProps,
+): void => {
+  if (textValue.length === 0) {
+    return;
+  }
+
+  const { x, y, font } = resolveTextProps(props);
+  const bounds = getTextBounds(context, textValue, props);
+
+  renderWithTransform(context, props, bounds, () => {
+    context.save();
+
+    context.font = font;
+    context.textBaseline = "top";
+    context.fillStyle = "#000";
+    context.fillText(textValue, x, y);
+
+    context.restore();
+  });
 };
 
 export const text = (

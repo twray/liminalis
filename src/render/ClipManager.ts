@@ -1,6 +1,4 @@
-export interface ClipScope {
-  apply: (context: CanvasRenderingContext2D) => void;
-}
+import type { ClipScope, RenderContextController } from "./types";
 
 class ClipManager {
   #context: CanvasRenderingContext2D;
@@ -14,21 +12,95 @@ class ClipManager {
     return [...this.#activeScopes];
   }
 
-  renderWithScopes(scopes: ClipScope[], render: () => void): void {
+  renderWithScopes(
+    scopes: ClipScope[],
+    render: () => void,
+    contextController?: RenderContextController,
+  ): void {
     if (scopes.length === 0) {
       render();
       return;
     }
 
-    this.#context.save();
+    const renderController: RenderContextController = contextController ?? {
+      getContext: () => this.#context,
+      setContext: () => {},
+    };
 
-    for (const scope of scopes) {
-      scope.apply(this.#context);
+    const hasCustomScope = scopes.some((scope) => !!scope.renderWithScope);
+
+    if (!hasCustomScope) {
+      const activeContext = renderController.getContext();
+
+      activeContext.save();
+
+      for (const scope of scopes) {
+        scope.apply?.(activeContext);
+      }
+
+      render();
+
+      activeContext.restore();
+      return;
     }
 
-    render();
+    this.#renderWithScopeAtIndex(scopes, 0, render, renderController);
+  }
 
-    this.#context.restore();
+  #renderWithScopeAtIndex(
+    scopes: ClipScope[],
+    scopeIndex: number,
+    render: () => void,
+    contextController: RenderContextController,
+  ): void {
+    if (scopeIndex >= scopes.length) {
+      render();
+      return;
+    }
+
+    const scope = scopes[scopeIndex];
+
+    if (!scope) {
+      this.#renderWithScopeAtIndex(
+        scopes,
+        scopeIndex + 1,
+        render,
+        contextController,
+      );
+      return;
+    }
+
+    const renderWithinScope = () =>
+      this.#renderWithScopeAtIndex(
+        scopes,
+        scopeIndex + 1,
+        render,
+        contextController,
+      );
+
+    if (scope.renderWithScope) {
+      scope.renderWithScope({
+        context: contextController.getContext(),
+        renderWithinScope,
+        contextController,
+      });
+      return;
+    }
+
+    if (!scope.apply) {
+      renderWithinScope();
+      return;
+    }
+
+    const activeContext = contextController.getContext();
+
+    activeContext.save();
+
+    scope.apply(activeContext);
+
+    renderWithinScope();
+
+    activeContext.restore();
   }
 
   withScope(scope: ClipScope, frame: () => void): void {

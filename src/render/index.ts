@@ -1,17 +1,17 @@
-import type Animatable from "../core/Animatable";
 import AnimatableRegistry from "../core/AnimatableRegistry";
 import { imageAssetCache } from "../core/ImageAssetCache";
+import ClipManager from "./ClipManager";
+import { createClipScope } from "./clipping";
+
+import type Animatable from "../core/Animatable";
 import type { PartialDrawStyles } from "../types";
-import ClipManager, { type ClipScope } from "./ClipManager";
+import type { ClipScope, RenderContextController } from "./types";
 
 import {
-  applyForwardTransform,
   centerOf,
-  clipToEmptyRegion,
   DEFAULT_BLEND_MODE,
   DEFAULT_STROKE_STYLE,
   DEFAULT_STROKE_WIDTH,
-  undoForwardTransform,
 } from "./common";
 import {
   arc,
@@ -21,6 +21,7 @@ import {
   bezierPathDescriptor,
   circle,
   circlePathDescriptor,
+  createTextMaskScope,
   ellipse,
   ellipsePathDescriptor,
   frame,
@@ -41,12 +42,10 @@ import type {
   Bounds,
   CircleProps,
   ClippableFrameProps,
-  ClosedPathDescriptor,
   DrawContext,
   DrawMethods,
   EllipseProps,
   FrameCallback,
-  FrameContext,
   FrameProps,
   ImageProps,
   LineProps,
@@ -55,54 +54,6 @@ import type {
   TextProps,
   TransformProps,
 } from "./types";
-
-const toFrameContext = (
-  bounds: Bounds,
-  useLocalCoordinateContext: boolean,
-): FrameContext => {
-  const center = useLocalCoordinateContext
-    ? { x: bounds.width / 2, y: bounds.height / 2 }
-    : { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 };
-
-  return {
-    contextWidth: bounds.width,
-    contextHeight: bounds.height,
-    contextCenter: center,
-  };
-};
-
-const createClipScope = <T extends TransformProps & ClippableFrameProps>(
-  getProps: () => T,
-  getPathDescriptor: (props: T) => ClosedPathDescriptor,
-): ClipScope => {
-  return {
-    apply: (context: CanvasRenderingContext2D): void => {
-      const props = getProps();
-      const descriptor = getPathDescriptor(props);
-
-      if (!descriptor.isValid) {
-        clipToEmptyRegion(context);
-        return;
-      }
-
-      const transformState = applyForwardTransform(
-        context,
-        props,
-        descriptor.bounds,
-      );
-
-      context.beginPath();
-      descriptor.tracePath(context);
-      context.clip();
-
-      undoForwardTransform(context, transformState);
-
-      if (props.useLocalCoordinateContext) {
-        context.translate(descriptor.bounds.x, descriptor.bounds.y);
-      }
-    },
-  };
-};
 
 export const createDrawContext = (): DrawContext => {
   const registry = new AnimatableRegistry();
@@ -123,6 +74,14 @@ export const createDrawContext = (): DrawContext => {
     };
 
     const clipManager = new ClipManager(context);
+    let renderContext: CanvasRenderingContext2D = context;
+
+    const renderContextController: RenderContextController = {
+      getContext: () => renderContext,
+      setContext: (nextContext: CanvasRenderingContext2D): void => {
+        renderContext = nextContext;
+      },
+    };
 
     const mergeStyles = <T extends PartialDrawStyles>(props: T): T => ({
       ...appliedStyles,
@@ -152,33 +111,40 @@ export const createDrawContext = (): DrawContext => {
     // The queued closure also snapshots active clip scopes so nested clipping remains stable.
     const queueAnimatable = <T extends PartialDrawStyles>(
       props: T,
-      renderFn: (props: T) => void,
+      renderFn: (context: CanvasRenderingContext2D, props: T) => void,
     ): Animatable<T> => {
       const mergedProps = mergeStyles(props);
       const clipScopes = clipManager.captureScopes();
 
       return registry.queue(mergedProps, (p) => {
-        clipManager.renderWithScopes(clipScopes, () => renderFn(p));
+        clipManager.renderWithScopes(
+          clipScopes,
+          () => renderFn(renderContextController.getContext(), p),
+          renderContextController,
+        );
       });
     };
 
-    // Queues a clippable + animatable operation that can also create a frame scope.
+    // Queues a framable + animatable operation that can also create a frame scope.
     // Use for primitives that may be invoked with a frame callback (rect/circle/arc/etc).
+    // Parametrs are as follows:
     //
     // - renderFn: draws the primitive from lifecycle props (possibly normalized)
-    // - getPathDescriptor: builds the closed path used for clip masking and frame metrics
+    // - getFrameBounds: function that retrieves the bounds of a given primitive
+    // - createScope: the clip scope required to render items within the frame bounds
     // - normalizeProps: maps public props to lifecycle props (for example, frame injects
     //   useLocalCoordinateContext before frame context + clip scope are derived)
     //
-    // Without a frame callback, this behaves like queueDraw with lifecycle normalization.
-    // With a frame callback, it computes frame context, queues clip animation state, and
-    // applies the clip scope to nested deferred draws.
-    const queueAnimatableAndClippable = <
+    // Without a frame callback, this behaves like queueAnimatable with lifecycle
+    // normalization. With a frame callback, it computes frame context, queues
+    // clip animation state, and applies the clip scope to nested deferred draws.
+    const queueAnimatableWithFrame = <
       TPublic extends PartialDrawStyles & TransformProps,
       TLifecycle extends TPublic & ClippableFrameProps,
     >(
-      renderFn: (props: TLifecycle) => void,
-      getPathDescriptor: (props: TLifecycle) => ClosedPathDescriptor,
+      renderFn: (context: CanvasRenderingContext2D, props: TLifecycle) => void,
+      getFrameBounds: (props: TLifecycle) => Bounds,
+      createScope: (getProps: () => TLifecycle) => ClipScope,
       normalizeProps: (props: TPublic) => TLifecycle,
     ): ((props: TPublic, frame?: FrameCallback) => Animatable<TPublic>) => {
       return (
@@ -186,29 +152,33 @@ export const createDrawContext = (): DrawContext => {
         frameCallback?: FrameCallback,
       ): Animatable<TPublic> => {
         if (!frameCallback) {
-          return queueAnimatable(props, (drawProps) =>
-            renderFn(normalizeProps(drawProps)),
+          return queueAnimatable(props, (currentContext, drawProps) =>
+            renderFn(currentContext, normalizeProps(drawProps)),
           );
         }
 
         const mergedProps = mergeStyles(props);
         const lifecycleProps = normalizeProps(mergedProps);
-        const frameDescriptor = getPathDescriptor(lifecycleProps);
-        const frameContext = toFrameContext(
-          frameDescriptor.bounds,
-          !!lifecycleProps.useLocalCoordinateContext,
-        );
+        const frameBounds = getFrameBounds(lifecycleProps);
+
+        const frameContext = {
+          contextWidth: frameBounds.width,
+          contextHeight: frameBounds.height,
+          contextCenter: lifecycleProps.useLocalCoordinateContext
+            ? { x: frameBounds.width / 2, y: frameBounds.height / 2 }
+            : {
+                x: frameBounds.x + frameBounds.width / 2,
+                y: frameBounds.y + frameBounds.height / 2,
+              },
+        };
+
         let currentClipProps = lifecycleProps;
 
         const clipAnimatable = registry.queue(mergedProps, (animatedProps) => {
           currentClipProps = normalizeProps(animatedProps);
         });
 
-        const clipScope = createClipScope(
-          () => currentClipProps,
-          getPathDescriptor,
-        );
-
+        const clipScope = createScope(() => currentClipProps);
         clipManager.withScope(clipScope, () => frameCallback(frameContext));
 
         return clipAnimatable;
@@ -226,54 +196,74 @@ export const createDrawContext = (): DrawContext => {
       background: (props: BackgroundProps) => background(context, props),
       centerOf,
       line: (props: LineProps) =>
-        queueAnimatable(props, (p) => line(context, p)),
-      polygon: queueAnimatableAndClippable(
-        (p: PolygonProps) => polygon(context, p),
-        polygonPathDescriptor,
+        queueAnimatable(props, (currentContext, p) => line(currentContext, p)),
+      polygon: queueAnimatableWithFrame(
+        (currentContext, p: PolygonProps) => polygon(currentContext, p),
+        (p: PolygonProps) => polygonPathDescriptor(p).bounds,
+        (getProps) => createClipScope(getProps, polygonPathDescriptor),
         (p: PolygonProps) => p,
       ),
-      bezier: queueAnimatableAndClippable(
-        (p: BezierProps) => bezier(context, p),
-        bezierPathDescriptor,
+      bezier: queueAnimatableWithFrame(
+        (currentContext, p: BezierProps) => bezier(currentContext, p),
+        (p: BezierProps) => bezierPathDescriptor(p).bounds,
+        (getProps) => createClipScope(getProps, bezierPathDescriptor),
         (p: BezierProps) => p,
       ),
-      circle: queueAnimatableAndClippable(
-        (p: CircleProps) => circle(context, p),
-        circlePathDescriptor,
+      circle: queueAnimatableWithFrame(
+        (currentContext, p: CircleProps) => circle(currentContext, p),
+        (p: CircleProps) => circlePathDescriptor(p).bounds,
+        (getProps) => createClipScope(getProps, circlePathDescriptor),
         (p: CircleProps) => p,
       ),
-      ellipse: queueAnimatableAndClippable(
-        (p: EllipseProps) => ellipse(context, p),
-        ellipsePathDescriptor,
+      ellipse: queueAnimatableWithFrame(
+        (currentContext, p: EllipseProps) => ellipse(currentContext, p),
+        (p: EllipseProps) => ellipsePathDescriptor(p).bounds,
+        (getProps) => createClipScope(getProps, ellipsePathDescriptor),
         (p: EllipseProps) => p,
       ),
-      arc: queueAnimatableAndClippable(
-        (p: ArcProps) => arc(context, p),
-        arcPathDescriptor,
+      arc: queueAnimatableWithFrame(
+        (currentContext, p: ArcProps) => arc(currentContext, p),
+        (p: ArcProps) => arcPathDescriptor(p).bounds,
+        (getProps) => createClipScope(getProps, arcPathDescriptor),
         (p: ArcProps) => p,
       ),
-      rect: queueAnimatableAndClippable(
-        (p: RectProps) => rect(context, p),
-        rectPathDescriptor,
+      rect: queueAnimatableWithFrame(
+        (currentContext, p: RectProps) => rect(currentContext, p),
+        (p: RectProps) => rectPathDescriptor(p).bounds,
+        (getProps) => createClipScope(getProps, rectPathDescriptor),
         (p: RectProps) => p,
       ),
-      frame: queueAnimatableAndClippable(
-        (p: FrameProps) => frame(context, p),
-        framePathDescriptor,
+      frame: queueAnimatableWithFrame(
+        (currentContext, p: FrameProps) => frame(currentContext, p),
+        (p: FrameProps) => framePathDescriptor(p).bounds,
+        (getProps) => createClipScope(getProps, framePathDescriptor),
         (p: FrameProps) => ({ ...p, useLocalCoordinateContext: true }),
       ),
-      text: (textValue: string, props: TextProps = {}) =>
-        queueAnimatable(props, (p) => text(context, textValue, p)),
+      text: (
+        textValue: string,
+        props: TextProps = {},
+        frameCallback?: FrameCallback,
+      ) =>
+        queueAnimatableWithFrame(
+          (currentContext, p: TextProps) => text(currentContext, textValue, p),
+          (p: TextProps) => getTextBounds(context, textValue, p),
+          (getProps) =>
+            createTextMaskScope({
+              textValue,
+              getProps,
+            }),
+          (p: TextProps) => p,
+        )(props, frameCallback),
       getTextBounds: (textValue: string, props: TextProps = {}) => {
         const mergedProps = mergeStyles(props);
         return getTextBounds(context, textValue, mergedProps);
       },
       image: (imageSrc: string, props: ImageProps = {}) =>
-        queueAnimatable(props, (p) => {
+        queueAnimatable(props, (currentContext, p) => {
           const readyImageAsset = imageAssetCache.getReadyAsset(imageSrc);
 
           if (readyImageAsset) {
-            image(context, readyImageAsset, p);
+            image(currentContext, readyImageAsset, p);
           }
         }),
     };

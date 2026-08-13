@@ -45,6 +45,20 @@ export interface TransformProps {
 
 export interface ContextGlobalProps extends WithOpacity, WithBlend {}
 
+export interface ClipScope {
+  apply?: (context: CanvasRenderingContext2D) => void;
+  renderWithScope?: (params: {
+    context: CanvasRenderingContext2D;
+    renderWithinScope: () => void;
+    contextController: RenderContextController;
+  }) => void;
+}
+
+export interface RenderContextController {
+  getContext: () => CanvasRenderingContext2D;
+  setContext: (context: CanvasRenderingContext2D) => void;
+}
+
 export interface FrameContext {
   contextWidth: number;
   contextHeight: number;
@@ -172,7 +186,8 @@ export interface TextProps
     StrokeStyles,
     WithOpacity,
     WithBlend,
-    TransformProps {}
+    TransformProps,
+    ClippableFrameProps {}
 
 export interface ImageProps
   extends
@@ -217,7 +232,11 @@ export interface DrawPrimitives {
   ) => Animatable<EllipseProps>;
   rect: (props: RectProps, frame?: FrameCallback) => Animatable<RectProps>;
   frame: (props: FrameProps, frame: FrameCallback) => Animatable<FrameProps>;
-  text: (text: string, props?: TextProps) => Animatable<TextProps>;
+  text: (
+    text: string,
+    props?: TextProps,
+    frame?: FrameCallback,
+  ) => Animatable<TextProps>;
   getTextBounds: (text: string, props?: TextProps) => Bounds;
   image: (imageSrc: string, props?: ImageProps) => Animatable<ImageProps>;
 }
