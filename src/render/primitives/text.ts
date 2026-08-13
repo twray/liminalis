@@ -14,7 +14,7 @@ const DEFAULT_TEXT_FONT_SIZE = "12px";
 const DEFAULT_TEXT_FONT_WEIGHT = "normal";
 const DEFAULT_TEXT_FONT_FAMILY = "Arial, sans-serif";
 
-const resolveTextProps = (props: TextProps) => {
+export const resolveTextProps = (props: TextProps) => {
   const {
     x = 0,
     y = 0,

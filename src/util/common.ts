@@ -64,3 +64,42 @@ export function lerp(start: number, end: number, t: number) {
 export function clampNonNegativeValue(value: number) {
   return Math.max(0, value);
 }
+
+export function stableSerialize(value: unknown): string {
+  if (value === null || value === undefined) {
+    return String(value);
+  }
+
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) {
+      return String(value);
+    }
+
+    return value.toFixed(6);
+  }
+
+  if (typeof value === "string") {
+    return JSON.stringify(value);
+  }
+
+  if (typeof value === "boolean") {
+    return value ? "true" : "false";
+  }
+
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => stableSerialize(item)).join(",")}]`;
+  }
+
+  if (typeof value === "object") {
+    const objectValue = value as Record<string, unknown>;
+    const keys = Object.keys(objectValue).sort();
+
+    return `{${keys
+      .map(
+        (key) => `${JSON.stringify(key)}:${stableSerialize(objectValue[key])}`,
+      )
+      .join(",")}}`;
+  }
+
+  return JSON.stringify(String(value));
+}

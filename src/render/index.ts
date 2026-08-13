@@ -1,6 +1,9 @@
 import AnimatableRegistry from "../core/AnimatableRegistry";
 import { imageAssetCache } from "../core/ImageAssetCache";
+import AppliedStylesManager from "./AppliedStylesManager";
 import ClipManager from "./ClipManager";
+import DrawGroupBitmapCache from "./DrawGroupBitmapCache";
+import DrawGroupManager from "./DrawGroupManager";
 import { createClipScope } from "./clipping";
 
 import type Animatable from "../core/Animatable";
@@ -33,6 +36,7 @@ import {
   polygonPathDescriptor,
   rect,
   rectPathDescriptor,
+  resolveTextProps,
   text,
 } from "./primitives";
 import type {
@@ -57,6 +61,7 @@ import type {
 
 export const createDrawContext = (): DrawContext => {
   const registry = new AnimatableRegistry();
+  const drawGroupBitmapCache = new DrawGroupBitmapCache();
 
   const executeDrawCallback = (
     callback: (methods: DrawMethods) => void,
@@ -67,40 +72,21 @@ export const createDrawContext = (): DrawContext => {
   ): void => {
     registry.beginFrame(timeInMs);
 
-    let appliedStyles: PartialDrawStyles = {
+    const devicePixelRatio =
+      typeof window !== "undefined" &&
+      typeof window.devicePixelRatio === "number" &&
+      Number.isFinite(window.devicePixelRatio)
+        ? window.devicePixelRatio
+        : 1;
+    drawGroupBitmapCache.beginFrame({ width, height, devicePixelRatio });
+
+    const clipManager = new ClipManager(context);
+    const drawGroupManager = new DrawGroupManager();
+    const appliedStylesManager = new AppliedStylesManager({
       strokeStyle: DEFAULT_STROKE_STYLE,
       strokeWidth: DEFAULT_STROKE_WIDTH,
       blend: DEFAULT_BLEND_MODE,
-    };
-
-    const clipManager = new ClipManager(context);
-    let renderContext: CanvasRenderingContext2D = context;
-
-    const renderContextController: RenderContextController = {
-      getContext: () => renderContext,
-      setContext: (nextContext: CanvasRenderingContext2D): void => {
-        renderContext = nextContext;
-      },
-    };
-
-    const mergeStyles = <T extends PartialDrawStyles>(props: T): T => ({
-      ...appliedStyles,
-      ...props,
     });
-
-    const withStyles = (
-      styles: PartialDrawStyles,
-      callbackFn: () => void,
-    ): void => {
-      const previousStyles = appliedStyles;
-      appliedStyles = { ...appliedStyles, ...styles };
-
-      try {
-        return callbackFn();
-      } finally {
-        appliedStyles = previousStyles;
-      }
-    };
 
     // Queues a standard animatable draw operation.
     // Use for primitives that only need deferred animation + style resolution.
@@ -110,18 +96,42 @@ export const createDrawContext = (): DrawContext => {
     //
     // The queued closure also snapshots active clip scopes so nested clipping remains stable.
     const queueAnimatable = <T extends PartialDrawStyles>(
+      primitiveType: string,
       props: T,
       renderFn: (context: CanvasRenderingContext2D, props: T) => void,
+      getExtraSignature?: (props: T) => string,
     ): Animatable<T> => {
-      const mergedProps = mergeStyles(props);
+      const mergedProps = appliedStylesManager.mergeStyles(props);
       const clipScopes = clipManager.captureScopes();
 
       return registry.queue(mergedProps, (p) => {
-        clipManager.renderWithScopes(
-          clipScopes,
-          () => renderFn(renderContextController.getContext(), p),
-          renderContextController,
+        const signature = DrawGroupManager.createPrimitiveSignature(
+          primitiveType,
+          p,
+          clipScopes.length,
+          getExtraSignature?.(p),
         );
+
+        drawGroupManager.pushPrimitiveOperation({
+          signature,
+          render: (targetContext) => {
+            const targetClipManager = new ClipManager(targetContext);
+            let activeTargetContext = targetContext;
+
+            const targetContextController: RenderContextController = {
+              getContext: () => activeTargetContext,
+              setContext: (nextContext: CanvasRenderingContext2D): void => {
+                activeTargetContext = nextContext;
+              },
+            };
+
+            targetClipManager.renderWithScopes(
+              clipScopes,
+              () => renderFn(targetContextController.getContext(), p),
+              targetContextController,
+            );
+          },
+        });
       });
     };
 
@@ -142,6 +152,7 @@ export const createDrawContext = (): DrawContext => {
       TPublic extends PartialDrawStyles & TransformProps,
       TLifecycle extends TPublic & ClippableFrameProps,
     >(
+      primitiveType: string,
       renderFn: (context: CanvasRenderingContext2D, props: TLifecycle) => void,
       getFrameBounds: (props: TLifecycle) => Bounds,
       createScope: (getProps: () => TLifecycle) => ClipScope,
@@ -152,12 +163,15 @@ export const createDrawContext = (): DrawContext => {
         frameCallback?: FrameCallback,
       ): Animatable<TPublic> => {
         if (!frameCallback) {
-          return queueAnimatable(props, (currentContext, drawProps) =>
-            renderFn(currentContext, normalizeProps(drawProps)),
+          return queueAnimatable(
+            primitiveType,
+            props,
+            (currentContext, drawProps) =>
+              renderFn(currentContext, normalizeProps(drawProps)),
           );
         }
 
-        const mergedProps = mergeStyles(props);
+        const mergedProps = appliedStylesManager.mergeStyles(props);
         const lifecycleProps = normalizeProps(mergedProps);
         const frameBounds = getFrameBounds(lifecycleProps);
 
@@ -179,7 +193,17 @@ export const createDrawContext = (): DrawContext => {
         });
 
         const clipScope = createScope(() => currentClipProps);
-        clipManager.withScope(clipScope, () => frameCallback(frameContext));
+        clipManager.withScope(clipScope, () => {
+          drawGroupManager.withNestedGroup(
+            () =>
+              DrawGroupManager.createPrimitiveSignature(
+                `${primitiveType}:frame`,
+                currentClipProps,
+                clipManager.captureScopes().length,
+              ),
+            () => frameCallback(frameContext),
+          );
+        });
 
         return clipAnimatable;
       };
@@ -192,48 +216,57 @@ export const createDrawContext = (): DrawContext => {
     };
 
     const drawPrimitives = {
-      withStyles,
+      withStyles: appliedStylesManager.withStyles.bind(appliedStylesManager),
       background: (props: BackgroundProps) => background(context, props),
       centerOf,
       line: (props: LineProps) =>
-        queueAnimatable(props, (currentContext, p) => line(currentContext, p)),
+        queueAnimatable("line", props, (currentContext, p) =>
+          line(currentContext, p),
+        ),
       polygon: queueAnimatableWithFrame(
+        "polygon",
         (currentContext, p: PolygonProps) => polygon(currentContext, p),
         (p: PolygonProps) => polygonPathDescriptor(p).bounds,
         (getProps) => createClipScope(getProps, polygonPathDescriptor),
         (p: PolygonProps) => p,
       ),
       bezier: queueAnimatableWithFrame(
+        "bezier",
         (currentContext, p: BezierProps) => bezier(currentContext, p),
         (p: BezierProps) => bezierPathDescriptor(p).bounds,
         (getProps) => createClipScope(getProps, bezierPathDescriptor),
         (p: BezierProps) => p,
       ),
       circle: queueAnimatableWithFrame(
+        "circle",
         (currentContext, p: CircleProps) => circle(currentContext, p),
         (p: CircleProps) => circlePathDescriptor(p).bounds,
         (getProps) => createClipScope(getProps, circlePathDescriptor),
         (p: CircleProps) => p,
       ),
       ellipse: queueAnimatableWithFrame(
+        "ellipse",
         (currentContext, p: EllipseProps) => ellipse(currentContext, p),
         (p: EllipseProps) => ellipsePathDescriptor(p).bounds,
         (getProps) => createClipScope(getProps, ellipsePathDescriptor),
         (p: EllipseProps) => p,
       ),
       arc: queueAnimatableWithFrame(
+        "arc",
         (currentContext, p: ArcProps) => arc(currentContext, p),
         (p: ArcProps) => arcPathDescriptor(p).bounds,
         (getProps) => createClipScope(getProps, arcPathDescriptor),
         (p: ArcProps) => p,
       ),
       rect: queueAnimatableWithFrame(
+        "rect",
         (currentContext, p: RectProps) => rect(currentContext, p),
         (p: RectProps) => rectPathDescriptor(p).bounds,
         (getProps) => createClipScope(getProps, rectPathDescriptor),
         (p: RectProps) => p,
       ),
       frame: queueAnimatableWithFrame(
+        "frame",
         (currentContext, p: FrameProps) => frame(currentContext, p),
         (p: FrameProps) => framePathDescriptor(p).bounds,
         (getProps) => createClipScope(getProps, framePathDescriptor),
@@ -245,6 +278,7 @@ export const createDrawContext = (): DrawContext => {
         frameCallback?: FrameCallback,
       ) =>
         queueAnimatableWithFrame(
+          "text",
           (currentContext, p: TextProps) => text(currentContext, textValue, p),
           (p: TextProps) => getTextBounds(context, textValue, p),
           (getProps) =>
@@ -252,20 +286,29 @@ export const createDrawContext = (): DrawContext => {
               textValue,
               getProps,
             }),
-          (p: TextProps) => p,
+          (p: TextProps) => ({ ...p, font: resolveTextProps(p).font }),
         )(props, frameCallback),
       getTextBounds: (textValue: string, props: TextProps = {}) => {
-        const mergedProps = mergeStyles(props);
+        const mergedProps = appliedStylesManager.mergeStyles(props);
         return getTextBounds(context, textValue, mergedProps);
       },
       image: (imageSrc: string, props: ImageProps = {}) =>
-        queueAnimatable(props, (currentContext, p) => {
-          const readyImageAsset = imageAssetCache.getReadyAsset(imageSrc);
+        queueAnimatable(
+          "image",
+          props,
+          (currentContext, p) => {
+            const readyImageAsset = imageAssetCache.getReadyAsset(imageSrc);
 
-          if (readyImageAsset) {
-            image(currentContext, readyImageAsset, p);
-          }
-        }),
+            if (readyImageAsset) {
+              image(currentContext, readyImageAsset, p);
+            }
+          },
+          () => {
+            const readyImageAsset = imageAssetCache.getReadyAsset(imageSrc);
+
+            return `asset:${imageSrc}|ready:${readyImageAsset ? 1 : 0}`;
+          },
+        ),
     };
 
     const drawPrimitivePropHelpers = {
@@ -290,6 +333,13 @@ export const createDrawContext = (): DrawContext => {
     callback(drawMethods);
     registry.flush();
     registry.endFrame();
+
+    drawGroupManager.renderToContext({
+      cache: drawGroupBitmapCache,
+      targetContext: context,
+      width,
+      height,
+    });
   };
 
   return { executeDrawCallback };
