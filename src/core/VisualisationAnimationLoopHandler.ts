@@ -70,6 +70,7 @@ interface SceneSettings {
   height?: number;
   fps?: number;
   autoScaleDown?: boolean;
+  showFps?: boolean;
   computerKeyboardDebugEnabled?: boolean;
   videoRecordingScale?: number;
   videoFormat?: VideoFormatPreference;
@@ -118,9 +119,11 @@ const DEFAULTS = {
   SETTINGS_COMPUTER_KEYBOARD_DEBUG_ENABLED: true,
   SETTINGS_FPS: 60,
   SETTINGS_AUTO_SCALE_DOWN: true,
+  SETTINGS_SHOW_FPS: false,
   SETTINGS_VIDEO_RECORDING_SCALE: 1,
   SETTINGS_VIDEO_FORMAT: "auto" as VideoFormatPreference,
   SETTINGS_ENABLE_AUDIO_CAPTURE: false,
+  FPS_LOG_INTERVAL_IN_MS: 250,
 };
 
 class VisualisationAnimationLoopHandler<TState> {
@@ -134,6 +137,7 @@ class VisualisationAnimationLoopHandler<TState> {
   #appProperties: AppSettings = {
     computerKeyboardDebugEnabled:
       DEFAULTS.SETTINGS_COMPUTER_KEYBOARD_DEBUG_ENABLED,
+    showFps: DEFAULTS.SETTINGS_SHOW_FPS,
   };
 
   #noteEventManager = new NoteEventManager("major");
@@ -162,6 +166,8 @@ class VisualisationAnimationLoopHandler<TState> {
   #videoRecordingScale = DEFAULTS.SETTINGS_VIDEO_RECORDING_SCALE;
   #videoRecordingFormat: VideoFormatPreference = DEFAULTS.SETTINGS_VIDEO_FORMAT;
   #deferredAssetLoadPromises: Promise<void>[] = [];
+  #fpsSampleStartInMs: number | null = null;
+  #fpsFramesInSample = 0;
 
   constructor() {}
 
@@ -170,6 +176,7 @@ class VisualisationAnimationLoopHandler<TState> {
     height,
     fps = 60,
     autoScaleDown = DEFAULTS.SETTINGS_AUTO_SCALE_DOWN,
+    showFps = DEFAULTS.SETTINGS_SHOW_FPS,
     computerKeyboardDebugEnabled = DEFAULTS.SETTINGS_COMPUTER_KEYBOARD_DEBUG_ENABLED,
     videoRecordingScale = DEFAULTS.SETTINGS_VIDEO_RECORDING_SCALE,
     videoFormat = DEFAULTS.SETTINGS_VIDEO_FORMAT,
@@ -185,6 +192,7 @@ class VisualisationAnimationLoopHandler<TState> {
     this.#appProperties = {
       ...this.#appProperties,
       computerKeyboardDebugEnabled,
+      showFps,
     };
 
     this.#videoRecordingScale = videoRecordingScale;
@@ -344,12 +352,13 @@ class VisualisationAnimationLoopHandler<TState> {
     const renderer = () => {
       return (canvasProps: CanvasProps) => {
         const { context, width, height } = canvasProps;
+        const nowInMs = this.#getNowInMs();
 
         // Compute runtime from a monotonic internal clock so timing is
         // independent from renderer playback settings.
 
         const center = { x: width / 2, y: height / 2 };
-        const timeInMs = this.#getInternalElapsedTimeInMs();
+        const timeInMs = this.#getInternalElapsedTimeInMs(nowInMs);
 
         // Set background color and clear the canvas for rendering
 
@@ -442,6 +451,8 @@ class VisualisationAnimationLoopHandler<TState> {
           logMessage("Recording ...");
         } else if (this.#videoRecorder.isEncoding) {
           logMessage("Saving video capture ...");
+        } else {
+          this.#logFpsIfEnabled(nowInMs);
         }
       };
     };
@@ -633,19 +644,21 @@ class VisualisationAnimationLoopHandler<TState> {
   #resetInternalClock = (): void => {
     this.#internalElapsedTimeInMs = 0;
     this.#internalLastFrameTimestampInMs = null;
+    this.#fpsSampleStartInMs = null;
+    this.#fpsFramesInSample = 0;
   };
 
-  #getInternalElapsedTimeInMs = (): number => {
-    const nowInMs = this.#getNowInMs();
+  #getInternalElapsedTimeInMs = (nowInMs?: number): number => {
+    const now = nowInMs ?? this.#getNowInMs();
 
     if (this.#internalLastFrameTimestampInMs === null) {
-      this.#internalLastFrameTimestampInMs = nowInMs;
+      this.#internalLastFrameTimestampInMs = now;
       return Math.floor(this.#internalElapsedTimeInMs);
     }
 
-    const deltaTimeInMs = nowInMs - this.#internalLastFrameTimestampInMs;
+    const deltaTimeInMs = now - this.#internalLastFrameTimestampInMs;
 
-    this.#internalLastFrameTimestampInMs = nowInMs;
+    this.#internalLastFrameTimestampInMs = now;
 
     const clampedDeltaTimeInMs = Math.min(
       Math.max(deltaTimeInMs, 0),
@@ -666,6 +679,33 @@ class VisualisationAnimationLoopHandler<TState> {
     }
 
     return Date.now();
+  };
+
+  #logFpsIfEnabled = (nowInMs: number): void => {
+    if (!this.#appProperties.showFps) {
+      return;
+    }
+
+    if (this.#fpsSampleStartInMs === null) {
+      this.#fpsSampleStartInMs = nowInMs;
+      this.#fpsFramesInSample = 0;
+      return;
+    }
+
+    this.#fpsFramesInSample += 1;
+
+    const elapsedInMs = nowInMs - this.#fpsSampleStartInMs;
+
+    if (elapsedInMs < DEFAULTS.FPS_LOG_INTERVAL_IN_MS) {
+      return;
+    }
+
+    const fps = (this.#fpsFramesInSample * 1000) / elapsedInMs;
+
+    logMessage(`FPS: ${fps.toFixed(1)}`);
+
+    this.#fpsSampleStartInMs = nowInMs;
+    this.#fpsFramesInSample = 0;
   };
 
   #exportSnapshot = (): void => {

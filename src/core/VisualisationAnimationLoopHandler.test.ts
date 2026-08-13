@@ -576,7 +576,9 @@ describe("VisualisationAnimationLoopHandler note dispatch", () => {
     await flushPromises(20);
 
     expect(canvasRendererMock.start).toHaveBeenCalledTimes(0);
-    expect(vi.mocked(logMessage)).toHaveBeenCalledWith("Unable to load assets, check console for details");
+    expect(vi.mocked(logMessage)).toHaveBeenCalledWith(
+      "Unable to load assets, check console for details",
+    );
     expect(consoleErrorSpy).toHaveBeenCalled();
 
     consoleErrorSpy.mockRestore();
@@ -647,6 +649,36 @@ describe("VisualisationAnimationLoopHandler note dispatch", () => {
 
     expect(onNoteDown).toHaveBeenCalledTimes(1);
     expect(onNoteUp).toHaveBeenCalledTimes(1);
+  });
+
+  it("logs realtime FPS when showFps is enabled", async () => {
+    const { default: VisualisationAnimationLoopHandler } =
+      await import("./VisualisationAnimationLoopHandler");
+
+    const performanceNowMock = vi.mocked((globalThis as any).performance.now);
+
+    performanceNowMock.mockReset();
+    performanceNowMock
+      .mockReturnValueOnce(0)
+      .mockReturnValueOnce(100)
+      .mockReturnValueOnce(200)
+      .mockReturnValueOnce(300);
+
+    const handler = new VisualisationAnimationLoopHandler()
+      .withSettings({ showFps: true })
+      .setup(() => {});
+
+    handler.render();
+    await flushPromises();
+
+    expect(mockState.latestRenderCallback).not.toBeNull();
+
+    mockState.latestRenderCallback!(createCanvasProps());
+    mockState.latestRenderCallback!(createCanvasProps());
+    mockState.latestRenderCallback!(createCanvasProps());
+    mockState.latestRenderCallback!(createCanvasProps());
+
+    expect(vi.mocked(logMessage)).toHaveBeenCalledWith("FPS: 10.0");
   });
 
   it("preserves keyboard debug events when no modifiers are pressed", async () => {

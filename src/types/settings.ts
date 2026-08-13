@@ -1,5 +1,6 @@
 export interface AppSettings {
   computerKeyboardDebugEnabled: boolean;
+  showFps?: boolean;
   midiEnabled?: boolean;
   debugMode?: boolean;
 }
