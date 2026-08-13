@@ -59,9 +59,14 @@ const nextTick = async (): Promise<void> => {
   await new Promise<void>((resolve) => setTimeout(resolve, 0));
 };
 
+interface ReadyFontAsset {
+  family: string;
+  fontFace?: FontFace;
+}
+
 const waitForReadyAsset = async (
-  getReadyAsset: () => { family: string; fontFace: FontFace } | null,
-): Promise<{ family: string; fontFace: FontFace } | null> => {
+  getReadyAsset: () => ReadyFontAsset | null,
+): Promise<ReadyFontAsset | null> => {
   for (let index = 0; index < 10; index++) {
     const asset = getReadyAsset();
 
