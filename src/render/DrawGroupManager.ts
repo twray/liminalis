@@ -1,4 +1,3 @@
-import { logMessage } from "../util/log";
 import { stableSerialize } from "../util";
 import DrawGroupBitmapCache from "./DrawGroupBitmapCache";
 

@@ -1,13 +1,14 @@
-import { degreesToRadians } from "../util";
+import { degreesToRadians, stableSerialize } from "../util";
 import { resolveTransformOrigin } from "./common";
 
 import type { Point2D } from "../types";
 import type {
-  ClipScope,
   Bounds,
-  ClippableFrameProps,
-  TransformProps,
+  ClippingOptionsProps,
+  ClipScope,
   ClosedPathDescriptor,
+  CoordinateContextProps,
+  TransformProps,
 } from "./types";
 
 const applyForwardTransform = (
@@ -92,11 +93,24 @@ const clipToEmptyRegion = (context: CanvasRenderingContext2D): void => {
   context.clip();
 };
 
-export const createClipScope = <T extends TransformProps & ClippableFrameProps>(
+export const createClipScope = <
+  T extends TransformProps & CoordinateContextProps,
+>(
   getProps: () => T,
   getPathDescriptor: (props: T) => ClosedPathDescriptor,
 ): ClipScope => {
   return {
+    getSignature: (): string => {
+      const props = getProps();
+      const descriptor = getPathDescriptor(props);
+
+      return [
+        "clip",
+        `props:${stableSerialize(props)}`,
+        `bounds:${stableSerialize(descriptor.bounds)}`,
+        `valid:${descriptor.isValid ? 1 : 0}`,
+      ].join("|");
+    },
     apply: (context: CanvasRenderingContext2D): void => {
       const props = getProps();
       const descriptor = getPathDescriptor(props);
@@ -117,6 +131,62 @@ export const createClipScope = <T extends TransformProps & ClippableFrameProps>(
       context.clip();
 
       undoForwardTransform(context, transformState);
+
+      if (props.useLocalCoordinateContext) {
+        context.translate(descriptor.bounds.x, descriptor.bounds.y);
+      }
+    },
+  };
+};
+
+export const createGroupScope = <
+  T extends TransformProps & CoordinateContextProps & ClippingOptionsProps,
+>(
+  getProps: () => T,
+  getPathDescriptor: (props: T) => ClosedPathDescriptor,
+): ClipScope => {
+  return {
+    getSignature: (): string => {
+      const props = getProps();
+      const descriptor = getPathDescriptor(props);
+
+      return [
+        "group",
+        `props:${stableSerialize(props)}`,
+        `bounds:${stableSerialize(descriptor.bounds)}`,
+        `valid:${descriptor.isValid ? 1 : 0}`,
+      ].join("|");
+    },
+    apply: (context: CanvasRenderingContext2D): void => {
+      const props = getProps();
+      const descriptor = getPathDescriptor(props);
+      const shouldClipContent = props.clipContent === true;
+      const internalGroupProps = props as unknown as {
+        groupOffsetX?: number;
+        groupOffsetY?: number;
+      };
+      const groupOffsetX = internalGroupProps.groupOffsetX ?? 0;
+      const groupOffsetY = internalGroupProps.groupOffsetY ?? 0;
+
+      if (!descriptor.isValid) {
+        if (shouldClipContent) {
+          clipToEmptyRegion(context);
+        }
+
+        return;
+      }
+
+      applyForwardTransform(context, props, descriptor.bounds);
+
+      if (shouldClipContent) {
+        context.beginPath();
+        descriptor.tracePath(context);
+        context.clip();
+      }
+
+      if (groupOffsetX !== 0 || groupOffsetY !== 0) {
+        context.translate(groupOffsetX, groupOffsetY);
+      }
 
       if (props.useLocalCoordinateContext) {
         context.translate(descriptor.bounds.x, descriptor.bounds.y);

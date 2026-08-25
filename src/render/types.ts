@@ -3,7 +3,6 @@ import type {
   Corners,
   Dimensions2D,
   FillStyles,
-  OptionalDimensions2D,
   PartialDrawStyles,
   Point2D,
   Positioned2D,
@@ -47,6 +46,7 @@ export interface ContextGlobalProps extends WithOpacity, WithBlend {}
 
 export interface ClipScope {
   apply?: (context: CanvasRenderingContext2D) => void;
+  getSignature?: () => string;
   renderWithScope?: (params: {
     context: CanvasRenderingContext2D;
     renderWithinScope: () => void;
@@ -59,16 +59,31 @@ export interface RenderContextController {
   setContext: (context: CanvasRenderingContext2D) => void;
 }
 
-export interface FrameContext {
-  contextWidth: number;
-  contextHeight: number;
-  contextCenter: Point2D;
+export interface Measurements {
+  width: number;
+  height: number;
+  center: Point2D;
 }
+
+export interface MeasurementContext {
+  hasMeasurements: boolean;
+  getMeasurements: () => Measurements;
+}
+
+export type FrameContext = MeasurementContext;
 
 export type FrameCallback = (context: FrameContext) => void;
 
-export interface ClippableFrameProps {
+export interface CoordinateContextProps {
   useLocalCoordinateContext?: boolean;
+}
+
+export interface ContainerProps {
+  showBounds?: boolean;
+}
+
+export interface ClippingOptionsProps {
+  clipContent?: boolean;
 }
 
 export interface LineProps
@@ -83,7 +98,7 @@ export interface PolygonProps
     WithOpacity,
     WithBlend,
     TransformProps,
-    ClippableFrameProps {
+    CoordinateContextProps {
   points: Point2D[];
   closePath?: boolean;
   strokeAlignment?: StrokeAlignment;
@@ -120,7 +135,7 @@ export interface BezierProps
     WithOpacity,
     WithBlend,
     TransformProps,
-    ClippableFrameProps {
+    CoordinateContextProps {
   segments: BezierSegments;
   closePath?: boolean;
   strokeAlignment?: StrokeAlignment;
@@ -149,16 +164,16 @@ export type ArcProps = EllipticGeometryProps &
     end: number;
     closePath?: boolean;
     strokeAlignment?: StrokeAlignment;
-  } & ClippableFrameProps;
+  } & CoordinateContextProps;
 
 export interface CircleProps
-  extends EllipticGeometryProps, ClippableFrameProps {
+  extends EllipticGeometryProps, CoordinateContextProps {
   radius: number;
   strokeAlignment?: StrokeAlignment;
 }
 
 export interface EllipseProps
-  extends EllipticGeometryProps, ClippableFrameProps {
+  extends EllipticGeometryProps, CoordinateContextProps {
   radiusX: number;
   radiusY: number;
   strokeAlignment?: StrokeAlignment;
@@ -173,7 +188,7 @@ export interface RectProps
     WithOpacity,
     WithBlend,
     TransformProps,
-    ClippableFrameProps {
+    CoordinateContextProps {
   cornerRadius?: Corners | number;
   strokeAlignment?: StrokeAlignment;
 }
@@ -187,26 +202,25 @@ export interface TextProps
     WithOpacity,
     WithBlend,
     TransformProps,
-    ClippableFrameProps {}
+    CoordinateContextProps {}
 
 export interface ImageProps
   extends
     Positioned2D,
-    OptionalDimensions2D,
+    Partial<Dimensions2D>,
     WithOpacity,
     WithBlend,
     TransformProps {
   fit?: "cover" | "contain" | "stretch";
 }
 
-export interface FrameProps
-  extends Positioned2D, Dimensions2D, TransformProps {}
+export interface GroupOptions
+  extends Positioned2D, TransformProps, ContainerProps {}
 
-export interface DrawProperties {
-  sceneWidth: number;
-  sceneHeight: number;
-  sceneCenter: Point2D;
-}
+export interface LayerOptions
+  extends Positioned2D, Partial<Dimensions2D>, TransformProps, ContainerProps {}
+
+export type DrawProperties = MeasurementContext;
 
 export interface DrawPrimitives {
   withStyles: (styles: PartialDrawStyles, callback: () => void) => void;
@@ -231,7 +245,14 @@ export interface DrawPrimitives {
     frame?: FrameCallback,
   ) => Animatable<EllipseProps>;
   rect: (props: RectProps, frame?: FrameCallback) => Animatable<RectProps>;
-  frame: (props: FrameProps, frame: FrameCallback) => Animatable<FrameProps>;
+  group: (
+    frame: FrameCallback,
+    props?: GroupOptions,
+  ) => Animatable<GroupOptions>;
+  layer: (
+    frame: FrameCallback,
+    props?: LayerOptions,
+  ) => Animatable<LayerOptions>;
   text: (
     text: string,
     props?: TextProps,
@@ -250,14 +271,13 @@ export interface DrawPrimitivePropHelpers {
   defineCircleProps: (props: CircleProps) => CircleProps;
   defineEllipseProps: (props: EllipseProps) => EllipseProps;
   defineRectProps: (props: RectProps) => RectProps;
-  defineFrameProps: (props: FrameProps) => FrameProps;
+  defineGroupProps: (props: GroupOptions) => GroupOptions;
+  defineLayerProps: (props: LayerOptions) => LayerOptions;
   defineTextProps: (props: TextProps) => TextProps;
 }
 
 export interface DrawMethods
   extends DrawProperties, DrawPrimitives, DrawPrimitivePropHelpers {}
-
-export interface DrawMethods extends DrawProperties, DrawPrimitives {}
 
 export interface DrawContext {
   executeDrawCallback: (

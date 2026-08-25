@@ -3,7 +3,7 @@ export * from "./background";
 export * from "./bezier";
 export * from "./circle";
 export * from "./ellipse";
-export * from "./frame";
+export * from "./group";
 export * from "./image";
 export * from "./line";
 export * from "./polygon";

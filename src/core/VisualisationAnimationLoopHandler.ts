@@ -19,7 +19,6 @@ import type {
   NormalizedFloat,
   NoteDownEvent,
   NoteUpEvent,
-  Point2D,
   RenderIsometricCallback,
   RenderProps,
   SketchSettings,
@@ -80,9 +79,12 @@ interface SceneSettings {
 
 interface SetupFunctionProps<TState> {
   state: TState;
-  sceneWidth: number;
-  sceneHeight: number;
-  sceneCenter: Point2D;
+  hasMeasurements: boolean;
+  getMeasurements: () => {
+    width: number;
+    height: number;
+    center: { x: number; y: number };
+  };
   load: (
     callback: (loaders: SetupAssetLoaders) => void,
     options?: SetupAssetLoadOptions,
@@ -319,13 +321,16 @@ class VisualisationAnimationLoopHandler<TState> {
 
     const canvasWidth = this.#settings.dimensions?.[0] ?? window.innerWidth;
     const canvasHeight = this.#settings.dimensions?.[1] ?? window.innerHeight;
-    const canvasCenter = { x: canvasWidth / 2, y: canvasHeight / 2 };
+    const setupMeasurements = {
+      width: canvasWidth,
+      height: canvasHeight,
+      center: { x: canvasWidth / 2, y: canvasHeight / 2 },
+    };
 
     setupFunction({
       state: this.#sceneState,
-      sceneWidth: canvasWidth,
-      sceneHeight: canvasHeight,
-      sceneCenter: canvasCenter,
+      hasMeasurements: true,
+      getMeasurements: () => setupMeasurements,
       load,
       onNoteDown,
       onNoteUp,
@@ -357,7 +362,11 @@ class VisualisationAnimationLoopHandler<TState> {
         // Compute runtime from a monotonic internal clock so timing is
         // independent from renderer playback settings.
 
-        const center = { x: width / 2, y: height / 2 };
+        const measurements = {
+          width,
+          height,
+          center: { x: width / 2, y: height / 2 },
+        };
         const timeInMs = this.#getInternalElapsedTimeInMs(nowInMs);
 
         // Set background color and clear the canvas for rendering
@@ -397,9 +406,8 @@ class VisualisationAnimationLoopHandler<TState> {
 
           frameRenderCallback({
             context,
-            sceneWidth: width,
-            sceneHeight: height,
-            sceneCenter: center,
+            hasMeasurements: false,
+            getMeasurements: () => measurements,
             time: timeInMs,
             beforeTime,
             afterTime,

@@ -97,7 +97,11 @@ class Visual<TProps = {}> {
       timeReleasedSinceFirstRender: timeReleased,
     } = this;
 
-    const center = { x: width / 2, y: height / 2 };
+    const measurements = {
+      width,
+      height,
+      center: { x: width / 2, y: height / 2 },
+    };
 
     let status: VisualStatus = "idle";
     if (isSustaining) status = "sustained";
@@ -121,9 +125,8 @@ class Visual<TProps = {}> {
     this.renderer({
       props,
       context,
-      sceneWidth: width,
-      sceneHeight: height,
-      sceneCenter: center,
+      hasMeasurements: true,
+      getMeasurements: () => measurements,
       time: timeSinceFirstRender,
       status,
       attackValue,

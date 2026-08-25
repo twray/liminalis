@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type Animatable from "../core/Animatable";
-import type { BezierProps, Bounds, RectProps } from "./types";
+import type { BezierProps, Bounds, DrawMethods, RectProps } from "./types";
 
 // We test the internal functions by creating a mock canvas context
 // and verifying the transform calls
@@ -2433,11 +2433,16 @@ describe("drawMethods transform props", () => {
               height: 160,
               useLocalCoordinateContext: true,
             },
-            ({ contextWidth, contextHeight, contextCenter }) => {
-              frameValues.width = contextWidth;
-              frameValues.height = contextHeight;
-              frameValues.centerX = contextCenter.x;
-              frameValues.centerY = contextCenter.y;
+            ({ getMeasurements }) => {
+              const {
+                width: frameWidth,
+                height: frameHeight,
+                center: frameCenter,
+              } = getMeasurements();
+              frameValues.width = frameWidth;
+              frameValues.height = frameHeight;
+              frameValues.centerX = frameCenter.x;
+              frameValues.centerY = frameCenter.y;
             },
           );
         },
@@ -2474,11 +2479,16 @@ describe("drawMethods transform props", () => {
               width: 100,
               height: 100,
             },
-            ({ contextWidth, contextHeight, contextCenter }) => {
-              frameValues.width = contextWidth;
-              frameValues.height = contextHeight;
-              frameValues.centerX = contextCenter.x;
-              frameValues.centerY = contextCenter.y;
+            ({ getMeasurements }) => {
+              const {
+                width: frameWidth,
+                height: frameHeight,
+                center: frameCenter,
+              } = getMeasurements();
+              frameValues.width = frameWidth;
+              frameValues.height = frameHeight;
+              frameValues.centerX = frameCenter.x;
+              frameValues.centerY = frameCenter.y;
             },
           );
         },
@@ -2567,15 +2577,24 @@ describe("drawMethods transform props", () => {
       );
     });
 
-    it("frame() creates a rectangular clipping frame with local coordinates", async () => {
+    it("rect() callback replaces frame() for rectangular local clipping", async () => {
       const { createDrawContext } = await import("./index");
       const drawContext = createDrawContext();
 
       drawContext.executeDrawCallback(
         (d) => {
-          d.frame({ x: 100, y: 100, width: 200, height: 200 }, () => {
-            d.circle({ cx: 50, cy: 50, radius: 30, fillStyle: "red" });
-          });
+          d.rect(
+            {
+              x: 100,
+              y: 100,
+              width: 200,
+              height: 200,
+              useLocalCoordinateContext: true,
+            },
+            () => {
+              d.circle({ cx: 50, cy: 50, radius: 30, fillStyle: "red" });
+            },
+          );
         },
         mockContext,
         800,
@@ -2597,7 +2616,7 @@ describe("drawMethods transform props", () => {
       );
     });
 
-    it("frame() callback context exposes local center", async () => {
+    it("rect() callback context exposes local center", async () => {
       const { createDrawContext } = await import("./index");
       const drawContext = createDrawContext();
       const frameValues = {
@@ -2609,13 +2628,24 @@ describe("drawMethods transform props", () => {
 
       drawContext.executeDrawCallback(
         (d) => {
-          d.frame(
-            { x: 50, y: 50, width: 100, height: 100 },
-            ({ contextWidth, contextHeight, contextCenter }) => {
-              frameValues.width = contextWidth;
-              frameValues.height = contextHeight;
-              frameValues.centerX = contextCenter.x;
-              frameValues.centerY = contextCenter.y;
+          d.rect(
+            {
+              x: 50,
+              y: 50,
+              width: 100,
+              height: 100,
+              useLocalCoordinateContext: true,
+            },
+            ({ getMeasurements }) => {
+              const {
+                width: frameWidth,
+                height: frameHeight,
+                center: frameCenter,
+              } = getMeasurements();
+              frameValues.width = frameWidth;
+              frameValues.height = frameHeight;
+              frameValues.centerX = frameCenter.x;
+              frameValues.centerY = frameCenter.y;
             },
           );
         },
@@ -2631,6 +2661,1378 @@ describe("drawMethods transform props", () => {
         centerX: 50,
         centerY: 50,
       });
+    });
+
+    it("group() derives frame context bounds from child content", async () => {
+      const { createDrawContext } = await import("./index");
+      const drawContext = createDrawContext();
+      const frameValues = {
+        width: -1,
+        height: -1,
+        centerX: -1,
+        centerY: -1,
+      };
+
+      drawContext.executeDrawCallback(
+        (d) => {
+          d.group((frameContext) => {
+            d.rect({ x: 100, y: 200, width: 40, height: 20, fillStyle: "red" });
+
+            if (frameContext.hasMeasurements) {
+              frameValues.width = frameContext.getMeasurements().width;
+              frameValues.height = frameContext.getMeasurements().height;
+              frameValues.centerX = frameContext.getMeasurements().center.x;
+              frameValues.centerY = frameContext.getMeasurements().center.y;
+            }
+          }, {});
+        },
+        mockContext,
+        800,
+        600,
+        0,
+      );
+
+      expect(frameValues).toEqual({
+        width: 40,
+        height: 20,
+        centerX: 120,
+        centerY: 210,
+      });
+    });
+
+    it("group() exposes derived bounds after child content is queued", async () => {
+      const { createDrawContext } = await import("./index");
+      const drawContext = createDrawContext();
+      const frameValues = {
+        width: -1,
+        height: -1,
+        centerX: -1,
+        centerY: -1,
+      };
+
+      drawContext.executeDrawCallback(
+        (d) => {
+          d.group((frameContext) => {
+            d.rect({ x: 100, y: 200, width: 40, height: 20, fillStyle: "red" });
+
+            if (frameContext.hasMeasurements) {
+              frameValues.width = frameContext.getMeasurements().width;
+              frameValues.height = frameContext.getMeasurements().height;
+              frameValues.centerX = frameContext.getMeasurements().center.x;
+              frameValues.centerY = frameContext.getMeasurements().center.y;
+            }
+          }, {});
+        },
+        mockContext,
+        800,
+        600,
+        0,
+      );
+
+      expect(frameValues).toEqual({
+        width: 40,
+        height: 20,
+        centerX: 120,
+        centerY: 210,
+      });
+    });
+
+    it("group() bounds are constrained by framed clip bounds", async () => {
+      const { createDrawContext } = await import("./index");
+      const drawContext = createDrawContext();
+      const frameValues = {
+        width: -1,
+        height: -1,
+        centerX: -1,
+        centerY: -1,
+      };
+
+      drawContext.executeDrawCallback(
+        (d) => {
+          d.group((groupContext) => {
+            d.rect(
+              {
+                x: 528,
+                y: 108,
+                width: 864,
+                height: 864,
+                useLocalCoordinateContext: true,
+              },
+              () => {
+                d.rect({
+                  x: -300,
+                  y: -200,
+                  width: 1000,
+                  height: 800,
+                  fillStyle: "red",
+                });
+              },
+            );
+
+            if (groupContext.hasMeasurements) {
+              frameValues.width = groupContext.getMeasurements().width;
+              frameValues.height = groupContext.getMeasurements().height;
+              frameValues.centerX = groupContext.getMeasurements().center.x;
+              frameValues.centerY = groupContext.getMeasurements().center.y;
+            }
+          }, {});
+        },
+        mockContext,
+        1920,
+        1080,
+        0,
+      );
+
+      expect(frameValues).toEqual({
+        width: 864,
+        height: 864,
+        centerX: 960,
+        centerY: 540,
+      });
+    });
+
+    it("group() bounds follow child shape geometry", async () => {
+      const { createDrawContext } = await import("./index");
+      const drawContext = createDrawContext();
+      const frameValues = {
+        width: -1,
+        height: -1,
+        centerX: -1,
+        centerY: -1,
+      };
+
+      drawContext.executeDrawCallback(
+        (d) => {
+          d.group((frameContext) => {
+            d.circle({ cx: 500, cy: 500, radius: 40, fillStyle: "red" });
+
+            if (frameContext.hasMeasurements) {
+              frameValues.width = frameContext.getMeasurements().width;
+              frameValues.height = frameContext.getMeasurements().height;
+              frameValues.centerX = frameContext.getMeasurements().center.x;
+              frameValues.centerY = frameContext.getMeasurements().center.y;
+            }
+          }, {});
+        },
+        mockContext,
+        800,
+        600,
+        0,
+      );
+
+      expect(frameValues).toEqual({
+        width: 80,
+        height: 80,
+        centerX: 500,
+        centerY: 500,
+      });
+    });
+
+    it("group() provides derived frame values when context is destructured before drawing children", async () => {
+      const { createDrawContext } = await import("./index");
+      const drawContext = createDrawContext();
+      const frameValues = {
+        width: -1,
+        height: -1,
+        centerX: -1,
+        centerY: -1,
+      };
+
+      drawContext.executeDrawCallback(
+        (d) => {
+          d.group(({ getMeasurements, hasMeasurements }) => {
+            if (hasMeasurements) {
+              const {
+                width: frameWidth,
+                height: frameHeight,
+                center: frameCenter,
+              } = getMeasurements();
+
+              frameValues.width = frameWidth;
+              frameValues.height = frameHeight;
+              frameValues.centerX = frameCenter.x;
+              frameValues.centerY = frameCenter.y;
+            }
+
+            d.rect({ x: 100, y: 200, width: 40, height: 20, fillStyle: "red" });
+          });
+        },
+        mockContext,
+        800,
+        600,
+        0,
+      );
+
+      expect(frameValues).toEqual({
+        width: 40,
+        height: 20,
+        centerX: 120,
+        centerY: 210,
+      });
+    });
+
+    it("layer() uses explicit bounds when provided", async () => {
+      const { createDrawContext } = await import("./index");
+      const drawContext = createDrawContext();
+      const frameValues = {
+        width: -1,
+        height: -1,
+        centerX: -1,
+        centerY: -1,
+      };
+
+      drawContext.executeDrawCallback(
+        (d) => {
+          d.layer(
+            (frameContext) => {
+              d.rect({
+                x: 100,
+                y: 200,
+                width: 40,
+                height: 20,
+                fillStyle: "red",
+              });
+              frameValues.width = frameContext.getMeasurements().width;
+              frameValues.height = frameContext.getMeasurements().height;
+              frameValues.centerX = frameContext.getMeasurements().center.x;
+              frameValues.centerY = frameContext.getMeasurements().center.y;
+            },
+            { x: 0, y: 0, width: 200, height: 100, rotate: 45 },
+          );
+        },
+        mockContext,
+        800,
+        600,
+        0,
+      );
+
+      expect(frameValues).toEqual({
+        width: 200,
+        height: 100,
+        centerX: 100,
+        centerY: 50,
+      });
+
+      expect(mockContext.translate).toHaveBeenCalledWith(100, 50);
+      expect(mockContext.translate).toHaveBeenCalledWith(-100, -50);
+    });
+
+    it("layer() callback exposes getMeasurements() values", async () => {
+      const { createDrawContext } = await import("./index");
+      const drawContext = createDrawContext();
+      const frameValues = {
+        width: -1,
+        height: -1,
+        centerX: -1,
+        centerY: -1,
+      };
+
+      drawContext.executeDrawCallback(
+        (d) => {
+          d.layer(
+            ({ getMeasurements }) => {
+              const {
+                width: frameWidth,
+                height: frameHeight,
+                center: frameCenter,
+              } = getMeasurements();
+              frameValues.width = frameWidth;
+              frameValues.height = frameHeight;
+              frameValues.centerX = frameCenter.x;
+              frameValues.centerY = frameCenter.y;
+            },
+            { x: 10, y: 20, width: 200, height: 120 },
+          );
+        },
+        mockContext,
+        800,
+        600,
+        0,
+      );
+
+      expect(frameValues).toEqual({
+        width: 200,
+        height: 120,
+        centerX: 100,
+        centerY: 60,
+      });
+    });
+
+    it("layer() provides derived frame values when context is destructured before drawing children", async () => {
+      const { createDrawContext } = await import("./index");
+      const drawContext = createDrawContext();
+      const frameValues = {
+        width: -1,
+        height: -1,
+        centerX: -1,
+        centerY: -1,
+      };
+
+      drawContext.executeDrawCallback(
+        (d) => {
+          d.layer(({ getMeasurements, hasMeasurements }) => {
+            if (hasMeasurements) {
+              const {
+                width: frameWidth,
+                height: frameHeight,
+                center: frameCenter,
+              } = getMeasurements();
+
+              frameValues.width = frameWidth;
+              frameValues.height = frameHeight;
+              frameValues.centerX = frameCenter.x;
+              frameValues.centerY = frameCenter.y;
+            }
+
+            d.rect({ x: 0, y: 0, width: 40, height: 20, fillStyle: "red" });
+          });
+        },
+        mockContext,
+        800,
+        600,
+        0,
+      );
+
+      expect(frameValues).toEqual({
+        width: 40,
+        height: 20,
+        centerX: 20,
+        centerY: 10,
+      });
+    });
+
+    it("group() marks first pass as measure and second pass as render when implicitly sized", async () => {
+      const { createDrawContext } = await import("./index");
+      const drawContext = createDrawContext();
+      const passes: string[] = [];
+
+      drawContext.executeDrawCallback(
+        (d) => {
+          d.group(({ hasMeasurements }) => {
+            passes.push(hasMeasurements ? "render" : "measure");
+            d.rect({ x: 10, y: 20, width: 40, height: 20, fillStyle: "red" });
+          });
+        },
+        mockContext,
+        800,
+        600,
+        0,
+      );
+
+      expect(passes).toEqual(["measure", "render"]);
+    });
+
+    it("layer() marks first pass as measure and second pass as render when implicitly sized", async () => {
+      const { createDrawContext } = await import("./index");
+      const drawContext = createDrawContext();
+      const passes: string[] = [];
+
+      drawContext.executeDrawCallback(
+        (d) => {
+          d.layer(({ hasMeasurements }) => {
+            passes.push(hasMeasurements ? "render" : "measure");
+            d.rect({ x: 0, y: 0, width: 40, height: 20, fillStyle: "red" });
+          });
+        },
+        mockContext,
+        800,
+        600,
+        0,
+      );
+
+      expect(passes).toEqual(["measure", "render"]);
+    });
+
+    it("layer() with x/y aligns local coordinates with absolute-position sibling groups", async () => {
+      const { createDrawContext } = await import("./index");
+      const drawContext = createDrawContext();
+
+      drawContext.executeDrawCallback(
+        (d) => {
+          // Absolute-positioned baseline group (green repro)
+          d.group(() => {
+            d.rect({
+              x: 100,
+              y: 100,
+              width: 50,
+              height: 50,
+              fillStyle: "green",
+            });
+            d.rect({
+              x: 250,
+              y: 100,
+              width: 50,
+              height: 50,
+              fillStyle: "green",
+            });
+          });
+
+          // Local-coordinate layer with explicit x/y offset (blue repro)
+          d.layer(
+            () => {
+              d.rect({
+                x: 0,
+                y: 0,
+                width: 50,
+                height: 50,
+                fillStyle: "blue",
+              });
+              d.rect({
+                x: 150,
+                y: 0,
+                width: 50,
+                height: 50,
+                fillStyle: "blue",
+              });
+            },
+            {
+              x: 100,
+              y: 100,
+              showBounds: true,
+            },
+          );
+        },
+        mockContext,
+        800,
+        600,
+        0,
+      );
+
+      // Local group should be shifted once by explicit x/y, never doubled.
+      expect(mockContext.translate).toHaveBeenCalledWith(100, 100);
+      expect(mockContext.translate).not.toHaveBeenCalledWith(200, 200);
+
+      // Baseline absolute rects
+      expect(mockContext.roundRect).toHaveBeenCalledWith(100, 100, 50, 50, 0);
+      expect(mockContext.roundRect).toHaveBeenCalledWith(250, 100, 50, 50, 0);
+
+      // Local rects (rendered under translated scope)
+      expect(mockContext.roundRect).toHaveBeenCalledWith(0, 0, 50, 50, 0);
+      expect(mockContext.roundRect).toHaveBeenCalledWith(150, 0, 50, 50, 0);
+
+      // Show bounds are drawn in the layer's local scope.
+      expect(mockContext.rect).toHaveBeenCalledWith(0, 0, 200, 50);
+    });
+
+    it("group() translates child content when x/y are provided", async () => {
+      const { createDrawContext } = await import("./index");
+      const drawContext = createDrawContext();
+
+      drawContext.executeDrawCallback(
+        (d) => {
+          d.group(
+            () => {
+              d.rect({
+                x: 100,
+                y: 200,
+                width: 40,
+                height: 20,
+                fillStyle: "red",
+              });
+            },
+            { x: 0, y: 0 },
+          );
+        },
+        mockContext,
+        800,
+        600,
+        0,
+      );
+
+      expect(mockContext.translate).toHaveBeenCalledWith(-100, -200);
+    });
+
+    it("group() can render show bounds", async () => {
+      const { createDrawContext } = await import("./index");
+      const drawContext = createDrawContext();
+
+      drawContext.executeDrawCallback(
+        (d) => {
+          d.group(
+            () => {
+              d.rect({
+                x: 100,
+                y: 200,
+                width: 40,
+                height: 20,
+                fillStyle: "red",
+              });
+            },
+            { showBounds: true },
+          );
+        },
+        mockContext,
+        800,
+        600,
+        0,
+      );
+
+      expect(mockContext.rect).toHaveBeenCalledWith(100, 200, 40, 20);
+    });
+
+    it("group() show bounds move with animated x", async () => {
+      const { createDrawContext } = await import("./index");
+      const drawContext = createDrawContext();
+
+      const render = (d: DrawMethods) => {
+        d.group(
+          () => {
+            d.rect({ x: 100, y: 200, width: 40, height: 20, fillStyle: "red" });
+          },
+          { showBounds: true },
+        ).animateTo({ x: 200 }, { at: 0, duration: 1000 });
+      };
+
+      drawContext.executeDrawCallback(
+        (d) => render(d),
+        mockContext,
+        800,
+        600,
+        0,
+      );
+
+      vi.mocked(mockContext.rect).mockClear();
+      vi.mocked(mockContext.translate).mockClear();
+
+      drawContext.executeDrawCallback(
+        (d) => render(d),
+        mockContext,
+        800,
+        600,
+        1000,
+      );
+
+      // Bounds are drawn in group-local scope, while animated offset is applied via translation.
+      expect(mockContext.rect).toHaveBeenCalledWith(100, 200, 40, 20);
+      expect(mockContext.translate).toHaveBeenCalledWith(100, 0);
+    });
+
+    it("layer() show bounds move with animated x/y", async () => {
+      const { createDrawContext } = await import("./index");
+      const drawContext = createDrawContext();
+
+      const render = (d: DrawMethods) => {
+        d.layer(
+          () => {
+            d.rect({ x: 50, y: 0, width: 50, height: 50, fillStyle: "blue" });
+            d.rect({ x: 200, y: 0, width: 50, height: 50, fillStyle: "blue" });
+          },
+          {
+            x: 100,
+            y: 100,
+            showBounds: true,
+          },
+        ).animateTo({ x: 200, y: 150 }, { at: 0, duration: 1000 });
+      };
+
+      drawContext.executeDrawCallback(
+        (d) => render(d),
+        mockContext,
+        800,
+        600,
+        0,
+      );
+
+      vi.mocked(mockContext.rect).mockClear();
+      vi.mocked(mockContext.translate).mockClear();
+
+      drawContext.executeDrawCallback(
+        (d) => render(d),
+        mockContext,
+        800,
+        600,
+        1000,
+      );
+
+      // Show bounds are origin-aware in local mode and move with animated translation.
+      expect(mockContext.rect).toHaveBeenCalledWith(0, 0, 250, 50);
+      expect(mockContext.translate).toHaveBeenCalledWith(200, 150);
+    });
+
+    it("layer() show bounds account for child offsets when dimensions are derived", async () => {
+      const { createDrawContext } = await import("./index");
+      const drawContext = createDrawContext();
+
+      drawContext.executeDrawCallback(
+        (d) => {
+          d.layer(
+            () => {
+              d.rect({
+                x: 100,
+                y: 100,
+                width: 100,
+                height: 100,
+                fillStyle: "blue",
+              });
+              d.rect({
+                x: 250,
+                y: 100,
+                width: 100,
+                height: 100,
+                fillStyle: "blue",
+              });
+            },
+            {
+              x: 100,
+              y: 100,
+              showBounds: true,
+            },
+          );
+        },
+        mockContext,
+        800,
+        600,
+        0,
+      );
+
+      // Local frame should start at origin and include offset child extents.
+      expect(mockContext.rect).toHaveBeenCalledWith(0, 0, 350, 200);
+    });
+
+    it("layer() show bounds honor explicit local frame x/y/width/height", async () => {
+      const { createDrawContext } = await import("./index");
+      const drawContext = createDrawContext();
+
+      drawContext.executeDrawCallback(
+        (d) => {
+          d.layer(
+            () => {
+              d.rect({
+                x: 50,
+                y: 30,
+                width: 40,
+                height: 20,
+                fillStyle: "blue",
+              });
+            },
+            {
+              x: 100,
+              y: 120,
+              width: 300,
+              height: 140,
+              showBounds: true,
+            },
+          );
+        },
+        mockContext,
+        800,
+        600,
+        0,
+      );
+
+      // Explicit local frame origin is applied via scope translation.
+      expect(mockContext.translate).toHaveBeenCalledWith(100, 120);
+
+      // Show bounds rect uses explicit width/height at local origin.
+      expect(mockContext.rect).toHaveBeenCalledWith(0, 0, 300, 140);
+    });
+
+    it("layer() show bounds are rendered through local scope translation", async () => {
+      const { createDrawContext } = await import("./index");
+      const drawContext = createDrawContext();
+
+      drawContext.executeDrawCallback(
+        (d) => {
+          d.layer(
+            () => {
+              d.rect({ x: 0, y: 0, width: 50, height: 50, fillStyle: "blue" });
+            },
+            {
+              x: 100,
+              y: 100,
+              showBounds: true,
+            },
+          );
+        },
+        mockContext,
+        800,
+        600,
+        0,
+      );
+
+      // One translation for child rect + one for show-bounds render under the same local scope.
+      const localTranslateCalls = vi
+        .mocked(mockContext.translate)
+        .mock.calls.filter((call) => call[0] === 100 && call[1] === 100).length;
+
+      expect(localTranslateCalls).toBe(2);
+      expect(mockContext.rect).toHaveBeenCalledWith(0, 0, 50, 50);
+    });
+
+    it("layer() show bounds animate with content bounds changes", async () => {
+      const { createDrawContext } = await import("./index");
+      const drawContext = createDrawContext();
+
+      const render = (d: DrawMethods) => {
+        d.layer(
+          () => {
+            d.rect({ x: 0, y: 0, width: 50, height: 50, fillStyle: "blue" });
+            d.rect({
+              x: 100,
+              y: 0,
+              width: 50,
+              height: 50,
+              fillStyle: "blue",
+            }).animateTo({ x: 200 }, { at: 0, duration: 1000 });
+          },
+          {
+            x: 100,
+            y: 100,
+            showBounds: true,
+          },
+        );
+      };
+
+      drawContext.executeDrawCallback(
+        (d) => render(d),
+        mockContext,
+        800,
+        600,
+        0,
+      );
+
+      vi.mocked(mockContext.rect).mockClear();
+      vi.mocked(mockContext.translate).mockClear();
+
+      drawContext.executeDrawCallback(
+        (d) => render(d),
+        mockContext,
+        800,
+        600,
+        1000,
+      );
+
+      // Local derived bounds should expand from width 150 -> 250 as child content animates.
+      expect(mockContext.rect).toHaveBeenCalledWith(0, 0, 250, 50);
+
+      // Two child rect renders + one show-bounds render all under animated local translation.
+      const translatedCalls = vi
+        .mocked(mockContext.translate)
+        .mock.calls.filter((call) => call[0] === 100 && call[1] === 100).length;
+
+      expect(translatedCalls).toBe(3);
+    });
+
+    it("layer() show bounds animate with offset content bounds changes", async () => {
+      const { createDrawContext } = await import("./index");
+      const drawContext = createDrawContext();
+
+      const render = (d: DrawMethods) => {
+        d.layer(
+          () => {
+            d.rect({
+              x: 100,
+              y: 100,
+              width: 100,
+              height: 100,
+              fillStyle: "blue",
+            });
+            d.rect({
+              x: 250,
+              y: 100,
+              width: 100,
+              height: 100,
+              fillStyle: "blue",
+            }).animateTo({ x: 350 }, { at: 0, duration: 1000 });
+          },
+          {
+            x: 100,
+            y: 100,
+            showBounds: true,
+          },
+        );
+      };
+
+      drawContext.executeDrawCallback(
+        (d) => render(d),
+        mockContext,
+        800,
+        600,
+        0,
+      );
+
+      vi.mocked(mockContext.rect).mockClear();
+
+      drawContext.executeDrawCallback(
+        (d) => render(d),
+        mockContext,
+        800,
+        600,
+        1000,
+      );
+
+      // Local derived bounds should expand from width 350 -> 450 from local origin.
+      expect(mockContext.rect).toHaveBeenCalledWith(0, 0, 450, 200);
+    });
+
+    it("layer() rotate basis uses explicit x/y and origin-aware local frame size", async () => {
+      const { createDrawContext } = await import("./index");
+      const drawContext = createDrawContext();
+
+      drawContext.executeDrawCallback(
+        (d) => {
+          d.layer(
+            () => {
+              d.rect({
+                x: 100,
+                y: 100,
+                width: 100,
+                height: 100,
+                fillStyle: "blue",
+              });
+              d.rect({
+                x: 250,
+                y: 100,
+                width: 100,
+                height: 100,
+                fillStyle: "blue",
+              });
+            },
+            {
+              x: 100,
+              y: 100,
+              rotate: 45,
+            },
+          );
+        },
+        mockContext,
+        800,
+        600,
+        0,
+      );
+
+      // Local frame is [0,0,350,200] translated to (100,100), center=(275,200).
+      expect(mockContext.translate).toHaveBeenCalledWith(275, 200);
+      expect(mockContext.rotate).toHaveBeenCalledWith((45 * Math.PI) / 180);
+      expect(mockContext.translate).toHaveBeenCalledWith(-275, -200);
+    });
+
+    it("group() animates transform props", async () => {
+      const { createDrawContext } = await import("./index");
+      const drawContext = createDrawContext();
+
+      const render = (d: DrawMethods) => {
+        d.group(
+          () => {
+            d.rect({ x: 100, y: 200, width: 40, height: 20, fillStyle: "red" });
+          },
+          { rotate: 0 },
+        ).animateTo({ rotate: 45 }, { at: 0, duration: 1000 });
+      };
+
+      drawContext.executeDrawCallback(
+        (d) => render(d),
+        mockContext,
+        800,
+        600,
+        0,
+      );
+      drawContext.executeDrawCallback(
+        (d) => render(d),
+        mockContext,
+        800,
+        600,
+        1000,
+      );
+
+      expect(mockContext.rotate).toHaveBeenCalledWith((45 * Math.PI) / 180);
+    });
+
+    it("group() animates x from inferred bounds when x is omitted", async () => {
+      const { createDrawContext } = await import("./index");
+      const drawContext = createDrawContext();
+
+      const render = (d: DrawMethods) => {
+        d.group(() => {
+          d.rect({ x: 100, y: 200, width: 40, height: 20, fillStyle: "red" });
+        }).animateTo({ x: 200 }, { at: 0, duration: 1000 });
+      };
+
+      drawContext.executeDrawCallback(
+        (d) => render(d),
+        mockContext,
+        800,
+        600,
+        500,
+      );
+
+      vi.mocked(mockContext.translate).mockClear();
+
+      drawContext.executeDrawCallback(
+        (d) => render(d),
+        mockContext,
+        800,
+        600,
+        1000,
+      );
+
+      expect(mockContext.translate).toHaveBeenCalledWith(50, 0);
+    });
+
+    it("rect() callback does not transform child content with frame transform", async () => {
+      const { createDrawContext } = await import("./index");
+      const drawContext = createDrawContext();
+
+      drawContext.executeDrawCallback(
+        (d) => {
+          d.rect(
+            {
+              x: 100,
+              y: 100,
+              width: 200,
+              height: 200,
+              rotate: 45,
+              useLocalCoordinateContext: true,
+            },
+            () => {
+              d.circle({ cx: 50, cy: 50, radius: 30, fillStyle: "red" });
+            },
+          );
+        },
+        mockContext,
+        800,
+        600,
+        0,
+      );
+
+      const undoRotationIndex = vi
+        .mocked(mockContext.rotate)
+        .mock.calls.findIndex((call) => call[0] === -(45 * Math.PI) / 180);
+
+      expect(undoRotationIndex).toBeGreaterThan(-1);
+
+      const undoRotationOrder = vi.mocked(mockContext.rotate).mock
+        .invocationCallOrder[undoRotationIndex];
+      const childEllipseOrder = vi.mocked(mockContext.ellipse).mock
+        .invocationCallOrder[0];
+
+      expect(childEllipseOrder).toBeGreaterThan(undoRotationOrder!);
+    });
+
+    it("group() does not clip by default", async () => {
+      const { createDrawContext } = await import("./index");
+      const drawContext = createDrawContext();
+
+      drawContext.executeDrawCallback(
+        (d) => {
+          d.group(() => {
+            d.circle({ cx: 500, cy: 500, radius: 40, fillStyle: "red" });
+          }, {});
+        },
+        mockContext,
+        800,
+        600,
+        0,
+      );
+
+      expect(mockContext.clip).not.toHaveBeenCalled();
+    });
+
+    it("group() does not clip content", async () => {
+      const { createDrawContext } = await import("./index");
+      const drawContext = createDrawContext();
+
+      drawContext.executeDrawCallback(
+        (d) => {
+          d.group(() => {
+            d.circle({ cx: 500, cy: 500, radius: 40, fillStyle: "red" });
+          }, {});
+        },
+        mockContext,
+        800,
+        600,
+        0,
+      );
+
+      expect(mockContext.clip).not.toHaveBeenCalled();
+    });
+
+    it("group() reuses cached layer across frames when props are unchanged", async () => {
+      const { createDrawContext } = await import("./index");
+      const drawContext = createDrawContext();
+
+      const previousOffscreenCanvas = (globalThis as any).OffscreenCanvas;
+
+      class MockOffscreenCanvas {
+        static instances: MockOffscreenCanvas[] = [];
+
+        width: number;
+        height: number;
+        context: CanvasRenderingContext2D;
+
+        constructor(width: number, height: number) {
+          this.width = width;
+          this.height = height;
+          this.context = {
+            save: vi.fn(),
+            restore: vi.fn(),
+            translate: vi.fn(),
+            rotate: vi.fn(),
+            scale: vi.fn(),
+            setTransform: vi.fn(),
+            clearRect: vi.fn(),
+            beginPath: vi.fn(),
+            closePath: vi.fn(),
+            ellipse: vi.fn(),
+            arc: vi.fn(),
+            rect: vi.fn(),
+            roundRect: vi.fn(),
+            moveTo: vi.fn(),
+            lineTo: vi.fn(),
+            fill: vi.fn(),
+            stroke: vi.fn(),
+            fillRect: vi.fn(),
+            fillText: vi.fn(),
+            strokeText: vi.fn(),
+            drawImage: vi.fn(),
+            globalAlpha: 1,
+            globalCompositeOperation: "source-over",
+            fillStyle: "",
+            strokeStyle: "",
+            lineWidth: 1,
+            measureText: vi.fn(
+              (value: string) =>
+                ({
+                  width: value.length * 10,
+                  actualBoundingBoxAscent: 10,
+                  actualBoundingBoxDescent: 2,
+                }) as TextMetrics,
+            ),
+            canvas: { width, height },
+          } as unknown as CanvasRenderingContext2D;
+
+          MockOffscreenCanvas.instances.push(this);
+        }
+
+        getContext(kind: string) {
+          if (kind !== "2d") {
+            return null;
+          }
+
+          return this.context;
+        }
+      }
+
+      (globalThis as any).OffscreenCanvas = MockOffscreenCanvas;
+
+      const cacheableContext = {
+        ...mockContext,
+        canvas: {
+          width: 800,
+          height: 600,
+          getContext: vi.fn(),
+        },
+      } as unknown as CanvasRenderingContext2D;
+
+      const renderCallback = (d: DrawMethods) => {
+        d.group(() => {
+          d.circle({ cx: 50, cy: 50, radius: 30, fillStyle: "red" });
+        }, {});
+      };
+
+      drawContext.executeDrawCallback(
+        renderCallback,
+        cacheableContext,
+        800,
+        600,
+        0,
+      );
+      drawContext.executeDrawCallback(
+        renderCallback,
+        cacheableContext,
+        800,
+        600,
+        16,
+      );
+
+      const firstSurface = MockOffscreenCanvas.instances[0];
+
+      expect(firstSurface).toBeDefined();
+      expect(MockOffscreenCanvas.instances).toHaveLength(1);
+      expect(cacheableContext.drawImage).toHaveBeenCalledTimes(2);
+
+      (globalThis as any).OffscreenCanvas = previousOffscreenCanvas;
+    });
+
+    it("nested layer showBounds rerenders when parent layer rotation animates (cache enabled)", async () => {
+      const { createDrawContext } = await import("./index");
+      const drawContext = createDrawContext();
+
+      const previousOffscreenCanvas = (globalThis as any).OffscreenCanvas;
+
+      class MockOffscreenCanvas {
+        static instances: MockOffscreenCanvas[] = [];
+
+        width: number;
+        height: number;
+        context: CanvasRenderingContext2D;
+
+        constructor(width: number, height: number) {
+          this.width = width;
+          this.height = height;
+          this.context = {
+            save: vi.fn(),
+            restore: vi.fn(),
+            translate: vi.fn(),
+            rotate: vi.fn(),
+            scale: vi.fn(),
+            setTransform: vi.fn(),
+            clearRect: vi.fn(),
+            beginPath: vi.fn(),
+            closePath: vi.fn(),
+            clip: vi.fn(),
+            ellipse: vi.fn(),
+            arc: vi.fn(),
+            rect: vi.fn(),
+            roundRect: vi.fn(),
+            moveTo: vi.fn(),
+            lineTo: vi.fn(),
+            fill: vi.fn(),
+            stroke: vi.fn(),
+            fillRect: vi.fn(),
+            fillText: vi.fn(),
+            strokeText: vi.fn(),
+            drawImage: vi.fn(),
+            globalAlpha: 1,
+            globalCompositeOperation: "source-over",
+            fillStyle: "",
+            strokeStyle: "",
+            lineWidth: 1,
+            measureText: vi.fn(
+              (value: string) =>
+                ({
+                  width: value.length * 10,
+                  actualBoundingBoxAscent: 10,
+                  actualBoundingBoxDescent: 2,
+                }) as TextMetrics,
+            ),
+            canvas: { width, height },
+          } as unknown as CanvasRenderingContext2D;
+
+          MockOffscreenCanvas.instances.push(this);
+        }
+
+        getContext(kind: string) {
+          if (kind !== "2d") {
+            return null;
+          }
+
+          return this.context;
+        }
+      }
+
+      (globalThis as any).OffscreenCanvas = MockOffscreenCanvas;
+
+      const cacheableContext = {
+        ...mockContext,
+        canvas: {
+          width: 800,
+          height: 600,
+          getContext: vi.fn(),
+        },
+      } as unknown as CanvasRenderingContext2D;
+
+      const renderCallback = (d: DrawMethods) => {
+        d.layer(
+          () => {
+            d.layer(() => {}, {
+              x: 200,
+              y: 200,
+              width: 250,
+              height: 100,
+              showBounds: true,
+            });
+          },
+          {
+            x: 300,
+            y: 300,
+            rotate: 0,
+          },
+        ).animateTo({ rotate: 45 }, { at: 0, duration: 1000 });
+      };
+
+      drawContext.executeDrawCallback(
+        renderCallback,
+        cacheableContext,
+        800,
+        600,
+        0,
+      );
+
+      const countRotationsAt45 = (): number =>
+        MockOffscreenCanvas.instances.reduce((count, surface) => {
+          const rotates = vi
+            .mocked(surface.context.rotate)
+            .mock.calls.filter(
+              (call) => Math.abs(call[0] - (45 * Math.PI) / 180) < 1e-9,
+            ).length;
+
+          return count + rotates;
+        }, 0);
+
+      expect(countRotationsAt45()).toBe(0);
+
+      drawContext.executeDrawCallback(
+        renderCallback,
+        cacheableContext,
+        800,
+        600,
+        1000,
+      );
+
+      // Parent rotation should invalidate nested cached groups so inner showBounds rerenders.
+      expect(countRotationsAt45()).toBeGreaterThan(0);
+
+      (globalThis as any).OffscreenCanvas = previousOffscreenCanvas;
+    });
+
+    it("nested explicit layer showBounds redraws while parent layer rotates (cache enabled)", async () => {
+      const { createDrawContext } = await import("./index");
+      const drawContext = createDrawContext();
+
+      const previousOffscreenCanvas = (globalThis as any).OffscreenCanvas;
+
+      class MockOffscreenCanvas {
+        static instances: MockOffscreenCanvas[] = [];
+
+        width: number;
+        height: number;
+        context: CanvasRenderingContext2D;
+
+        constructor(width: number, height: number) {
+          this.width = width;
+          this.height = height;
+          this.context = {
+            save: vi.fn(),
+            restore: vi.fn(),
+            translate: vi.fn(),
+            rotate: vi.fn(),
+            scale: vi.fn(),
+            setTransform: vi.fn(),
+            clearRect: vi.fn(),
+            beginPath: vi.fn(),
+            closePath: vi.fn(),
+            clip: vi.fn(),
+            ellipse: vi.fn(),
+            arc: vi.fn(),
+            rect: vi.fn(),
+            roundRect: vi.fn(),
+            moveTo: vi.fn(),
+            lineTo: vi.fn(),
+            fill: vi.fn(),
+            stroke: vi.fn(),
+            fillRect: vi.fn(),
+            fillText: vi.fn(),
+            strokeText: vi.fn(),
+            drawImage: vi.fn(),
+            globalAlpha: 1,
+            globalCompositeOperation: "source-over",
+            fillStyle: "",
+            strokeStyle: "",
+            lineWidth: 1,
+            measureText: vi.fn(
+              (value: string) =>
+                ({
+                  width: value.length * 10,
+                  actualBoundingBoxAscent: 10,
+                  actualBoundingBoxDescent: 2,
+                }) as TextMetrics,
+            ),
+            canvas: { width, height },
+          } as unknown as CanvasRenderingContext2D;
+
+          MockOffscreenCanvas.instances.push(this);
+        }
+
+        getContext(kind: string) {
+          if (kind !== "2d") {
+            return null;
+          }
+
+          return this.context;
+        }
+      }
+
+      (globalThis as any).OffscreenCanvas = MockOffscreenCanvas;
+
+      const cacheableContext = {
+        ...mockContext,
+        canvas: {
+          width: 800,
+          height: 600,
+          getContext: vi.fn(),
+        },
+      } as unknown as CanvasRenderingContext2D;
+
+      const renderCallback = (d: DrawMethods) => {
+        d.layer(
+          () => {
+            d.rect({ x: 0, y: 0, width: 100, height: 100 });
+            d.rect({ x: 150, y: 0, width: 100, height: 100 });
+
+            d.layer(
+              () => {
+                d.rect({ x: 0, y: 0, width: 100, height: 100 });
+                d.rect({ x: 150, y: 0, width: 100, height: 100 });
+              },
+              {
+                x: 200,
+                y: 200,
+                width: 250,
+                height: 100,
+                showBounds: true,
+              },
+            );
+          },
+          {
+            x: 300,
+            y: 300,
+            showBounds: true,
+            rotate: 0,
+          },
+        ).animateTo({ rotate: 45 }, { at: 0, duration: 1000 });
+      };
+
+      const countInnerShowBoundsRects = (): number =>
+        MockOffscreenCanvas.instances.reduce((count, surface) => {
+          const rectCalls = vi
+            .mocked(surface.context.rect)
+            .mock.calls.filter(
+              (call) =>
+                call[0] === 0 &&
+                call[1] === 0 &&
+                call[2] === 250 &&
+                call[3] === 100,
+            ).length;
+
+          return count + rectCalls;
+        }, 0);
+
+      drawContext.executeDrawCallback(
+        renderCallback,
+        cacheableContext,
+        800,
+        600,
+        0,
+      );
+      const firstFrameShowBoundsRects = countInnerShowBoundsRects();
+
+      drawContext.executeDrawCallback(
+        renderCallback,
+        cacheableContext,
+        800,
+        600,
+        1000,
+      );
+
+      const secondFrameShowBoundsRects = countInnerShowBoundsRects();
+
+      // Inner layer bounds should redraw on the animated frame, not stay frozen in cache.
+      expect(secondFrameShowBoundsRects).toBeGreaterThan(
+        firstFrameShowBoundsRects,
+      );
+
+      (globalThis as any).OffscreenCanvas = previousOffscreenCanvas;
     });
   });
 

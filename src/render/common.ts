@@ -81,3 +81,11 @@ export const centerOf = (dimensions: Dimensions2D): Point2D => {
   const { width, height } = dimensions;
   return { x: width / 2, y: height / 2 };
 };
+
+export const hasBounds = (
+  props: Record<string, any>,
+): props is Record<string, any> & Bounds =>
+  props.x !== undefined &&
+  props.y !== undefined &&
+  props.width !== undefined &&
+  props.height !== undefined;

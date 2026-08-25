@@ -72,8 +72,10 @@ Use this checklist when updating examples or docs:
 - Use keyed methods with explicit naming: `addWithKey`, `addPermanentlyWithKey`, `getByKey`
 - Use instance methods when holding references: `add`, `addPermanently`, `remove`, `has`
 - Document and demo blend mode as `blend` (including `withStyles({ blend })`)
-- Include all current primitives in docs/examples where relevant: `line`, `polygon`, `bezier`, `arc`, `circle`, `ellipse`, `rect`, `text`, `image`
+- Include all current primitives in docs/examples where relevant: `line`, `polygon`, `bezier`, `arc`, `circle`, `ellipse`, `rect`, `text`, `image`, `group`, `layer`
+- Use `showBounds` (not `debugBounds`) when documenting group bounds visualisation
 - When documenting `image`, include `fit` modes and scaled-frame behavior (`cover` default, `contain`, `stretch`)
+- Use `getMeasurements()` and `isMeasuring` for scene/frame sizing context; do not document `sceneWidth`/`frameWidth` style fields
 - Prefer easing string constants in quick examples when imports are unnecessary (example: `"easeOutBack"`)
 
 ---

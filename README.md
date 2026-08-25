@@ -369,6 +369,40 @@ if (scene.hasKey("temp-circle")) {
 
 Liminalis provides a unified, composable rendering API that allows you to combine 2D canvas primitives and isometric 3D projections in the same frame.
 
+#### Measurements API
+
+All draw contexts now expose a unified measurement API:
+
+- `getMeasurements()` returns `{ width, height, center }`
+- `hasMeasurements` indicates whether the callback has measurements available
+
+This API is available at both scene level and frame callback level.
+
+At scene level, `hasMeasurements` is always `true`.
+
+In implicitly sized frame callbacks (`group`, `layer`, and other framed callbacks), the callback may run in a measurement pass before the render pass. In those contexts, guard measurement reads when needed:
+
+```typescript
+createScene
+  .setup(({ onRender, getMeasurements }) => {
+    const { width, height, center } = getMeasurements();
+
+    onRender(({ draw }) => {
+      draw(({ layer }) => {
+        layer(({ getMeasurements, hasMeasurements }) => {
+          if (!hasMeasurements) {
+            const { width, height, center } = getMeasurements();
+            console.log(width, height, center);
+          }
+        });
+      });
+    });
+  })
+  .render();
+```
+
+This keeps scene and frame measurement access consistent while making implicit frame measurement passes explicit.
+
 #### Composable Rendering API
 
 Both `onRender` (for static content) and `visual(...)` renderers (for MIDI visuals) use the same composable structure:
@@ -1343,6 +1377,38 @@ The `onRender` callback receives an object with:
 - `time` - Current time in milliseconds
 - `width`, `height` - Canvas dimensions
 - `center` - Canvas center point
+
+**Container Primitives: `group()` and `layer()`**
+
+- `group(callback, options?)`: inherits parent coordinate space and derives bounds from contained shapes. Use it to transform and reposition selected items as a unit.
+- `layer(callback, options?)`: always renders in its own local coordinate space. Defaults to `x: 0`, `y: 0`, and derives `width`/`height` from content when omitted.
+
+**Bounds Visualisation (`showBounds`)**
+
+Use `showBounds: true` on `group()` or `layer()` to render a translucent red frame that helps designers understand container position, size, and transform context.
+
+```typescript
+draw(({ group, layer, rect }) => {
+  group(
+    () => {
+      rect({ x: 200, y: 140, width: 120, height: 120, fillStyle: "#0a0" });
+    },
+    { showBounds: true },
+  );
+
+  layer(
+    () => {
+      rect({ x: 100, y: 100, width: 100, height: 100, fillStyle: "#09f" });
+      rect({ x: 250, y: 100, width: 100, height: 100, fillStyle: "#09f" });
+    },
+    {
+      x: 100,
+      y: 100,
+      showBounds: true,
+    },
+  );
+});
+```
 
 ##### `.render()`
 
