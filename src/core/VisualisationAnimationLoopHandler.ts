@@ -79,7 +79,12 @@ interface SceneSettings {
 
 interface SetupFunctionProps<TState> {
   state: TState;
-  hasMeasurements: boolean;
+  hasMeasurements: true;
+  measurements: {
+    width: number;
+    height: number;
+    center: { x: number; y: number };
+  };
   getMeasurements: () => {
     width: number;
     height: number;
@@ -330,6 +335,7 @@ class VisualisationAnimationLoopHandler<TState> {
     setupFunction({
       state: this.#sceneState,
       hasMeasurements: true,
+      measurements: setupMeasurements,
       getMeasurements: () => setupMeasurements,
       load,
       onNoteDown,
@@ -406,7 +412,8 @@ class VisualisationAnimationLoopHandler<TState> {
 
           frameRenderCallback({
             context,
-            hasMeasurements: false,
+            hasMeasurements: true,
+            measurements,
             getMeasurements: () => measurements,
             time: timeInMs,
             beforeTime,

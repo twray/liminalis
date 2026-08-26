@@ -13,7 +13,8 @@ export interface Measurements {
 
 export interface RenderProps {
   context: CanvasRenderingContext2D;
-  hasMeasurements: boolean;
+  hasMeasurements: true;
+  measurements: Measurements;
   getMeasurements: () => Measurements;
   time: number;
   draw: (callback: DrawCallback) => void;

@@ -47,6 +47,8 @@ import type {
   CoordinateContextProps,
   DrawContext,
   DrawMethods,
+  DrawPrimitives,
+  DynamicMeasurementContext,
   EllipseProps,
   FrameCallback,
   FrameContext,
@@ -54,8 +56,12 @@ import type {
   ImageProps,
   LayerOptions,
   LineProps,
+  MeasurementContext,
+  Measurements,
   PolygonProps,
   RectProps,
+  StaticFrameCallback,
+  StaticMeasurementContext,
   TextProps,
   TransformProps,
 } from "./types";
@@ -177,21 +183,36 @@ export const createDrawContext = (): DrawContext => {
     const isMeasuringFrameBounds = (): boolean =>
       frameBoundsMeasurementDepth > 0;
 
-    const createMeasurementContext = (
-      getMeasurements: () => {
-        width: number;
-        height: number;
-        center: { x: number; y: number };
-      },
-      isMeasuring: boolean,
-      warnOnMeasureRead: boolean,
-    ): FrameContext => {
+    function createMeasurementContext(
+      getMeasurements: () => Measurements,
+      hasMeasurements: true,
+      warnOnUnavailableRead: boolean,
+    ): StaticMeasurementContext;
+    function createMeasurementContext(
+      getMeasurements: () => Measurements,
+      hasMeasurements: false,
+      warnOnUnavailableRead: boolean,
+    ): DynamicMeasurementContext;
+    function createMeasurementContext(
+      getMeasurements: () => Measurements,
+      hasMeasurements: boolean,
+      warnOnUnavailableRead: boolean,
+    ): MeasurementContext;
+    function createMeasurementContext(
+      getMeasurements: () => Measurements,
+      hasMeasurements: boolean,
+      warnOnUnavailableRead: boolean,
+    ): MeasurementContext {
       let hasWarnedOnMeasureRead = false;
 
-      return {
-        hasMeasurements: !isMeasuring,
+      const context: DynamicMeasurementContext = {
+        hasMeasurements,
         getMeasurements: () => {
-          if (isMeasuring && warnOnMeasureRead && !hasWarnedOnMeasureRead) {
+          if (
+            !hasMeasurements &&
+            warnOnUnavailableRead &&
+            !hasWarnedOnMeasureRead
+          ) {
             hasWarnedOnMeasureRead = true;
             console.warn(
               "getMeasurements() was called while dimensions are unknown, as liminalis " +
@@ -203,7 +224,21 @@ export const createDrawContext = (): DrawContext => {
           return getMeasurements();
         },
       };
-    };
+
+      if (hasMeasurements) {
+        const staticContext = context as StaticMeasurementContext;
+
+        Object.defineProperty(staticContext, "measurements", {
+          enumerable: true,
+          configurable: false,
+          get: () => getMeasurements(),
+        });
+
+        return staticContext;
+      }
+
+      return context;
+    }
 
     const createNoopAnimatable = <TProps extends object>(
       initialProps: TProps,
@@ -367,9 +402,9 @@ export const createDrawContext = (): DrawContext => {
                   y: frameBounds.y + frameBounds.height / 2,
                 },
           }),
-          isMeasuringFrameBounds(),
+          true,
           false,
-        );
+        ) as FrameContext;
 
         let currentClipProps = lifecycleProps;
         const activeBoundsCollector = getActiveBoundsCollector();
@@ -434,7 +469,7 @@ export const createDrawContext = (): DrawContext => {
         height,
         center: { x: width / 2, y: height / 2 },
       }),
-      false,
+      true,
       false,
     );
 
@@ -492,7 +527,10 @@ export const createDrawContext = (): DrawContext => {
         (getProps) => createClipScope(getProps, rectPathDescriptor),
         (p: RectProps) => p,
       ),
-      group: (frameCallback: FrameCallback, options: GroupOptions = {}) => {
+      group: ((
+        frameCallback: FrameCallback | StaticFrameCallback,
+        options: GroupOptions = {},
+      ) => {
         const mergedProps = { ...options };
         const contentBoundsCollector = createBoundsCollector();
         let derivedGroupBounds: Bounds = {
@@ -514,8 +552,8 @@ export const createDrawContext = (): DrawContext => {
           const frameBounds = {
             x: currentGroupProps.x ?? derivedGroupBounds.x,
             y: currentGroupProps.y ?? derivedGroupBounds.y,
-            width: derivedGroupBounds.width,
-            height: derivedGroupBounds.height,
+            width: currentGroupProps.width ?? derivedGroupBounds.width,
+            height: currentGroupProps.height ?? derivedGroupBounds.height,
           };
 
           return {
@@ -546,7 +584,9 @@ export const createDrawContext = (): DrawContext => {
           };
         };
 
-        const createGroupFrameContext = (isMeasuring: boolean): FrameContext =>
+        const createGroupFrameContext = (
+          hasMeasurements: boolean,
+        ): FrameContext =>
           createMeasurementContext(
             () => {
               const { frameBounds, frameCenter } = resolveGroupBoundsState();
@@ -557,18 +597,23 @@ export const createDrawContext = (): DrawContext => {
                 center: frameCenter,
               };
             },
-            isMeasuring,
-            isMeasuring,
-          );
+            hasMeasurements,
+            !hasMeasurements,
+          ) as FrameContext;
 
-        frameBoundsMeasurementDepth++;
-        boundsCollectorStack.push(contentBoundsCollector);
+        if (
+          mergedProps.width === undefined ||
+          mergedProps.height === undefined
+        ) {
+          frameBoundsMeasurementDepth++;
+          boundsCollectorStack.push(contentBoundsCollector);
 
-        try {
-          frameCallback(createGroupFrameContext(true));
-        } finally {
-          boundsCollectorStack.pop();
-          frameBoundsMeasurementDepth--;
+          try {
+            (frameCallback as FrameCallback)(createGroupFrameContext(false));
+          } finally {
+            boundsCollectorStack.pop();
+            frameBoundsMeasurementDepth--;
+          }
         }
 
         const renderGroupShowBounds = (): void => {
@@ -656,12 +701,12 @@ export const createDrawContext = (): DrawContext => {
               );
             },
             () => {
-              const frameContext = createGroupFrameContext(false);
+              const frameContext = createGroupFrameContext(true);
 
               boundsCollectorStack.push(contentBoundsCollector);
 
               try {
-                frameCallback(frameContext);
+                (frameCallback as FrameCallback)(frameContext);
               } finally {
                 boundsCollectorStack.pop();
               }
@@ -676,8 +721,11 @@ export const createDrawContext = (): DrawContext => {
         });
 
         return groupAnimatable;
-      },
-      layer: (frameCallback: FrameCallback, options: LayerOptions = {}) => {
+      }) as DrawPrimitives["group"],
+      layer: ((
+        frameCallback: FrameCallback | StaticFrameCallback,
+        options: LayerOptions = {},
+      ) => {
         const mergedProps = { ...options };
         const contentBoundsCollector = createBoundsCollector();
         let derivedLayerBounds: Bounds = {
@@ -742,7 +790,9 @@ export const createDrawContext = (): DrawContext => {
           };
         };
 
-        const createLayerFrameContext = (isMeasuring: boolean): FrameContext =>
+        const createLayerFrameContext = (
+          hasMeasurements: boolean,
+        ): FrameContext =>
           createMeasurementContext(
             () => {
               const { frameBounds, frameCenter } = resolveLayerBoundsState();
@@ -753,9 +803,9 @@ export const createDrawContext = (): DrawContext => {
                 center: frameCenter,
               };
             },
-            isMeasuring,
-            isMeasuring,
-          );
+            hasMeasurements,
+            !hasMeasurements,
+          ) as FrameContext;
 
         if (
           mergedProps.width === undefined ||
@@ -765,7 +815,7 @@ export const createDrawContext = (): DrawContext => {
           boundsCollectorStack.push(contentBoundsCollector);
 
           try {
-            frameCallback(createLayerFrameContext(true));
+            (frameCallback as FrameCallback)(createLayerFrameContext(false));
           } finally {
             boundsCollectorStack.pop();
             frameBoundsMeasurementDepth--;
@@ -840,12 +890,12 @@ export const createDrawContext = (): DrawContext => {
               );
             },
             () => {
-              const frameContext = createLayerFrameContext(false);
+              const frameContext = createLayerFrameContext(true);
 
               boundsCollectorStack.push(contentBoundsCollector);
 
               try {
-                frameCallback(frameContext);
+                (frameCallback as FrameCallback)(frameContext);
               } finally {
                 boundsCollectorStack.pop();
               }
@@ -858,7 +908,7 @@ export const createDrawContext = (): DrawContext => {
         });
 
         return layerAnimatable;
-      },
+      }) as DrawPrimitives["layer"],
       text: (
         textValue: string,
         props: TextProps = {},

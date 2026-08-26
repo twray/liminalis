@@ -75,7 +75,7 @@ Use this checklist when updating examples or docs:
 - Include all current primitives in docs/examples where relevant: `line`, `polygon`, `bezier`, `arc`, `circle`, `ellipse`, `rect`, `text`, `image`, `group`, `layer`
 - Use `showBounds` (not `debugBounds`) when documenting group bounds visualisation
 - When documenting `image`, include `fit` modes and scaled-frame behavior (`cover` default, `contain`, `stretch`)
-- Use `getMeasurements()` and `isMeasuring` for scene/frame sizing context; do not document `sceneWidth`/`frameWidth` style fields
+- Prefer `measurements` for scene and explicitly sized containers; use `hasMeasurements` + `getMeasurements()` for implicitly sized containers
 - Prefer easing string constants in quick examples when imports are unnecessary (example: `"easeOutBack"`)
 
 ---

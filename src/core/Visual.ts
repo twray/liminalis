@@ -126,6 +126,7 @@ class Visual<TProps = {}> {
       props,
       context,
       hasMeasurements: true,
+      measurements,
       getMeasurements: () => measurements,
       time: timeSinceFirstRender,
       status,

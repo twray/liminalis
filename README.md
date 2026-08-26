@@ -373,24 +373,40 @@ Liminalis provides a unified, composable rendering API that allows you to combin
 
 All draw contexts now expose a unified measurement API:
 
+- `measurements` provides static `{ width, height, center }` when dimensions are known at compile time
 - `getMeasurements()` returns `{ width, height, center }`
 - `hasMeasurements` indicates whether the callback has measurements available
 
 This API is available at both scene level and frame callback level.
 
-At scene level, `hasMeasurements` is always `true`.
+At scene level, `measurements` and `hasMeasurements: true` are always available.
 
-In implicitly sized frame callbacks (`group`, `layer`, and other framed callbacks), the callback may run in a measurement pass before the render pass. In those contexts, guard measurement reads when needed:
+For explicitly sized containers (for example `layer(..., { width, height })`), prefer `measurements` directly in the frame callback.
+
+In implicitly sized frame callbacks (`group`, `layer`, and other framed callbacks), measurements may not be available on the first pass. In those contexts, use the guard pattern with `hasMeasurements` and `getMeasurements()`:
 
 ```typescript
 createScene
-  .setup(({ onRender, getMeasurements }) => {
-    const { width, height, center } = getMeasurements();
+  .setup(({ onRender, measurements }) => {
+    const { width, height, center } = measurements;
 
     onRender(({ draw }) => {
       draw(({ layer }) => {
+        // Explicitly sized: static measurements available directly.
+        layer(
+          ({ measurements }) => {
+            console.log(
+              measurements.width,
+              measurements.height,
+              measurements.center,
+            );
+          },
+          { width: 300, height: 200 },
+        );
+
+        // Implicitly sized: use hasMeasurements + getMeasurements.
         layer(({ getMeasurements, hasMeasurements }) => {
-          if (!hasMeasurements) {
+          if (hasMeasurements) {
             const { width, height, center } = getMeasurements();
             console.log(width, height, center);
           }

@@ -65,14 +65,24 @@ export interface Measurements {
   center: Point2D;
 }
 
-export interface MeasurementContext {
+export interface DynamicMeasurementContext {
   hasMeasurements: boolean;
   getMeasurements: () => Measurements;
 }
 
-export type FrameContext = MeasurementContext;
+export interface StaticMeasurementContext extends DynamicMeasurementContext {
+  measurements: Measurements;
+}
+
+export type MeasurementContext =
+  | DynamicMeasurementContext
+  | StaticMeasurementContext;
+
+export type FrameContext = DynamicMeasurementContext;
+export type StaticFrameContext = StaticMeasurementContext;
 
 export type FrameCallback = (context: FrameContext) => void;
+export type StaticFrameCallback = (context: StaticFrameContext) => void;
 
 export interface CoordinateContextProps {
   useLocalCoordinateContext?: boolean;
@@ -215,12 +225,12 @@ export interface ImageProps
 }
 
 export interface GroupOptions
-  extends Positioned2D, TransformProps, ContainerProps {}
+  extends Positioned2D, Partial<Dimensions2D>, TransformProps, ContainerProps {}
 
 export interface LayerOptions
   extends Positioned2D, Partial<Dimensions2D>, TransformProps, ContainerProps {}
 
-export type DrawProperties = MeasurementContext;
+export type DrawProperties = StaticMeasurementContext;
 
 export interface DrawPrimitives {
   withStyles: (styles: PartialDrawStyles, callback: () => void) => void;
@@ -245,14 +255,20 @@ export interface DrawPrimitives {
     frame?: FrameCallback,
   ) => Animatable<EllipseProps>;
   rect: (props: RectProps, frame?: FrameCallback) => Animatable<RectProps>;
-  group: (
-    frame: FrameCallback,
-    props?: GroupOptions,
-  ) => Animatable<GroupOptions>;
-  layer: (
-    frame: FrameCallback,
-    props?: LayerOptions,
-  ) => Animatable<LayerOptions>;
+  group: {
+    (
+      frame: StaticFrameCallback,
+      props: GroupOptions & Dimensions2D,
+    ): Animatable<GroupOptions>;
+    (frame: FrameCallback, props?: GroupOptions): Animatable<GroupOptions>;
+  };
+  layer: {
+    (
+      frame: StaticFrameCallback,
+      props: LayerOptions & Dimensions2D,
+    ): Animatable<LayerOptions>;
+    (frame: FrameCallback, props?: LayerOptions): Animatable<LayerOptions>;
+  };
   text: (
     text: string,
     props?: TextProps,

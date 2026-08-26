@@ -2871,6 +2871,50 @@ describe("drawMethods transform props", () => {
       });
     });
 
+    it("group() exposes static measurements when width and height are explicitly provided", async () => {
+      const { createDrawContext } = await import("./index");
+      const drawContext = createDrawContext();
+      const frameValues = {
+        width: -1,
+        height: -1,
+        centerX: -1,
+        centerY: -1,
+      };
+
+      drawContext.executeDrawCallback(
+        (d) => {
+          d.group(
+            ({ measurements }) => {
+              frameValues.width = measurements.width;
+              frameValues.height = measurements.height;
+              frameValues.centerX = measurements.center.x;
+              frameValues.centerY = measurements.center.y;
+
+              d.rect({
+                x: 100,
+                y: 200,
+                width: 40,
+                height: 20,
+                fillStyle: "red",
+              });
+            },
+            { x: 10, y: 20, width: 200, height: 120 },
+          );
+        },
+        mockContext,
+        800,
+        600,
+        0,
+      );
+
+      expect(frameValues).toEqual({
+        width: 200,
+        height: 120,
+        centerX: 110,
+        centerY: 80,
+      });
+    });
+
     it("layer() uses explicit bounds when provided", async () => {
       const { createDrawContext } = await import("./index");
       const drawContext = createDrawContext();
@@ -2892,10 +2936,10 @@ describe("drawMethods transform props", () => {
                 height: 20,
                 fillStyle: "red",
               });
-              frameValues.width = frameContext.getMeasurements().width;
-              frameValues.height = frameContext.getMeasurements().height;
-              frameValues.centerX = frameContext.getMeasurements().center.x;
-              frameValues.centerY = frameContext.getMeasurements().center.y;
+              frameValues.width = frameContext.measurements.width;
+              frameValues.height = frameContext.measurements.height;
+              frameValues.centerX = frameContext.measurements.center.x;
+              frameValues.centerY = frameContext.measurements.center.y;
             },
             { x: 0, y: 0, width: 200, height: 100, rotate: 45 },
           );
@@ -2917,7 +2961,7 @@ describe("drawMethods transform props", () => {
       expect(mockContext.translate).toHaveBeenCalledWith(-100, -50);
     });
 
-    it("layer() callback exposes getMeasurements() values", async () => {
+    it("layer() callback exposes static measurements when explicitly sized", async () => {
       const { createDrawContext } = await import("./index");
       const drawContext = createDrawContext();
       const frameValues = {
@@ -2930,16 +2974,11 @@ describe("drawMethods transform props", () => {
       drawContext.executeDrawCallback(
         (d) => {
           d.layer(
-            ({ getMeasurements }) => {
-              const {
-                width: frameWidth,
-                height: frameHeight,
-                center: frameCenter,
-              } = getMeasurements();
-              frameValues.width = frameWidth;
-              frameValues.height = frameHeight;
-              frameValues.centerX = frameCenter.x;
-              frameValues.centerY = frameCenter.y;
+            ({ measurements }) => {
+              frameValues.width = measurements.width;
+              frameValues.height = measurements.height;
+              frameValues.centerX = measurements.center.x;
+              frameValues.centerY = measurements.center.y;
             },
             { x: 10, y: 20, width: 200, height: 120 },
           );
