@@ -5,6 +5,7 @@ export * from "./circle";
 export * from "./ellipse";
 export * from "./group";
 export * from "./image";
+export * from "./layer";
 export * from "./line";
 export * from "./polygon";
 export * from "./rect";

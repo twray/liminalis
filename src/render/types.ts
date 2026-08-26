@@ -1,4 +1,3 @@
-import type Animatable from "../core/Animatable";
 import type {
   Corners,
   Dimensions2D,
@@ -13,12 +12,18 @@ import type {
   WithOpacity,
   XOR,
 } from "../types";
+import type { IAnimatableLike } from "./Animatable";
 
 export interface Bounds {
   x: number;
   y: number;
   width: number;
   height: number;
+}
+
+export interface BoundsCollector {
+  includeBounds: (bounds: Bounds | null) => void;
+  getBounds: () => Bounds | null;
 }
 
 export interface ClosedPathDescriptor {
@@ -236,46 +241,46 @@ export interface DrawPrimitives {
   withStyles: (styles: PartialDrawStyles, callback: () => void) => void;
   background: (props: BackgroundProps) => void;
   centerOf: (props: Dimensions2D) => Point2D;
-  line: (props: LineProps) => Animatable<LineProps>;
+  line: (props: LineProps) => IAnimatableLike<LineProps>;
   polygon: (
     props: PolygonProps,
     frame?: FrameCallback,
-  ) => Animatable<PolygonProps>;
+  ) => IAnimatableLike<PolygonProps>;
   bezier: (
     props: BezierProps,
     frame?: FrameCallback,
-  ) => Animatable<BezierProps>;
-  arc: (props: ArcProps, frame?: FrameCallback) => Animatable<ArcProps>;
+  ) => IAnimatableLike<BezierProps>;
+  arc: (props: ArcProps, frame?: FrameCallback) => IAnimatableLike<ArcProps>;
   circle: (
     props: CircleProps,
     frame?: FrameCallback,
-  ) => Animatable<CircleProps>;
+  ) => IAnimatableLike<CircleProps>;
   ellipse: (
     props: EllipseProps,
     frame?: FrameCallback,
-  ) => Animatable<EllipseProps>;
-  rect: (props: RectProps, frame?: FrameCallback) => Animatable<RectProps>;
+  ) => IAnimatableLike<EllipseProps>;
+  rect: (props: RectProps, frame?: FrameCallback) => IAnimatableLike<RectProps>;
   group: {
     (
       frame: StaticFrameCallback,
       props: GroupOptions & Dimensions2D,
-    ): Animatable<GroupOptions>;
-    (frame: FrameCallback, props?: GroupOptions): Animatable<GroupOptions>;
+    ): IAnimatableLike<GroupOptions>;
+    (frame: FrameCallback, props?: GroupOptions): IAnimatableLike<GroupOptions>;
   };
   layer: {
     (
       frame: StaticFrameCallback,
       props: LayerOptions & Dimensions2D,
-    ): Animatable<LayerOptions>;
-    (frame: FrameCallback, props?: LayerOptions): Animatable<LayerOptions>;
+    ): IAnimatableLike<LayerOptions>;
+    (frame: FrameCallback, props?: LayerOptions): IAnimatableLike<LayerOptions>;
   };
   text: (
     text: string,
     props?: TextProps,
     frame?: FrameCallback,
-  ) => Animatable<TextProps>;
+  ) => IAnimatableLike<TextProps>;
   getTextBounds: (text: string, props?: TextProps) => Bounds;
-  image: (imageSrc: string, props?: ImageProps) => Animatable<ImageProps>;
+  image: (imageSrc: string, props?: ImageProps) => IAnimatableLike<ImageProps>;
 }
 
 export interface DrawPrimitivePropHelpers {

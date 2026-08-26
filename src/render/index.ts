@@ -1,21 +1,29 @@
-import AnimatableRegistry from "../core/AnimatableRegistry";
 import { imageAssetCache } from "../core/ImageAssetCache";
+import AnimatableRegistry from "./AnimatableRegistry";
 import AppliedStylesManager from "./AppliedStylesManager";
 import ClipManager from "./ClipManager";
 import DrawGroupBitmapCache from "./DrawGroupBitmapCache";
 import DrawGroupManager from "./DrawGroupManager";
-import { createClipScope, createGroupScope } from "./clipping";
+import FrameMeasurementPassManager from "./FrameMeasurementPassManager";
 
-import type Animatable from "../core/Animatable";
+import { createClipScope } from "./clipping";
+
 import type { PartialDrawStyles } from "../types";
-import type { ClipScope, RenderContextController } from "./types";
+import type { IAnimatableLike } from "./Animatable";
+import type {
+  BoundsCollector,
+  ClipScope,
+  RenderContextController,
+} from "./types";
 
 import {
-  centerOf,
   DEFAULT_BLEND_MODE,
   DEFAULT_STROKE_STYLE,
   DEFAULT_STROKE_WIDTH,
+  centerOf,
+  createNoopAnimatable,
 } from "./common";
+
 import {
   arc,
   arcPathDescriptor,
@@ -27,8 +35,12 @@ import {
   createTextMaskScope,
   ellipse,
   ellipsePathDescriptor,
+  getImageBounds,
+  getLineBounds,
   getTextBounds,
+  group,
   image,
+  layer,
   line,
   polygon,
   polygonPathDescriptor,
@@ -37,7 +49,6 @@ import {
   resolveTextProps,
   text,
 } from "./primitives";
-import { groupPathDescriptor } from "./primitives/group";
 import type {
   ArcProps,
   BackgroundProps,
@@ -47,8 +58,6 @@ import type {
   CoordinateContextProps,
   DrawContext,
   DrawMethods,
-  DrawPrimitives,
-  DynamicMeasurementContext,
   EllipseProps,
   FrameCallback,
   FrameContext,
@@ -56,97 +65,11 @@ import type {
   ImageProps,
   LayerOptions,
   LineProps,
-  MeasurementContext,
-  Measurements,
   PolygonProps,
   RectProps,
-  StaticFrameCallback,
-  StaticMeasurementContext,
   TextProps,
   TransformProps,
 } from "./types";
-
-interface BoundsCollector {
-  includeBounds: (bounds: Bounds | null) => void;
-  getBounds: () => Bounds | null;
-}
-
-const createBoundsCollector = (): BoundsCollector => {
-  let minX = Number.POSITIVE_INFINITY;
-  let minY = Number.POSITIVE_INFINITY;
-  let maxX = Number.NEGATIVE_INFINITY;
-  let maxY = Number.NEGATIVE_INFINITY;
-
-  return {
-    includeBounds: (bounds: Bounds | null): void => {
-      if (!bounds || bounds.width <= 0 || bounds.height <= 0) {
-        return;
-      }
-
-      minX = Math.min(minX, bounds.x);
-      minY = Math.min(minY, bounds.y);
-      maxX = Math.max(maxX, bounds.x + bounds.width);
-      maxY = Math.max(maxY, bounds.y + bounds.height);
-    },
-    getBounds: (): Bounds | null => {
-      if (
-        !Number.isFinite(minX) ||
-        !Number.isFinite(minY) ||
-        !Number.isFinite(maxX) ||
-        !Number.isFinite(maxY)
-      ) {
-        return null;
-      }
-
-      return {
-        x: minX,
-        y: minY,
-        width: maxX - minX,
-        height: maxY - minY,
-      };
-    },
-  };
-};
-
-const getLineBounds = (props: LineProps): Bounds => {
-  const minX = Math.min(props.start.x, props.end.x);
-  const minY = Math.min(props.start.y, props.end.y);
-  const maxX = Math.max(props.start.x, props.end.x);
-  const maxY = Math.max(props.start.y, props.end.y);
-
-  return {
-    x: minX,
-    y: minY,
-    width: Math.max(1, maxX - minX),
-    height: Math.max(1, maxY - minY),
-  };
-};
-
-const getImageBounds = (imageSrc: string, props: ImageProps): Bounds | null => {
-  const { x = 0, y = 0, width, height } = props;
-
-  if (typeof width === "number" && typeof height === "number") {
-    return {
-      x,
-      y,
-      width,
-      height,
-    };
-  }
-
-  const readyImageAsset = imageAssetCache.getReadyAsset(imageSrc);
-
-  if (!readyImageAsset) {
-    return null;
-  }
-
-  return {
-    x,
-    y,
-    width: readyImageAsset.width,
-    height: readyImageAsset.height,
-  };
-};
 
 export const createDrawContext = (): DrawContext => {
   const registry = new AnimatableRegistry();
@@ -171,98 +94,15 @@ export const createDrawContext = (): DrawContext => {
 
     const clipManager = new ClipManager(context);
     const drawGroupManager = new DrawGroupManager();
+    const frameMeasurementPassManager = new FrameMeasurementPassManager();
     const appliedStylesManager = new AppliedStylesManager({
       strokeStyle: DEFAULT_STROKE_STYLE,
       strokeWidth: DEFAULT_STROKE_WIDTH,
       blend: DEFAULT_BLEND_MODE,
     });
+
     const boundsCollectorStack: BoundsCollector[] = [];
     let suppressedPrimitiveBoundsDepth = 0;
-    let frameBoundsMeasurementDepth = 0;
-
-    const isMeasuringFrameBounds = (): boolean =>
-      frameBoundsMeasurementDepth > 0;
-
-    function createMeasurementContext(
-      getMeasurements: () => Measurements,
-      hasMeasurements: true,
-      warnOnUnavailableRead: boolean,
-    ): StaticMeasurementContext;
-    function createMeasurementContext(
-      getMeasurements: () => Measurements,
-      hasMeasurements: false,
-      warnOnUnavailableRead: boolean,
-    ): DynamicMeasurementContext;
-    function createMeasurementContext(
-      getMeasurements: () => Measurements,
-      hasMeasurements: boolean,
-      warnOnUnavailableRead: boolean,
-    ): MeasurementContext;
-    function createMeasurementContext(
-      getMeasurements: () => Measurements,
-      hasMeasurements: boolean,
-      warnOnUnavailableRead: boolean,
-    ): MeasurementContext {
-      let hasWarnedOnMeasureRead = false;
-
-      const context: DynamicMeasurementContext = {
-        hasMeasurements,
-        getMeasurements: () => {
-          if (
-            !hasMeasurements &&
-            warnOnUnavailableRead &&
-            !hasWarnedOnMeasureRead
-          ) {
-            hasWarnedOnMeasureRead = true;
-            console.warn(
-              "getMeasurements() was called while dimensions are unknown, as liminalis " +
-                "needs to know how big a frame is before measurements can be derived. " +
-                "Use the hasMeasurements guard to check if measurements are available.",
-            );
-          }
-
-          return getMeasurements();
-        },
-      };
-
-      if (hasMeasurements) {
-        const staticContext = context as StaticMeasurementContext;
-
-        Object.defineProperty(staticContext, "measurements", {
-          enumerable: true,
-          configurable: false,
-          get: () => getMeasurements(),
-        });
-
-        return staticContext;
-      }
-
-      return context;
-    }
-
-    const createNoopAnimatable = <TProps extends object>(
-      initialProps: TProps,
-    ): Animatable<TProps> => {
-      let currentProps = initialProps;
-
-      const noopAnimatable = {
-        get currentProps() {
-          return currentProps;
-        },
-        setCurrentFrameTime: () => undefined,
-        updateInitialProps: (props: TProps): void => {
-          currentProps = props;
-        },
-        captureCurrentProps: () => undefined,
-        clearSegments: () => undefined,
-        clearSnapshot: () => undefined,
-        animateTo: () => noopAnimatable,
-        withOptions: () => noopAnimatable,
-        getCurrentProps: () => currentProps,
-      };
-
-      return noopAnimatable as unknown as Animatable<TProps>;
-    };
 
     const getActiveBoundsCollector = (): BoundsCollector | undefined =>
       boundsCollectorStack[boundsCollectorStack.length - 1];
@@ -288,7 +128,7 @@ export const createDrawContext = (): DrawContext => {
       renderFn: (context: CanvasRenderingContext2D, props: T) => void,
       getExtraSignature?: (props: T) => string,
       getBounds?: (props: T) => Bounds | null,
-    ): Animatable<T> => {
+    ): IAnimatableLike<T> => {
       const mergedProps = appliedStylesManager.mergeStyles(props);
       const clipScopes = clipManager.captureScopes();
       const activeBoundsCollector = getActiveBoundsCollector();
@@ -298,7 +138,7 @@ export const createDrawContext = (): DrawContext => {
         activeBoundsCollector?.includeBounds(getBounds?.(mergedProps) ?? null);
       }
 
-      if (isMeasuringFrameBounds()) {
+      if (frameMeasurementPassManager.isMeasuringFrameBounds()) {
         return createNoopAnimatable(mergedProps);
       }
 
@@ -371,11 +211,11 @@ export const createDrawContext = (): DrawContext => {
       getFrameBounds: (props: TProps) => Bounds,
       createScope: (getProps: () => TProps) => ClipScope,
       normalizeProps: (props: TProps) => TProps,
-    ): ((props: TProps, frame?: FrameCallback) => Animatable<TProps>) => {
+    ): ((props: TProps, frame?: FrameCallback) => IAnimatableLike<TProps>) => {
       return (
         props: TProps,
         frameCallback?: FrameCallback,
-      ): Animatable<TProps> => {
+      ): IAnimatableLike<TProps> => {
         if (!frameCallback) {
           return queueAnimatable(
             primitiveType,
@@ -391,27 +231,28 @@ export const createDrawContext = (): DrawContext => {
         const lifecycleProps = normalizeProps(mergedProps);
         const frameBounds = getFrameBounds(lifecycleProps);
 
-        const frameContext = createMeasurementContext(
-          () => ({
-            width: frameBounds.width,
-            height: frameBounds.height,
-            center: lifecycleProps.useLocalCoordinateContext
-              ? { x: frameBounds.width / 2, y: frameBounds.height / 2 }
-              : {
-                  x: frameBounds.x + frameBounds.width / 2,
-                  y: frameBounds.y + frameBounds.height / 2,
-                },
-          }),
-          true,
-          false,
-        ) as FrameContext;
+        const frameContext =
+          frameMeasurementPassManager.createMeasurementContext(
+            () => ({
+              width: frameBounds.width,
+              height: frameBounds.height,
+              center: lifecycleProps.useLocalCoordinateContext
+                ? { x: frameBounds.width / 2, y: frameBounds.height / 2 }
+                : {
+                    x: frameBounds.x + frameBounds.width / 2,
+                    y: frameBounds.y + frameBounds.height / 2,
+                  },
+            }),
+            true,
+            false,
+          ) as FrameContext;
 
         let currentClipProps = lifecycleProps;
         const activeBoundsCollector = getActiveBoundsCollector();
 
         activeBoundsCollector?.includeBounds(getFrameBounds(currentClipProps));
 
-        if (isMeasuringFrameBounds()) {
+        if (frameMeasurementPassManager.isMeasuringFrameBounds()) {
           if (frameCallback) {
             suppressedPrimitiveBoundsDepth++;
 
@@ -463,7 +304,7 @@ export const createDrawContext = (): DrawContext => {
       };
     };
 
-    const drawProperties = createMeasurementContext(
+    const drawProperties = frameMeasurementPassManager.createMeasurementContext(
       () => ({
         width,
         height,
@@ -472,6 +313,23 @@ export const createDrawContext = (): DrawContext => {
       true,
       false,
     );
+
+    const containerPrimitiveCommonParams = {
+      registry,
+      clipManager,
+      drawGroupManager,
+      getClipScopesSignature,
+      getActiveBoundsCollector,
+      createMeasurementContext:
+        frameMeasurementPassManager.createMeasurementContext.bind(
+          frameMeasurementPassManager,
+        ),
+      boundsCollectorStack,
+      withFrameBoundsMeasurementPass:
+        frameMeasurementPassManager.withFrameBoundsMeasurementPass.bind(
+          frameMeasurementPassManager,
+        ),
+    };
 
     const drawPrimitives = {
       withStyles: appliedStylesManager.withStyles.bind(appliedStylesManager),
@@ -527,388 +385,8 @@ export const createDrawContext = (): DrawContext => {
         (getProps) => createClipScope(getProps, rectPathDescriptor),
         (p: RectProps) => p,
       ),
-      group: ((
-        frameCallback: FrameCallback | StaticFrameCallback,
-        options: GroupOptions = {},
-      ) => {
-        const mergedProps = { ...options };
-        const contentBoundsCollector = createBoundsCollector();
-        let derivedGroupBounds: Bounds = {
-          x: 0,
-          y: 0,
-          width: 0,
-          height: 0,
-        };
-        let currentGroupProps: GroupOptions = mergedProps;
-        const activeBoundsCollector = getActiveBoundsCollector();
-
-        const resolveGroupBoundsState = () => {
-          const collectedBounds = contentBoundsCollector.getBounds();
-
-          if (collectedBounds) {
-            derivedGroupBounds = collectedBounds;
-          }
-
-          const frameBounds = {
-            x: currentGroupProps.x ?? derivedGroupBounds.x,
-            y: currentGroupProps.y ?? derivedGroupBounds.y,
-            width: currentGroupProps.width ?? derivedGroupBounds.width,
-            height: currentGroupProps.height ?? derivedGroupBounds.height,
-          };
-
-          return {
-            derivedBounds: { ...derivedGroupBounds },
-            frameBounds,
-            frameCenter: {
-              x: frameBounds.x + frameBounds.width / 2,
-              y: frameBounds.y + frameBounds.height / 2,
-            },
-          };
-        };
-
-        const resolveGroupBounds = (): Bounds => {
-          const { frameBounds } = resolveGroupBoundsState();
-
-          return frameBounds;
-        };
-
-        const toScopeProps = () => {
-          const { frameBounds, derivedBounds } = resolveGroupBoundsState();
-
-          return {
-            ...currentGroupProps,
-            ...frameBounds,
-            groupOffsetX: frameBounds.x - derivedBounds.x,
-            groupOffsetY: frameBounds.y - derivedBounds.y,
-            clipContent: false,
-          };
-        };
-
-        const createGroupFrameContext = (
-          hasMeasurements: boolean,
-        ): FrameContext =>
-          createMeasurementContext(
-            () => {
-              const { frameBounds, frameCenter } = resolveGroupBoundsState();
-
-              return {
-                width: frameBounds.width,
-                height: frameBounds.height,
-                center: frameCenter,
-              };
-            },
-            hasMeasurements,
-            !hasMeasurements,
-          ) as FrameContext;
-
-        if (
-          mergedProps.width === undefined ||
-          mergedProps.height === undefined
-        ) {
-          frameBoundsMeasurementDepth++;
-          boundsCollectorStack.push(contentBoundsCollector);
-
-          try {
-            (frameCallback as FrameCallback)(createGroupFrameContext(false));
-          } finally {
-            boundsCollectorStack.pop();
-            frameBoundsMeasurementDepth--;
-          }
-        }
-
-        const renderGroupShowBounds = (): void => {
-          if (currentGroupProps.showBounds !== true) {
-            return;
-          }
-
-          const clipScopes = clipManager.captureScopes();
-          const scopeSignature = getClipScopesSignature(clipScopes);
-
-          drawGroupManager.pushPrimitiveOperation({
-            signature: DrawGroupManager.createPrimitiveSignature(
-              "group:show-bounds",
-              {
-                showBounds: true,
-              },
-              clipScopes.length,
-              `scope-signature:${scopeSignature}`,
-            ),
-            render: (targetContext) => {
-              const { derivedBounds, frameBounds } = resolveGroupBoundsState();
-
-              const targetClipManager = new ClipManager(targetContext);
-              targetClipManager.renderWithScopes(clipScopes, () => {
-                targetContext.save();
-                targetContext.beginPath();
-                targetContext.rect(
-                  derivedBounds.x,
-                  derivedBounds.y,
-                  frameBounds.width,
-                  frameBounds.height,
-                );
-                targetContext.fillStyle = "rgba(255, 0, 0, 0.12)";
-                targetContext.strokeStyle = "rgba(255, 0, 0, 0.7)";
-                targetContext.lineWidth = 1;
-                targetContext.fill();
-                targetContext.stroke();
-                targetContext.restore();
-              });
-            },
-          });
-        };
-
-        const groupAnimatable = registry.queue(mergedProps, (animatedProps) => {
-          currentGroupProps = animatedProps;
-          activeBoundsCollector?.includeBounds(resolveGroupBounds());
-        });
-
-        const seedGroupAnimatablePositionFromDerivedBounds = (): void => {
-          if (mergedProps.x !== undefined && mergedProps.y !== undefined) {
-            return;
-          }
-
-          const inferredBounds = resolveGroupBounds();
-          const seededInitialProps: GroupOptions = {
-            ...currentGroupProps,
-          };
-
-          if (mergedProps.x === undefined) {
-            seededInitialProps.x = inferredBounds.x;
-          }
-
-          if (mergedProps.y === undefined) {
-            seededInitialProps.y = inferredBounds.y;
-          }
-
-          currentGroupProps = seededInitialProps;
-          groupAnimatable.updateInitialProps(seededInitialProps);
-        };
-
-        const clipScope = createGroupScope(toScopeProps, groupPathDescriptor);
-
-        clipManager.withScope(clipScope, () => {
-          const currentScopes = clipManager.captureScopes();
-
-          drawGroupManager.withNestedGroup(
-            () => {
-              const scopeSignature = getClipScopesSignature(currentScopes);
-
-              return DrawGroupManager.createPrimitiveSignature(
-                "group:frame",
-                toScopeProps(),
-                currentScopes.length,
-                `scope-signature:${scopeSignature}`,
-              );
-            },
-            () => {
-              const frameContext = createGroupFrameContext(true);
-
-              boundsCollectorStack.push(contentBoundsCollector);
-
-              try {
-                (frameCallback as FrameCallback)(frameContext);
-              } finally {
-                boundsCollectorStack.pop();
-              }
-
-              seedGroupAnimatablePositionFromDerivedBounds();
-
-              renderGroupShowBounds();
-
-              activeBoundsCollector?.includeBounds(resolveGroupBounds());
-            },
-          );
-        });
-
-        return groupAnimatable;
-      }) as DrawPrimitives["group"],
-      layer: ((
-        frameCallback: FrameCallback | StaticFrameCallback,
-        options: LayerOptions = {},
-      ) => {
-        const mergedProps = { ...options };
-        const contentBoundsCollector = createBoundsCollector();
-        let derivedLayerBounds: Bounds = {
-          x: 0,
-          y: 0,
-          width: 0,
-          height: 0,
-        };
-        let currentLayerProps: LayerOptions = mergedProps;
-        const activeBoundsCollector = getActiveBoundsCollector();
-
-        const resolveLayerBoundsState = () => {
-          const collectedBounds = contentBoundsCollector.getBounds();
-
-          if (collectedBounds) {
-            derivedLayerBounds = collectedBounds;
-          }
-
-          const localFrameBounds = {
-            x: Math.min(derivedLayerBounds.x, 0),
-            y: Math.min(derivedLayerBounds.y, 0),
-            width:
-              Math.max(derivedLayerBounds.x + derivedLayerBounds.width, 0) -
-              Math.min(derivedLayerBounds.x, 0),
-            height:
-              Math.max(derivedLayerBounds.y + derivedLayerBounds.height, 0) -
-              Math.min(derivedLayerBounds.y, 0),
-          };
-
-          const frameBounds = {
-            x: currentLayerProps.x ?? 0,
-            y: currentLayerProps.y ?? 0,
-            width: currentLayerProps.width ?? localFrameBounds.width,
-            height: currentLayerProps.height ?? localFrameBounds.height,
-          };
-
-          return {
-            derivedBounds: { ...derivedLayerBounds },
-            localFrameBounds,
-            frameBounds,
-            frameCenter: {
-              x: frameBounds.width / 2,
-              y: frameBounds.height / 2,
-            },
-          };
-        };
-
-        const resolveLayerBounds = (): Bounds => {
-          const { frameBounds } = resolveLayerBoundsState();
-
-          return frameBounds;
-        };
-
-        const toScopeProps = () => {
-          const { frameBounds } = resolveLayerBoundsState();
-
-          return {
-            ...currentLayerProps,
-            ...frameBounds,
-            useLocalCoordinateContext: true,
-            clipContent: false,
-          };
-        };
-
-        const createLayerFrameContext = (
-          hasMeasurements: boolean,
-        ): FrameContext =>
-          createMeasurementContext(
-            () => {
-              const { frameBounds, frameCenter } = resolveLayerBoundsState();
-
-              return {
-                width: frameBounds.width,
-                height: frameBounds.height,
-                center: frameCenter,
-              };
-            },
-            hasMeasurements,
-            !hasMeasurements,
-          ) as FrameContext;
-
-        if (
-          mergedProps.width === undefined ||
-          mergedProps.height === undefined
-        ) {
-          frameBoundsMeasurementDepth++;
-          boundsCollectorStack.push(contentBoundsCollector);
-
-          try {
-            (frameCallback as FrameCallback)(createLayerFrameContext(false));
-          } finally {
-            boundsCollectorStack.pop();
-            frameBoundsMeasurementDepth--;
-          }
-        }
-
-        const renderLayerShowBounds = (): void => {
-          if (currentLayerProps.showBounds !== true) {
-            return;
-          }
-
-          const clipScopes = clipManager.captureScopes();
-          const scopeSignature = getClipScopesSignature(clipScopes);
-
-          drawGroupManager.pushPrimitiveOperation({
-            signature: DrawGroupManager.createPrimitiveSignature(
-              "layer:show-bounds",
-              {
-                showBounds: true,
-              },
-              clipScopes.length,
-              `scope-signature:${scopeSignature}`,
-            ),
-            render: (targetContext) => {
-              const { localFrameBounds, frameBounds } =
-                resolveLayerBoundsState();
-              const hasExplicitWidth = currentLayerProps.width !== undefined;
-              const hasExplicitHeight = currentLayerProps.height !== undefined;
-              const debugX = hasExplicitWidth ? 0 : localFrameBounds.x;
-              const debugY = hasExplicitHeight ? 0 : localFrameBounds.y;
-
-              const targetClipManager = new ClipManager(targetContext);
-              targetClipManager.renderWithScopes(clipScopes, () => {
-                targetContext.save();
-                targetContext.beginPath();
-                targetContext.rect(
-                  debugX,
-                  debugY,
-                  frameBounds.width,
-                  frameBounds.height,
-                );
-                targetContext.fillStyle = "rgba(255, 0, 0, 0.12)";
-                targetContext.strokeStyle = "rgba(255, 0, 0, 0.7)";
-                targetContext.lineWidth = 1;
-                targetContext.fill();
-                targetContext.stroke();
-                targetContext.restore();
-              });
-            },
-          });
-        };
-
-        const layerAnimatable = registry.queue(mergedProps, (animatedProps) => {
-          currentLayerProps = animatedProps;
-          activeBoundsCollector?.includeBounds(resolveLayerBounds());
-        });
-
-        const clipScope = createGroupScope(toScopeProps, groupPathDescriptor);
-
-        clipManager.withScope(clipScope, () => {
-          const currentScopes = clipManager.captureScopes();
-
-          drawGroupManager.withNestedGroup(
-            () => {
-              const scopeSignature = getClipScopesSignature(currentScopes);
-
-              return DrawGroupManager.createPrimitiveSignature(
-                "layer:frame",
-                toScopeProps(),
-                currentScopes.length,
-                `scope-signature:${scopeSignature}`,
-              );
-            },
-            () => {
-              const frameContext = createLayerFrameContext(true);
-
-              boundsCollectorStack.push(contentBoundsCollector);
-
-              try {
-                (frameCallback as FrameCallback)(frameContext);
-              } finally {
-                boundsCollectorStack.pop();
-              }
-
-              renderLayerShowBounds();
-
-              activeBoundsCollector?.includeBounds(resolveLayerBounds());
-            },
-          );
-        });
-
-        return layerAnimatable;
-      }) as DrawPrimitives["layer"],
+      group: group(containerPrimitiveCommonParams),
+      layer: layer(containerPrimitiveCommonParams),
       text: (
         textValue: string,
         props: TextProps = {},

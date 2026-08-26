@@ -26,7 +26,24 @@ interface NumericLeafTarget {
   value: number;
 }
 
-class Animatable<TProps extends object> {
+export interface IAnimatableLike<TProps extends object> {
+  readonly currentProps: Readonly<TProps>;
+  setCurrentFrameTime(timeInMs: number): void;
+  updateInitialProps(props: TProps): void;
+  captureCurrentProps(timeInMs: number): void;
+  clearSegments(): void;
+  clearSnapshot(): void;
+  animateTo(
+    targetProps: PartialNumericProps<TProps>,
+    options?: AnimationSegmentOptions,
+  ): IAnimatableLike<TProps>;
+  withOptions(
+    options: Partial<AnimationSegmentOptions>,
+  ): IAnimatableLike<TProps>;
+  getCurrentProps(timeInMs: number): TProps;
+}
+
+class Animatable<TProps extends object> implements IAnimatableLike<TProps> {
   static #DEFAULT_EASING = (n: number): number => n;
   static #DEFAULT_DURATION = 500;
   static #BUILT_IN_EASING_FUNCTIONS: BuiltInEasingFunctions = easingUtils;

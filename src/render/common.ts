@@ -1,7 +1,9 @@
 import type { Dimensions2D, Point2D } from "../types";
 import { degreesToRadians } from "../util";
+import type { IAnimatableLike } from "./Animatable";
 import type {
   Bounds,
+  BoundsCollector,
   ContextGlobalProps,
   TransformOrigin,
   TransformProps,
@@ -83,9 +85,71 @@ export const centerOf = (dimensions: Dimensions2D): Point2D => {
 };
 
 export const hasBounds = (
-  props: Record<string, any>,
-): props is Record<string, any> & Bounds =>
-  props.x !== undefined &&
-  props.y !== undefined &&
-  props.width !== undefined &&
-  props.height !== undefined;
+  props: Record<string, number>,
+): props is Record<string, number> & Bounds =>
+  typeof props.x === "number" &&
+  typeof props.y === "number" &&
+  typeof props.width === "number" &&
+  typeof props.height === "number";
+
+export const createBoundsCollector = (): BoundsCollector => {
+  let minX = Number.POSITIVE_INFINITY;
+  let minY = Number.POSITIVE_INFINITY;
+  let maxX = Number.NEGATIVE_INFINITY;
+  let maxY = Number.NEGATIVE_INFINITY;
+
+  return {
+    includeBounds: (bounds: Bounds | null): void => {
+      if (!bounds || bounds.width <= 0 || bounds.height <= 0) {
+        return;
+      }
+
+      minX = Math.min(minX, bounds.x);
+      minY = Math.min(minY, bounds.y);
+      maxX = Math.max(maxX, bounds.x + bounds.width);
+      maxY = Math.max(maxY, bounds.y + bounds.height);
+    },
+    getBounds: (): Bounds | null => {
+      if (
+        !Number.isFinite(minX) ||
+        !Number.isFinite(minY) ||
+        !Number.isFinite(maxX) ||
+        !Number.isFinite(maxY)
+      ) {
+        return null;
+      }
+
+      return {
+        x: minX,
+        y: minY,
+        width: maxX - minX,
+        height: maxY - minY,
+      };
+    },
+  };
+};
+
+export const createNoopAnimatable = <TProps extends object>(
+  initialProps: TProps,
+): IAnimatableLike<TProps> => {
+  let currentProps = initialProps;
+
+  const noopAnimatable: IAnimatableLike<TProps> = {
+    get currentProps() {
+      return currentProps;
+    },
+    setCurrentFrameTime: (_timeInMs: number) => undefined,
+    updateInitialProps: (props: TProps): void => {
+      currentProps = props;
+    },
+    captureCurrentProps: (_timeInMs: number) => undefined,
+    clearSegments: () => undefined,
+    clearSnapshot: () => undefined,
+    animateTo: (_targetProps, _options): IAnimatableLike<TProps> =>
+      noopAnimatable,
+    withOptions: (_options): IAnimatableLike<TProps> => noopAnimatable,
+    getCurrentProps: (_timeInMs: number) => currentProps,
+  };
+
+  return noopAnimatable;
+};

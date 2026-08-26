@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type Animatable from "../core/Animatable";
+import type { IAnimatableLike } from "./Animatable";
 import type { BezierProps, Bounds, DrawMethods, RectProps } from "./types";
 
 // We test the internal functions by creating a mock canvas context
@@ -1611,7 +1611,7 @@ describe("drawMethods transform props", () => {
           },
         });
 
-        const textClipRef: { current: Animatable<any> | null } = {
+        const textClipRef: { current: IAnimatableLike<any> | null } = {
           current: null,
         };
 
@@ -2203,7 +2203,7 @@ describe("drawMethods transform props", () => {
       const { createDrawContext } = await import("./index");
       const drawContext = createDrawContext();
 
-      const clipMaskRef: { current: Animatable<RectProps> | null } = {
+      const clipMaskRef: { current: IAnimatableLike<RectProps> | null } = {
         current: null,
       };
 
