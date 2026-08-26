@@ -1,4 +1,9 @@
-import type { Dimensions2D, Point2D } from "../types";
+import type {
+  Dimensions2D,
+  PartialDrawStyles,
+  PartialIsometricStyles,
+  Point2D,
+} from "../types";
 import { degreesToRadians } from "../util";
 import type { IAnimatableLike } from "./Animatable";
 import type {
@@ -153,3 +158,32 @@ export const createNoopAnimatable = <TProps extends object>(
 
   return noopAnimatable;
 };
+
+export const toIsometricStyles = (
+  styles: PartialDrawStyles,
+): PartialIsometricStyles => {
+  const inheritedStyles: PartialIsometricStyles = {};
+
+  if (styles.fillStyle !== undefined) {
+    inheritedStyles.fillStyle = styles.fillStyle;
+  }
+
+  if (styles.strokeStyle !== undefined) {
+    inheritedStyles.strokeStyle = styles.strokeStyle;
+  }
+
+  if (styles.strokeWidth !== undefined) {
+    inheritedStyles.strokeWidth = styles.strokeWidth;
+  }
+
+  return inheritedStyles;
+};
+
+export const withOverlayPrimitiveWarning = <T extends (...args: any[]) => any>(
+  primitiveFn: T,
+  warn: () => void,
+): T =>
+  ((...args: Parameters<T>): ReturnType<T> => {
+    warn();
+    return primitiveFn(...args);
+  }) as T;

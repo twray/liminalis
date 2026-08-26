@@ -3,8 +3,8 @@ import { toNormalizedFloat } from "../../util";
 
 createScene
   .setup(({ atStart, onNoteDown, onNoteUp, onRender }) => {
-    const noteVisual = visual(({ draw, timeAttacked, timeReleased }) => {
-      draw(({ center, circle, withStyles }) => {
+    const noteVisual = visual(
+      ({ center, circle, withStyles, timeAttacked, timeReleased }) => {
         const { x: cx, y: cy } = center;
 
         // Circle animates in response to attack and release events
@@ -23,8 +23,8 @@ createScene
               { at: timeReleased, duration: 1000, easing: "easeOutCubic" },
             );
         });
-      });
-    });
+      },
+    );
 
     const persistentNoteVisual = noteVisual();
 
@@ -32,14 +32,14 @@ createScene
       scene.addPermanently(persistentNoteVisual);
     });
 
-    onRender(({ draw, center }) => {
-      const { x: cx, y: cy } = center;
+    onRender(
+      ({ center, circle, ellipse, arc, polygon, bezier, text, withStyles }) => {
+        const { x: cx, y: cy } = center;
 
-      const startYPos = cy - 200;
-      const endYPos = cy - 100;
+        const startYPos = cy - 200;
+        const endYPos = cy - 100;
 
-      // Static circles with staggered animations and extra primitives
-      draw(({ circle, ellipse, arc, polygon, bezier, text, withStyles }) => {
+        // Static circles with staggered animations and extra primitives
         withStyles({ strokeStyle: "#666666" }, () => {
           for (let i = 0; i < 3; i++) {
             circle({
@@ -113,8 +113,8 @@ createScene
             blend: "source-over",
           });
         });
-      });
-    });
+      },
+    );
 
     onNoteDown(({ scene }) => {
       if (scene.has(persistentNoteVisual)) {

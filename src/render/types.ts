@@ -1,3 +1,4 @@
+import type { RenderIsometricMethods } from "../core/renderIsometricMethods";
 import type {
   Corners,
   Dimensions2D,
@@ -235,10 +236,19 @@ export interface GroupOptions
 export interface LayerOptions
   extends Positioned2D, Partial<Dimensions2D>, TransformProps, ContainerProps {}
 
+export interface IsometricOptions
+  extends Partial<Positioned2D>, Partial<Dimensions2D> {
+  tileWidth?: number;
+}
+
 export type DrawProperties = StaticMeasurementContext;
 
 export interface DrawPrimitives {
   withStyles: (styles: PartialDrawStyles, callback: () => void) => void;
+  isometric: (
+    callback: (methods: RenderIsometricMethods) => void,
+    options?: IsometricOptions,
+  ) => void;
   background: (props: BackgroundProps) => void;
   centerOf: (props: Dimensions2D) => Point2D;
   line: (props: LineProps) => IAnimatableLike<LineProps>;

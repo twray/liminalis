@@ -5,12 +5,12 @@ import { visual } from "../../../core";
 // The new .to() animation API currently only supports 2D shape primitives
 export const bouncyCuboid = visual<{
   positionIndex: number;
-}>(({ props, renderIsometric, attackValue, releaseFactor }) => {
+}>(({ props, isometric, attackValue, releaseFactor }) => {
   const { positionIndex } = props;
 
   const adjustedAttackValue = easeInBounce(attackValue);
 
-  renderIsometric(({ cuboid }) => {
+  isometric(({ cuboid }) => {
     cuboid({
       isoX: -3 + positionIndex,
       isoY: 0,

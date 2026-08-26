@@ -5,6 +5,8 @@ import ClipManager from "./ClipManager";
 import DrawGroupBitmapCache from "./DrawGroupBitmapCache";
 import DrawGroupManager from "./DrawGroupManager";
 import FrameMeasurementPassManager from "./FrameMeasurementPassManager";
+import OverlayPrimitiveWarningManager from "./OverlayPrimitiveWarningManager";
+import { createIsometricPrimitive } from "./isometric";
 
 import { createClipScope } from "./clipping";
 
@@ -22,7 +24,14 @@ import {
   DEFAULT_STROKE_WIDTH,
   centerOf,
   createNoopAnimatable,
+  withOverlayPrimitiveWarning,
 } from "./common";
+
+import {
+  OVERLAY_WARNING_NAMED_PRIMITIVES,
+  PRIMITIVE_NAME,
+  type PrimitiveName,
+} from "./primitiveNames";
 
 import {
   arc,
@@ -49,6 +58,7 @@ import {
   resolveTextProps,
   text,
 } from "./primitives";
+
 import type {
   ArcProps,
   BackgroundProps,
@@ -74,6 +84,7 @@ import type {
 export const createDrawContext = (): DrawContext => {
   const registry = new AnimatableRegistry();
   const drawGroupBitmapCache = new DrawGroupBitmapCache();
+  const overlayPrimitiveWarningManager = new OverlayPrimitiveWarningManager();
 
   const executeDrawCallback = (
     callback: (methods: DrawMethods) => void,
@@ -104,6 +115,8 @@ export const createDrawContext = (): DrawContext => {
     const boundsCollectorStack: BoundsCollector[] = [];
     let suppressedPrimitiveBoundsDepth = 0;
 
+    overlayPrimitiveWarningManager.beginFrame();
+
     const getActiveBoundsCollector = (): BoundsCollector | undefined =>
       boundsCollectorStack[boundsCollectorStack.length - 1];
 
@@ -123,12 +136,16 @@ export const createDrawContext = (): DrawContext => {
     //
     // The queued closure also snapshots active clip scopes so nested clipping remains stable.
     const queueAnimatable = <T extends PartialDrawStyles>(
-      primitiveType: string,
+      primitiveType: PrimitiveName,
       props: T,
       renderFn: (context: CanvasRenderingContext2D, props: T) => void,
       getExtraSignature?: (props: T) => string,
       getBounds?: (props: T) => Bounds | null,
     ): IAnimatableLike<T> => {
+      overlayPrimitiveWarningManager.warnIfOverlayPrimitiveInsideIsometric(
+        primitiveType,
+      );
+
       const mergedProps = appliedStylesManager.mergeStyles(props);
       const clipScopes = clipManager.captureScopes();
       const activeBoundsCollector = getActiveBoundsCollector();
@@ -206,7 +223,7 @@ export const createDrawContext = (): DrawContext => {
         TransformProps &
         CoordinateContextProps,
     >(
-      primitiveType: string,
+      primitiveType: PrimitiveName,
       renderFn: (context: CanvasRenderingContext2D, props: TProps) => void,
       getFrameBounds: (props: TProps) => Bounds,
       createScope: (getProps: () => TProps) => ClipScope,
@@ -216,6 +233,10 @@ export const createDrawContext = (): DrawContext => {
         props: TProps,
         frameCallback?: FrameCallback,
       ): IAnimatableLike<TProps> => {
+        overlayPrimitiveWarningManager.warnIfOverlayPrimitiveInsideIsometric(
+          primitiveType,
+        );
+
         if (!frameCallback) {
           return queueAnimatable(
             primitiveType,
@@ -333,53 +354,64 @@ export const createDrawContext = (): DrawContext => {
 
     const drawPrimitives = {
       withStyles: appliedStylesManager.withStyles.bind(appliedStylesManager),
+      isometric: createIsometricPrimitive({
+        width,
+        height,
+        timeInMs,
+        registry,
+        clipManager,
+        drawGroupManager,
+        appliedStylesManager,
+        overlayPrimitiveWarningManager,
+        getClipScopesSignature,
+      }),
       background: (props: BackgroundProps) => background(context, props),
       centerOf,
       line: (props: LineProps) =>
         queueAnimatable(
-          "line",
+          PRIMITIVE_NAME.LINE,
           props,
           (currentContext, p) => line(currentContext, p),
           undefined,
           getLineBounds,
         ),
       polygon: queueAnimatableWithFrame(
-        "polygon",
+        PRIMITIVE_NAME.POLYGON,
         (currentContext, p: PolygonProps) => polygon(currentContext, p),
         (p: PolygonProps) => polygonPathDescriptor(p).bounds,
         (getProps) => createClipScope(getProps, polygonPathDescriptor),
         (p: PolygonProps) => p,
       ),
       bezier: queueAnimatableWithFrame(
-        "bezier",
+        PRIMITIVE_NAME.BEZIER,
         (currentContext, p: BezierProps) => bezier(currentContext, p),
         (p: BezierProps) => bezierPathDescriptor(p).bounds,
         (getProps) => createClipScope(getProps, bezierPathDescriptor),
         (p: BezierProps) => p,
       ),
       circle: queueAnimatableWithFrame(
-        "circle",
+        PRIMITIVE_NAME.CIRCLE,
         (currentContext, p: CircleProps) => circle(currentContext, p),
         (p: CircleProps) => circlePathDescriptor(p).bounds,
         (getProps) => createClipScope(getProps, circlePathDescriptor),
         (p: CircleProps) => p,
       ),
       ellipse: queueAnimatableWithFrame(
-        "ellipse",
+        PRIMITIVE_NAME.ELLIPSE,
         (currentContext, p: EllipseProps) => ellipse(currentContext, p),
         (p: EllipseProps) => ellipsePathDescriptor(p).bounds,
         (getProps) => createClipScope(getProps, ellipsePathDescriptor),
         (p: EllipseProps) => p,
       ),
       arc: queueAnimatableWithFrame(
-        "arc",
+        PRIMITIVE_NAME.ARC,
         (currentContext, p: ArcProps) => arc(currentContext, p),
         (p: ArcProps) => arcPathDescriptor(p).bounds,
         (getProps) => createClipScope(getProps, arcPathDescriptor),
         (p: ArcProps) => p,
       ),
       rect: queueAnimatableWithFrame(
-        "rect",
+        PRIMITIVE_NAME.RECT,
         (currentContext, p: RectProps) => rect(currentContext, p),
         (p: RectProps) => rectPathDescriptor(p).bounds,
         (getProps) => createClipScope(getProps, rectPathDescriptor),
@@ -393,7 +425,7 @@ export const createDrawContext = (): DrawContext => {
         frameCallback?: FrameCallback,
       ) =>
         queueAnimatableWithFrame(
-          "text",
+          PRIMITIVE_NAME.TEXT,
           (currentContext, p: TextProps) => text(currentContext, textValue, p),
           (p: TextProps) => getTextBounds(context, textValue, p),
           (getProps) =>
@@ -409,7 +441,7 @@ export const createDrawContext = (): DrawContext => {
       },
       image: (imageSrc: string, props: ImageProps = {}) =>
         queueAnimatable(
-          "image",
+          PRIMITIVE_NAME.IMAGE,
           props,
           (currentContext, p) => {
             const readyImageAsset = imageAssetCache.getReadyAsset(imageSrc);
@@ -426,6 +458,30 @@ export const createDrawContext = (): DrawContext => {
           (p) => getImageBounds(imageSrc, p),
         ),
     };
+
+    const wrapOverlayWarningForNamedPrimitives = <
+      T extends Record<string, (...args: any[]) => any>,
+      K extends keyof T,
+    >(
+      primitives: T,
+      keys: readonly K[],
+    ): void => {
+      keys.forEach((key) => {
+        const primitiveName = key as PrimitiveName;
+        const primitiveFn = primitives[key];
+
+        primitives[key] = withOverlayPrimitiveWarning(primitiveFn, () =>
+          overlayPrimitiveWarningManager.warnIfOverlayPrimitiveInsideIsometric(
+            primitiveName,
+          ),
+        ) as T[K];
+      });
+    };
+
+    wrapOverlayWarningForNamedPrimitives(
+      drawPrimitives,
+      OVERLAY_WARNING_NAMED_PRIMITIVES,
+    );
 
     const drawPrimitivePropHelpers = {
       defineBackgroundProps: (props: BackgroundProps) => props,
@@ -462,4 +518,5 @@ export const createDrawContext = (): DrawContext => {
   return { executeDrawCallback };
 };
 
+export * from "./primitiveNames";
 export type * from "./types";

@@ -10,7 +10,6 @@ const DEFAULT_STROKE_STYLE = "transparent";
 const DEFAULT_STROKE_WIDTH = 1;
 
 export interface RenderIsometricMethods {
-  withStyles: (styles: PartialIsometricStyles, callback: () => void) => void;
   tile: (props: IsometricTile) => void;
   cuboid: (props: IsometricCuboid) => void;
 }
@@ -25,38 +24,24 @@ const cuboid = (isometricView: IsometricView, props: IsometricCuboid) => {
 
 export const getRenderIsometricMethods = (
   isometricView: IsometricView,
-  _timeInMs: number
+  _timeInMs: number,
+  inheritedStyles: PartialIsometricStyles | (() => PartialIsometricStyles) = {},
 ) => {
-  let appliedStyles: PartialIsometricStyles = {
-    fillStyle: DEFAULT_FILL_STYLE,
-    strokeStyle: DEFAULT_STROKE_STYLE,
-    strokeWidth: DEFAULT_STROKE_WIDTH,
-  };
+  const resolveInheritedStyles = (): PartialIsometricStyles =>
+    typeof inheritedStyles === "function" ? inheritedStyles() : inheritedStyles;
 
   const mergeStyles = <T extends PartialIsometricStyles>(
-    props: T
+    props: T,
   ): T & PartialIsometricStyles =>
     ({
-      ...appliedStyles,
+      fillStyle: DEFAULT_FILL_STYLE,
+      strokeStyle: DEFAULT_STROKE_STYLE,
+      strokeWidth: DEFAULT_STROKE_WIDTH,
+      ...resolveInheritedStyles(),
       ...props,
-    } as T & PartialIsometricStyles);
-
-  const withStyles = (
-    styles: PartialIsometricStyles,
-    callback: () => void
-  ): void => {
-    const previousStyles = appliedStyles;
-    appliedStyles = { ...appliedStyles, ...styles };
-
-    try {
-      return callback();
-    } finally {
-      appliedStyles = previousStyles;
-    }
-  };
+    }) as T & PartialIsometricStyles;
 
   return {
-    withStyles,
     tile: (props: IsometricTile) => tile(isometricView, mergeStyles(props)),
     cuboid: (props: IsometricCuboid) =>
       cuboid(isometricView, mergeStyles(props)),

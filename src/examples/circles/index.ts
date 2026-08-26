@@ -8,10 +8,8 @@ createScene
   .setup(({ onNoteDown, onNoteUp, onRender: onEachFrame, state }) => {
     const numCircles = 7;
 
-    onEachFrame(({ draw }) => {
-      draw(({ background }) => {
-        background({ color: "beige" });
-      });
+    onEachFrame(({ background }) => {
+      background({ color: "beige" });
     });
 
     onNoteDown(({ scene, note, attack }) => {

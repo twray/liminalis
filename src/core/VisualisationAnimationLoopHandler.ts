@@ -6,20 +6,17 @@ import AudioCapture, { type AudioCaptureSession } from "./AudioCapture";
 import CanvasRenderer from "./CanvasRenderer";
 import { fontAssetCache, type FontAssetDefinition } from "./FontAssetCache";
 import { imageAssetCache } from "./ImageAssetCache";
-import { getRenderIsometricMethods } from "./renderIsometricMethods";
 import SnapshotExporter from "./SnapshotExporter";
 import VideoRecorder from "./VideoRecorder";
 
 import type {
   AppSettings,
   CanvasProps,
-  DrawCallback,
   EventTime,
   MidiNoteEvent,
   NormalizedFloat,
   NoteDownEvent,
   NoteUpEvent,
-  RenderIsometricCallback,
   RenderProps,
   SketchSettings,
 } from "../types";
@@ -29,8 +26,6 @@ import { logMessage } from "../util/log";
 
 import NoteEventManager from "./NoteEventManager";
 import Scene from "./Scene";
-
-import IsometricView from "../views/IsometricView";
 
 import keyMappings from "../data/keyMappings.json";
 
@@ -393,54 +388,29 @@ class VisualisationAnimationLoopHandler<TState> {
 
         // Call the custom render function if it is specified. This function
         // runs on every frame and allows the user to manipulate the context
-        // in real time and/or use the provided draw() callbacks to access
-        // convenience methods for manipulating the canvas context
+        // in real time using top-level draw primitives.
 
         this.#frameRenderCallbacks.forEach((frameRenderCallback) => {
-          // Callbacks for calls to draw() and renderIsometric() methods
-
-          const drawCallbacks: DrawCallback[] = [];
-          const renderIsometricCallbacks: RenderIsometricCallback[] = [];
-
-          const draw = (callback: DrawCallback) => {
-            drawCallbacks.push(callback);
-          };
-
-          const renderIsometric = (callback: RenderIsometricCallback) => {
-            renderIsometricCallbacks.push(callback);
-          };
-
-          frameRenderCallback({
+          drawContext.executeDrawCallback(
+            (drawMethods) => {
+              frameRenderCallback({
+                ...drawMethods,
+                context,
+                hasMeasurements: true,
+                measurements,
+                getMeasurements: () => measurements,
+                time: timeInMs,
+                beforeTime,
+                afterTime,
+                duringTimeInterval,
+                activeNotes: activeNotesForFrame,
+              });
+            },
             context,
-            hasMeasurements: true,
-            measurements,
-            getMeasurements: () => measurements,
-            time: timeInMs,
-            beforeTime,
-            afterTime,
-            duringTimeInterval,
-            activeNotes: activeNotesForFrame,
-            draw,
-            renderIsometric,
-          });
-
-          drawCallbacks.forEach((drawCallback) => {
-            drawContext.executeDrawCallback(
-              drawCallback,
-              context,
-              width,
-              height,
-              timeInMs,
-            );
-          });
-
-          renderIsometricCallbacks.forEach((renderIsometricCallback) => {
-            const isometricView = new IsometricView(context, width, height);
-            renderIsometricCallback(
-              getRenderIsometricMethods(isometricView, timeInMs),
-            );
-            isometricView.render();
-          });
+            width,
+            height,
+            timeInMs,
+          );
         });
 
         // Handle remaining event callbacks as registered

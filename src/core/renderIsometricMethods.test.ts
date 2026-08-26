@@ -78,7 +78,110 @@ describe("renderIsometricMethods", () => {
     });
   });
 
-  it("applies scoped styles to both tile and cuboid calls", () => {
+  it("applies inherited parent styles when provided", () => {
+    const mockIsometricView = {
+      addTileAt: vi.fn(),
+      addCuboidAt: vi.fn(),
+    };
+
+    const methods = getRenderIsometricMethods(
+      mockIsometricView as unknown as IsometricView,
+      0,
+      {
+        fillStyle: "#ff8800",
+        strokeStyle: "#ffffff",
+      },
+    );
+
+    methods.cuboid(createCuboid({ isoX: 2 }));
+
+    expect(mockIsometricView.addCuboidAt).toHaveBeenCalledWith(
+      expect.objectContaining({
+        isoX: 2,
+        fillStyle: "#ff8800",
+        strokeStyle: "#ffffff",
+        strokeWidth: 1,
+      }),
+    );
+  });
+
+  it("applies inherited styles from a dynamic provider", () => {
+    const mockIsometricView = {
+      addTileAt: vi.fn(),
+      addCuboidAt: vi.fn(),
+    };
+
+    let inheritedStyles = {
+      fillStyle: "#ff8800",
+      strokeStyle: "#ffffff",
+      strokeWidth: 6,
+    };
+
+    const methods = getRenderIsometricMethods(
+      mockIsometricView as unknown as IsometricView,
+      0,
+      () => inheritedStyles,
+    );
+
+    methods.cuboid(createCuboid({ isoX: 1 }));
+
+    inheritedStyles = {
+      fillStyle: "#22aa66",
+      strokeStyle: "#004422",
+      strokeWidth: 3,
+    };
+
+    methods.cuboid(createCuboid({ isoX: 2 }));
+
+    expect(mockIsometricView.addCuboidAt).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        isoX: 1,
+        fillStyle: "#ff8800",
+        strokeStyle: "#ffffff",
+        strokeWidth: 6,
+      }),
+    );
+
+    expect(mockIsometricView.addCuboidAt).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        isoX: 2,
+        fillStyle: "#22aa66",
+        strokeStyle: "#004422",
+        strokeWidth: 3,
+      }),
+    );
+  });
+
+  it("lets shape props override inherited parent styles", () => {
+    const mockIsometricView = {
+      addTileAt: vi.fn(),
+      addCuboidAt: vi.fn(),
+    };
+
+    const methods = getRenderIsometricMethods(
+      mockIsometricView as unknown as IsometricView,
+      0,
+      {
+        fillStyle: "#ff8800",
+        strokeStyle: "#ffffff",
+        strokeWidth: 6,
+      },
+    );
+
+    methods.cuboid(createCuboid({ fillStyle: "#224488", strokeWidth: 2 }));
+
+    expect(mockIsometricView.addCuboidAt).toHaveBeenCalledWith(
+      expect.objectContaining({
+        fillStyle: "#224488",
+        strokeStyle: "#ffffff",
+        strokeWidth: 2,
+      }),
+    );
+  });
+
+  it("applies direct styles on tile and cuboid calls", () => {
     const mockIsometricView = {
       addTileAt: vi.fn(),
       addCuboidAt: vi.fn(),
@@ -89,12 +192,11 @@ describe("renderIsometricMethods", () => {
       0,
     );
 
-    methods.withStyles({ fillStyle: "#ff00ff", strokeWidth: 5 }, () => {
-      methods.tile(createTile());
-      methods.cuboid(createCuboid());
-    });
+    methods.tile(createTile({ fillStyle: "#ff00ff", strokeWidth: 5 }));
+    methods.cuboid(createCuboid({ fillStyle: "#ff00ff", strokeWidth: 5 }));
 
-    expect(mockIsometricView.addTileAt).toHaveBeenCalledWith(
+    expect(mockIsometricView.addTileAt).toHaveBeenNthCalledWith(
+      1,
       expect.objectContaining({
         fillStyle: "#ff00ff",
         strokeStyle: "transparent",
@@ -102,7 +204,8 @@ describe("renderIsometricMethods", () => {
       }),
     );
 
-    expect(mockIsometricView.addCuboidAt).toHaveBeenCalledWith(
+    expect(mockIsometricView.addCuboidAt).toHaveBeenNthCalledWith(
+      1,
       expect.objectContaining({
         fillStyle: "#ff00ff",
         strokeStyle: "transparent",
@@ -111,7 +214,7 @@ describe("renderIsometricMethods", () => {
     );
   });
 
-  it("lets shape props override styles from withStyles", () => {
+  it("uses per-shape stroke style override while keeping defaults for omitted styles", () => {
     const mockIsometricView = {
       addTileAt: vi.fn(),
       addCuboidAt: vi.fn(),
@@ -122,26 +225,21 @@ describe("renderIsometricMethods", () => {
       0,
     );
 
-    methods.withStyles(
-      { fillStyle: "#111", strokeStyle: "#222", strokeWidth: 9 },
-      () => {
-        methods.tile(
-          createTile({ fillStyle: "#abc", strokeWidth: 2, height: 2 }),
-        );
-      },
+    methods.tile(
+      createTile({ fillStyle: "#abc", strokeStyle: "#222", height: 2 }),
     );
 
     expect(mockIsometricView.addTileAt).toHaveBeenCalledWith(
       expect.objectContaining({
         fillStyle: "#abc",
         strokeStyle: "#222",
-        strokeWidth: 2,
+        strokeWidth: 1,
         height: 2,
       }),
     );
   });
 
-  it("restores previous styles after nested withStyles blocks", () => {
+  it("keeps default styles isolated between calls", () => {
     const mockIsometricView = {
       addTileAt: vi.fn(),
       addCuboidAt: vi.fn(),
@@ -152,16 +250,9 @@ describe("renderIsometricMethods", () => {
       0,
     );
 
-    methods.withStyles({ fillStyle: "#f00" }, () => {
-      methods.tile(createTile({ isoX: 1 }));
-
-      methods.withStyles({ fillStyle: "#00f", strokeWidth: 7 }, () => {
-        methods.tile(createTile({ isoX: 2 }));
-      });
-
-      methods.tile(createTile({ isoX: 3 }));
-    });
-
+    methods.tile(createTile({ isoX: 1, fillStyle: "#f00" }));
+    methods.tile(createTile({ isoX: 2, fillStyle: "#00f", strokeWidth: 7 }));
+    methods.tile(createTile({ isoX: 3, fillStyle: "#f00" }));
     methods.tile(createTile({ isoX: 4 }));
 
     expect(mockIsometricView.addTileAt).toHaveBeenNthCalledWith(
@@ -201,7 +292,7 @@ describe("renderIsometricMethods", () => {
     );
   });
 
-  it("restores previous styles when withStyles callback throws", () => {
+  it("applies defaults to subsequent calls after custom styled calls", () => {
     const mockIsometricView = {
       addTileAt: vi.fn(),
       addCuboidAt: vi.fn(),
@@ -212,15 +303,14 @@ describe("renderIsometricMethods", () => {
       0,
     );
 
-    expect(() => {
-      methods.withStyles({ fillStyle: "#f00", strokeWidth: 8 }, () => {
-        throw new Error("boom");
-      });
-    }).toThrow("boom");
+    methods.cuboid(
+      createCuboid({ isoZ: 1, fillStyle: "#f00", strokeWidth: 8 }),
+    );
 
     methods.cuboid(createCuboid({ isoZ: 5 }));
 
-    expect(mockIsometricView.addCuboidAt).toHaveBeenCalledWith(
+    expect(mockIsometricView.addCuboidAt).toHaveBeenNthCalledWith(
+      2,
       expect.objectContaining({
         isoZ: 5,
         fillStyle: "#333",

@@ -1,9 +1,8 @@
 import type { RenderIsometricMethods } from "../core/renderIsometricMethods";
-import type { DrawMethods } from "../render";
+import type { DrawMethods, IsometricOptions } from "../render";
 import type { Point2D } from "./";
 
-export type DrawCallback = (methods: DrawMethods) => void;
-export type RenderIsometricCallback = (methods: RenderIsometricMethods) => void;
+export type IsometricRenderCallback = (methods: RenderIsometricMethods) => void;
 
 export interface Measurements {
   width: number;
@@ -12,11 +11,39 @@ export interface Measurements {
 }
 
 export interface RenderProps {
+  centerOf: DrawMethods["centerOf"];
+  withStyles: DrawMethods["withStyles"];
+  background: DrawMethods["background"];
+  line: DrawMethods["line"];
+  polygon: DrawMethods["polygon"];
+  bezier: DrawMethods["bezier"];
+  arc: DrawMethods["arc"];
+  circle: DrawMethods["circle"];
+  ellipse: DrawMethods["ellipse"];
+  rect: DrawMethods["rect"];
+  group: DrawMethods["group"];
+  layer: DrawMethods["layer"];
+  text: DrawMethods["text"];
+  getTextBounds: DrawMethods["getTextBounds"];
+  image: DrawMethods["image"];
+  defineBackgroundProps: DrawMethods["defineBackgroundProps"];
+  defineLineProps: DrawMethods["defineLineProps"];
+  definePolygonProps: DrawMethods["definePolygonProps"];
+  defineBezierProps: DrawMethods["defineBezierProps"];
+  defineArcProps: DrawMethods["defineArcProps"];
+  defineCircleProps: DrawMethods["defineCircleProps"];
+  defineEllipseProps: DrawMethods["defineEllipseProps"];
+  defineRectProps: DrawMethods["defineRectProps"];
+  defineGroupProps: DrawMethods["defineGroupProps"];
+  defineLayerProps: DrawMethods["defineLayerProps"];
+  defineTextProps: DrawMethods["defineTextProps"];
   context: CanvasRenderingContext2D;
   hasMeasurements: true;
   measurements: Measurements;
   getMeasurements: () => Measurements;
   time: number;
-  draw: (callback: DrawCallback) => void;
-  renderIsometric: (callback: RenderIsometricCallback) => void;
+  isometric: (
+    callback: IsometricRenderCallback,
+    options?: IsometricOptions,
+  ) => void;
 }

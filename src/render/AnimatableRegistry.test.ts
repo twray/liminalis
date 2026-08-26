@@ -351,6 +351,50 @@ describe("AnimatableRegistry", () => {
       expect(order).toEqual(["first", "second", "third"]);
     });
 
+    it("inserts nested queue calls immediately after current render during flush", () => {
+      const registry = new AnimatableRegistry();
+      const order: string[] = [];
+
+      registry.beginFrame(0);
+
+      registry.queue({ id: "isometric" }, () => {
+        order.push("isometric");
+        registry.queue({ id: "overlay-rect" }, () =>
+          order.push("overlay-rect"),
+        );
+      });
+
+      registry.queue({ id: "group" }, () => order.push("group"));
+      registry.queue({ id: "layer" }, () => order.push("layer"));
+
+      registry.flush();
+
+      expect(order).toEqual(["isometric", "overlay-rect", "group", "layer"]);
+    });
+
+    it("preserves nested queue order when multiple renders are queued during flush", () => {
+      const registry = new AnimatableRegistry();
+      const order: string[] = [];
+
+      registry.beginFrame(0);
+
+      registry.queue({ id: "root" }, () => {
+        order.push("root");
+        registry.queue({ id: "first-nested" }, () =>
+          order.push("first-nested"),
+        );
+        registry.queue({ id: "second-nested" }, () =>
+          order.push("second-nested"),
+        );
+      });
+
+      registry.queue({ id: "tail" }, () => order.push("tail"));
+
+      registry.flush();
+
+      expect(order).toEqual(["root", "first-nested", "second-nested", "tail"]);
+    });
+
     it("clears pending queue after flush", () => {
       const registry = new AnimatableRegistry();
       const renderFn = vi.fn();

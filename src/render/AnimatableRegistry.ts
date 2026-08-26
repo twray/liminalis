@@ -11,12 +11,18 @@ class AnimatableRegistry {
   #seenThisFrame: Set<string> = new Set();
   #pendingRenders: PendingRender[] = [];
   #currentTimeInMs = 0;
+  #isFlushing = false;
+  #flushIndex = 0;
+  #flushInsertionIndex = 0;
 
   beginFrame(timeInMs: number): void {
     this.#callIndex = 0;
     this.#seenThisFrame.clear();
     this.#pendingRenders = [];
     this.#currentTimeInMs = timeInMs;
+    this.#isFlushing = false;
+    this.#flushIndex = 0;
+    this.#flushInsertionIndex = 0;
   }
 
   getOrCreate<T extends object>(props: T, timeInMs: number): Animatable<T> {
@@ -50,22 +56,47 @@ class AnimatableRegistry {
     const timeInMs = this.#currentTimeInMs;
 
     // Capture all typed logic in closures - no type erasure needed
-    this.#pendingRenders.push({
+    const pendingRender: PendingRender = {
       validate: () => animatable.validate(),
       render: () => {
         const animatedProps = animatable.getCurrentProps(timeInMs);
         renderFn(animatedProps);
       },
-    });
+    };
+
+    if (this.#isFlushing) {
+      this.#pendingRenders.splice(this.#flushInsertionIndex, 0, pendingRender);
+      this.#flushInsertionIndex += 1;
+    } else {
+      this.#pendingRenders.push(pendingRender);
+    }
 
     return animatable;
   }
 
   flush(): void {
-    for (const pending of this.#pendingRenders) {
+    this.#isFlushing = true;
+    this.#flushIndex = 0;
+
+    while (this.#flushIndex < this.#pendingRenders.length) {
+      const pending = this.#pendingRenders[this.#flushIndex];
+
+      if (!pending) {
+        this.#flushIndex += 1;
+        continue;
+      }
+
+      this.#flushInsertionIndex = this.#flushIndex + 1;
+
       pending.validate();
       pending.render();
+
+      this.#flushIndex += 1;
     }
+
+    this.#isFlushing = false;
+    this.#flushIndex = 0;
+    this.#flushInsertionIndex = 0;
     this.#pendingRenders = [];
   }
 
@@ -90,6 +121,9 @@ class AnimatableRegistry {
     this.#callIndex = 0;
     this.#seenThisFrame.clear();
     this.#pendingRenders = [];
+    this.#isFlushing = false;
+    this.#flushIndex = 0;
+    this.#flushInsertionIndex = 0;
   }
 }
 

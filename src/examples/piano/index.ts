@@ -61,44 +61,42 @@ createScene
     // Render content on a per-frame basis that is not managed by
     // the scene
 
-    onEachFrame(({ draw, center }) => {
+    onEachFrame(({ rect, line, circle, withStyles, background }) => {
       const windowBorderRadius = 30;
       const buttonColors = ["#FF605C", "#FFBD44", "#00CA4E"];
       const buttonRadius = 15;
 
-      draw(({ background, rect, line, withStyles, circle }) => {
-        background({ color: "#F7F2E7" });
+      background({ color: "#F7F2E7" });
 
-        withStyles({ strokeStyle: "#666", strokeWidth: 3 }, () => {
-          rect({
-            x: windowOrigin.x,
-            y: windowOrigin.y,
-            width: windowDimensions.width,
-            height: windowDimensions.height,
-            cornerRadius: windowBorderRadius,
-          });
-
-          line({
-            start: { x: windowOrigin.x, y: windowOrigin.y + titleBarHeight },
-            end: {
-              x: windowOrigin.x + windowDimensions.width,
-              y: windowOrigin.y + titleBarHeight,
-            },
-          });
-
-          for (let i = 0; i < buttonColors.length; i++) {
-            const cx = windowOrigin.x + titleBarHeight / 2;
-            const cy = windowOrigin.y + titleBarHeight / 2;
-
-            circle({
-              cx: cx + i * (buttonRadius * 3),
-              cy,
-              radius: 15,
-              fillStyle: buttonColors[i],
-              strokeStyle: buttonColors[i],
-            });
-          }
+      withStyles({ strokeStyle: "#666", strokeWidth: 3 }, () => {
+        rect({
+          x: windowOrigin.x,
+          y: windowOrigin.y,
+          width: windowDimensions.width,
+          height: windowDimensions.height,
+          cornerRadius: windowBorderRadius,
         });
+
+        line({
+          start: { x: windowOrigin.x, y: windowOrigin.y + titleBarHeight },
+          end: {
+            x: windowOrigin.x + windowDimensions.width,
+            y: windowOrigin.y + titleBarHeight,
+          },
+        });
+
+        for (let i = 0; i < buttonColors.length; i++) {
+          const cx = windowOrigin.x + titleBarHeight / 2;
+          const cy = windowOrigin.y + titleBarHeight / 2;
+
+          circle({
+            cx: cx + i * (buttonRadius * 3),
+            cy,
+            radius: 15,
+            fillStyle: buttonColors[i],
+            strokeStyle: buttonColors[i],
+          });
+        }
       });
     });
 

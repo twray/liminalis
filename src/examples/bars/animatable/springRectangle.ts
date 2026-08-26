@@ -7,22 +7,20 @@ export const springRectangle = visual<{
   width: number;
   height: number;
   fill: string;
-}>(({ props, draw, releaseFactor, timeAttacked }) => {
+}>(({ props, rect, releaseFactor, timeAttacked }) => {
   const { x, y, width, height, fill } = props;
 
   const opacity = easeInCubic(releaseFactor);
 
-  draw(({ rect }) => {
-    rect({
-      x,
-      y: y + height - 100,
-      width,
-      height: 0,
-      fillStyle: fill,
-      opacity,
-    }).animateTo(
-      { height: height, y: y },
-      { at: timeAttacked, duration: 1000, easing: "easeOutBack" },
-    );
-  });
+  rect({
+    x,
+    y: y + height - 100,
+    width,
+    height: 0,
+    fillStyle: fill,
+    opacity,
+  }).animateTo(
+    { height: height, y: y },
+    { at: timeAttacked, duration: 1000, easing: "easeOutBack" },
+  );
 });
