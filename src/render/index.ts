@@ -1,22 +1,19 @@
 import { imageAssetCache } from "../core/ImageAssetCache";
 import AnimatableRegistry from "./AnimatableRegistry";
 import AppliedStylesManager from "./AppliedStylesManager";
+import BoundsCollectionManager from "./BoundsCollectionManager";
 import ClipManager from "./ClipManager";
 import DrawGroupBitmapCache from "./DrawGroupBitmapCache";
 import DrawGroupManager from "./DrawGroupManager";
 import FrameMeasurementPassManager from "./FrameMeasurementPassManager";
-import OverlayPrimitiveWarningManager from "./OverlayPrimitiveWarningManager";
-import { createIsometricPrimitive } from "./isometric";
+import RenderWarningManager from "./RenderWarningManager";
+import { createIsometricPrimitive } from "./primitives/isometric";
 
-import { createClipScope } from "./clipping";
+import { createClipScope, withClipScopedGroup } from "./clipping";
 
 import type { PartialDrawStyles } from "../types";
 import type { IAnimatableLike } from "./Animatable";
-import type {
-  BoundsCollector,
-  ClipScope,
-  RenderContextController,
-} from "./types";
+import type { ClipScope, RenderContextController } from "./types";
 
 import {
   DEFAULT_BLEND_MODE,
@@ -24,14 +21,10 @@ import {
   DEFAULT_STROKE_WIDTH,
   centerOf,
   createNoopAnimatable,
-  withOverlayPrimitiveWarning,
+  getClipScopesSignature,
 } from "./common";
 
-import {
-  OVERLAY_WARNING_NAMED_PRIMITIVES,
-  PRIMITIVE_NAME,
-  type PrimitiveName,
-} from "./primitiveNames";
+import { devicePixelRatio } from "../util/common";
 
 import {
   arc,
@@ -84,7 +77,7 @@ import type {
 export const createDrawContext = (): DrawContext => {
   const registry = new AnimatableRegistry();
   const drawGroupBitmapCache = new DrawGroupBitmapCache();
-  const overlayPrimitiveWarningManager = new OverlayPrimitiveWarningManager();
+  const renderWarningManager = new RenderWarningManager();
 
   const executeDrawCallback = (
     callback: (methods: DrawMethods) => void,
@@ -94,62 +87,48 @@ export const createDrawContext = (): DrawContext => {
     timeInMs: number,
   ): void => {
     registry.beginFrame(timeInMs);
-
-    const devicePixelRatio =
-      typeof window !== "undefined" &&
-      typeof window.devicePixelRatio === "number" &&
-      Number.isFinite(window.devicePixelRatio)
-        ? window.devicePixelRatio
-        : 1;
     drawGroupBitmapCache.beginFrame({ width, height, devicePixelRatio });
+    renderWarningManager.beginFrame();
 
     const clipManager = new ClipManager(context);
     const drawGroupManager = new DrawGroupManager();
     const frameMeasurementPassManager = new FrameMeasurementPassManager();
+    const boundsCollectionManager = new BoundsCollectionManager();
+
     const appliedStylesManager = new AppliedStylesManager({
       strokeStyle: DEFAULT_STROKE_STYLE,
       strokeWidth: DEFAULT_STROKE_WIDTH,
       blend: DEFAULT_BLEND_MODE,
     });
 
-    const boundsCollectorStack: BoundsCollector[] = [];
-    let suppressedPrimitiveBoundsDepth = 0;
-
-    overlayPrimitiveWarningManager.beginFrame();
-
-    const getActiveBoundsCollector = (): BoundsCollector | undefined =>
-      boundsCollectorStack[boundsCollectorStack.length - 1];
-
-    const getClipScopesSignature = (scopes: ClipScope[]): string =>
-      scopes
-        .map(
-          (scope, index) =>
-            scope.getSignature?.() ?? `scope:${index}:no-signature`,
-        )
-        .join("||");
-
     // Queues a standard animatable draw operation.
     // Use for primitives that only need deferred animation + style resolution.
     //
+    // - primitiveType: the type of the primitive being drawn, used for signature
+    //   and identity generation
     // - props: public primitive props captured for this frame
     // - renderFn: receives animated props during registry.flush() and performs drawing
+    // - hooks: optional functions to provide e.g. extra signature and bounds information
     //
     // The queued closure also snapshots active clip scopes so nested clipping remains stable.
     const queueAnimatable = <T extends PartialDrawStyles>(
-      primitiveType: PrimitiveName,
+      primitiveType: string,
       props: T,
       renderFn: (context: CanvasRenderingContext2D, props: T) => void,
-      getExtraSignature?: (props: T) => string,
-      getBounds?: (props: T) => Bounds | null,
+      hooks?: {
+        getExtraSignature?: (props: T) => string;
+        getBounds?: (props: T) => Bounds | null;
+      },
     ): IAnimatableLike<T> => {
-      overlayPrimitiveWarningManager.warnIfOverlayPrimitiveInsideIsometric(
-        primitiveType,
-      );
+      const { getExtraSignature, getBounds } = hooks ?? {};
+
+      renderWarningManager.warnIfOverlayPrimitiveInsideIsometric();
 
       const mergedProps = appliedStylesManager.mergeStyles(props);
       const clipScopes = clipManager.captureScopes();
-      const activeBoundsCollector = getActiveBoundsCollector();
-      const shouldCollectBounds = suppressedPrimitiveBoundsDepth === 0;
+      const activeBoundsCollector =
+        boundsCollectionManager.getActiveCollector();
+      const shouldCollectBounds = boundsCollectionManager.shouldCollectBounds();
 
       if (shouldCollectBounds) {
         activeBoundsCollector?.includeBounds(getBounds?.(mergedProps) ?? null);
@@ -223,7 +202,7 @@ export const createDrawContext = (): DrawContext => {
         TransformProps &
         CoordinateContextProps,
     >(
-      primitiveType: PrimitiveName,
+      primitiveType: string,
       renderFn: (context: CanvasRenderingContext2D, props: TProps) => void,
       getFrameBounds: (props: TProps) => Bounds,
       createScope: (getProps: () => TProps) => ClipScope,
@@ -233,9 +212,7 @@ export const createDrawContext = (): DrawContext => {
         props: TProps,
         frameCallback?: FrameCallback,
       ): IAnimatableLike<TProps> => {
-        overlayPrimitiveWarningManager.warnIfOverlayPrimitiveInsideIsometric(
-          primitiveType,
-        );
+        renderWarningManager.warnIfOverlayPrimitiveInsideIsometric();
 
         if (!frameCallback) {
           return queueAnimatable(
@@ -243,8 +220,10 @@ export const createDrawContext = (): DrawContext => {
             props,
             (currentContext, drawProps) =>
               renderFn(currentContext, normalizeProps(drawProps)),
-            undefined,
-            (drawProps) => getFrameBounds(normalizeProps(drawProps)),
+            {
+              getBounds: (drawProps) =>
+                getFrameBounds(normalizeProps(drawProps)),
+            },
           );
         }
 
@@ -269,19 +248,16 @@ export const createDrawContext = (): DrawContext => {
           ) as FrameContext;
 
         let currentClipProps = lifecycleProps;
-        const activeBoundsCollector = getActiveBoundsCollector();
+        const activeBoundsCollector =
+          boundsCollectionManager.getActiveCollector();
 
         activeBoundsCollector?.includeBounds(getFrameBounds(currentClipProps));
 
         if (frameMeasurementPassManager.isMeasuringFrameBounds()) {
           if (frameCallback) {
-            suppressedPrimitiveBoundsDepth++;
-
-            try {
+            boundsCollectionManager.withSuppressedBounds(() => {
               frameCallback(frameContext);
-            } finally {
-              suppressedPrimitiveBoundsDepth--;
-            }
+            });
           }
 
           return createNoopAnimatable(mergedProps);
@@ -295,30 +271,18 @@ export const createDrawContext = (): DrawContext => {
         });
 
         const clipScope = createScope(() => currentClipProps);
-        clipManager.withScope(clipScope, () => {
-          const currentScopes = clipManager.captureScopes();
 
-          drawGroupManager.withNestedGroup(
-            () => {
-              const scopeSignature = getClipScopesSignature(currentScopes);
-
-              return DrawGroupManager.createPrimitiveSignature(
-                `${primitiveType}:frame`,
-                currentClipProps,
-                currentScopes.length,
-                `scope-signature:${scopeSignature}`,
-              );
-            },
-            () => {
-              suppressedPrimitiveBoundsDepth++;
-
-              try {
-                frameCallback(frameContext);
-              } finally {
-                suppressedPrimitiveBoundsDepth--;
-              }
-            },
-          );
+        withClipScopedGroup({
+          clipManager,
+          drawGroupManager,
+          clipScope,
+          primitiveType: `${primitiveType}:frame`,
+          getSignatureProps: () => currentClipProps,
+          run: () => {
+            boundsCollectionManager.withSuppressedBounds(() => {
+              frameCallback(frameContext);
+            });
+          },
         });
 
         return clipAnimatable;
@@ -335,17 +299,19 @@ export const createDrawContext = (): DrawContext => {
       false,
     );
 
-    const containerPrimitiveCommonParams = {
+    const renderCollaborators = {
       registry,
       clipManager,
       drawGroupManager,
-      getClipScopesSignature,
-      getActiveBoundsCollector,
+    };
+
+    const containerPrimitiveCommonParams = {
+      ...renderCollaborators,
       createMeasurementContext:
         frameMeasurementPassManager.createMeasurementContext.bind(
           frameMeasurementPassManager,
         ),
-      boundsCollectorStack,
+      boundsCollectionManager,
       withFrameBoundsMeasurementPass:
         frameMeasurementPassManager.withFrameBoundsMeasurementPass.bind(
           frameMeasurementPassManager,
@@ -353,65 +319,60 @@ export const createDrawContext = (): DrawContext => {
     };
 
     const drawPrimitives = {
-      withStyles: appliedStylesManager.withStyles.bind(appliedStylesManager),
       isometric: createIsometricPrimitive({
-        width,
-        height,
+        ...renderCollaborators,
+        drawProperties,
         timeInMs,
-        registry,
-        clipManager,
-        drawGroupManager,
         appliedStylesManager,
-        overlayPrimitiveWarningManager,
-        getClipScopesSignature,
+        renderWarningManager,
       }),
+      withStyles: appliedStylesManager.withStyles.bind(appliedStylesManager),
       background: (props: BackgroundProps) => background(context, props),
       centerOf,
       line: (props: LineProps) =>
         queueAnimatable(
-          PRIMITIVE_NAME.LINE,
+          "line",
           props,
           (currentContext, p) => line(currentContext, p),
-          undefined,
-          getLineBounds,
+          { getBounds: getLineBounds },
         ),
       polygon: queueAnimatableWithFrame(
-        PRIMITIVE_NAME.POLYGON,
+        "polygon",
         (currentContext, p: PolygonProps) => polygon(currentContext, p),
         (p: PolygonProps) => polygonPathDescriptor(p).bounds,
         (getProps) => createClipScope(getProps, polygonPathDescriptor),
         (p: PolygonProps) => p,
       ),
       bezier: queueAnimatableWithFrame(
-        PRIMITIVE_NAME.BEZIER,
+        "bezier",
         (currentContext, p: BezierProps) => bezier(currentContext, p),
         (p: BezierProps) => bezierPathDescriptor(p).bounds,
         (getProps) => createClipScope(getProps, bezierPathDescriptor),
         (p: BezierProps) => p,
       ),
       circle: queueAnimatableWithFrame(
-        PRIMITIVE_NAME.CIRCLE,
+        "circle",
         (currentContext, p: CircleProps) => circle(currentContext, p),
         (p: CircleProps) => circlePathDescriptor(p).bounds,
         (getProps) => createClipScope(getProps, circlePathDescriptor),
         (p: CircleProps) => p,
       ),
       ellipse: queueAnimatableWithFrame(
-        PRIMITIVE_NAME.ELLIPSE,
+        "ellipse",
         (currentContext, p: EllipseProps) => ellipse(currentContext, p),
         (p: EllipseProps) => ellipsePathDescriptor(p).bounds,
         (getProps) => createClipScope(getProps, ellipsePathDescriptor),
         (p: EllipseProps) => p,
       ),
       arc: queueAnimatableWithFrame(
-        PRIMITIVE_NAME.ARC,
+        "arc",
         (currentContext, p: ArcProps) => arc(currentContext, p),
         (p: ArcProps) => arcPathDescriptor(p).bounds,
         (getProps) => createClipScope(getProps, arcPathDescriptor),
         (p: ArcProps) => p,
       ),
       rect: queueAnimatableWithFrame(
-        PRIMITIVE_NAME.RECT,
+        "rect",
         (currentContext, p: RectProps) => rect(currentContext, p),
         (p: RectProps) => rectPathDescriptor(p).bounds,
         (getProps) => createClipScope(getProps, rectPathDescriptor),
@@ -425,7 +386,7 @@ export const createDrawContext = (): DrawContext => {
         frameCallback?: FrameCallback,
       ) =>
         queueAnimatableWithFrame(
-          PRIMITIVE_NAME.TEXT,
+          "text",
           (currentContext, p: TextProps) => text(currentContext, textValue, p),
           (p: TextProps) => getTextBounds(context, textValue, p),
           (getProps) =>
@@ -441,7 +402,7 @@ export const createDrawContext = (): DrawContext => {
       },
       image: (imageSrc: string, props: ImageProps = {}) =>
         queueAnimatable(
-          PRIMITIVE_NAME.IMAGE,
+          `image:${imageSrc}`,
           props,
           (currentContext, p) => {
             const readyImageAsset = imageAssetCache.getReadyAsset(imageSrc);
@@ -450,38 +411,13 @@ export const createDrawContext = (): DrawContext => {
               image(currentContext, readyImageAsset, p);
             }
           },
-          () => {
-            const readyImageAsset = imageAssetCache.getReadyAsset(imageSrc);
-
-            return `asset:${imageSrc}|ready:${readyImageAsset ? 1 : 0}`;
+          {
+            getExtraSignature: () =>
+              `ready:${imageAssetCache.getReadyAsset(imageSrc) ? 1 : 0}`,
+            getBounds: (p) => getImageBounds(imageSrc, p),
           },
-          (p) => getImageBounds(imageSrc, p),
         ),
     };
-
-    const wrapOverlayWarningForNamedPrimitives = <
-      T extends Record<string, (...args: any[]) => any>,
-      K extends keyof T,
-    >(
-      primitives: T,
-      keys: readonly K[],
-    ): void => {
-      keys.forEach((key) => {
-        const primitiveName = key as PrimitiveName;
-        const primitiveFn = primitives[key];
-
-        primitives[key] = withOverlayPrimitiveWarning(primitiveFn, () =>
-          overlayPrimitiveWarningManager.warnIfOverlayPrimitiveInsideIsometric(
-            primitiveName,
-          ),
-        ) as T[K];
-      });
-    };
-
-    wrapOverlayWarningForNamedPrimitives(
-      drawPrimitives,
-      OVERLAY_WARNING_NAMED_PRIMITIVES,
-    );
 
     const drawPrimitivePropHelpers = {
       defineBackgroundProps: (props: BackgroundProps) => props,
@@ -504,6 +440,7 @@ export const createDrawContext = (): DrawContext => {
     };
 
     callback(drawMethods);
+
     registry.flush();
     registry.endFrame();
 
@@ -518,5 +455,4 @@ export const createDrawContext = (): DrawContext => {
   return { executeDrawCallback };
 };
 
-export * from "./primitiveNames";
 export type * from "./types";

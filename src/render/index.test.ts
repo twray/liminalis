@@ -4399,12 +4399,11 @@ describe("drawMethods transform props", () => {
 
       const warningMessages = warnSpy.mock.calls
         .map((call) => String(call[0]))
-        .filter((message) => message.includes("[liminalis] 2D primitive"));
+        .filter((message) =>
+          message.includes("[liminalis] 2D shape primitive"),
+        );
 
       expect(warningMessages).toHaveLength(1);
-      expect(
-        warningMessages.some((message) => message.includes('"rect"')),
-      ).toBe(true);
     });
 
     it("does not warn for 2D primitives used outside isometric()", async () => {

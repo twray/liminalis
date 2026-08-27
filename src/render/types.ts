@@ -1,8 +1,9 @@
-import type { RenderIsometricMethods } from "../core/renderIsometricMethods";
 import type {
   Corners,
   Dimensions2D,
   FillStyles,
+  IsometricCuboid,
+  IsometricTile,
   PartialDrawStyles,
   Point2D,
   Positioned2D,
@@ -14,6 +15,9 @@ import type {
   XOR,
 } from "../types";
 import type { IAnimatableLike } from "./Animatable";
+import type AnimatableRegistry from "./AnimatableRegistry";
+import type ClipManager from "./ClipManager";
+import type DrawGroupManager from "./DrawGroupManager";
 
 export interface Bounds {
   x: number;
@@ -63,6 +67,12 @@ export interface ClipScope {
 export interface RenderContextController {
   getContext: () => CanvasRenderingContext2D;
   setContext: (context: CanvasRenderingContext2D) => void;
+}
+
+export interface RenderCollaborators {
+  registry: AnimatableRegistry;
+  clipManager: ClipManager;
+  drawGroupManager: DrawGroupManager;
 }
 
 export interface Measurements {
@@ -246,7 +256,7 @@ export type DrawProperties = StaticMeasurementContext;
 export interface DrawPrimitives {
   withStyles: (styles: PartialDrawStyles, callback: () => void) => void;
   isometric: (
-    callback: (methods: RenderIsometricMethods) => void,
+    callback: (methods: IsometricMethods) => void,
     options?: IsometricOptions,
   ) => void;
   background: (props: BackgroundProps) => void;
@@ -309,6 +319,11 @@ export interface DrawPrimitivePropHelpers {
 
 export interface DrawMethods
   extends DrawProperties, DrawPrimitives, DrawPrimitivePropHelpers {}
+
+export interface IsometricMethods {
+  tile: (props: IsometricTile) => void;
+  cuboid: (props: IsometricCuboid) => void;
+}
 
 export interface DrawContext {
   executeDrawCallback: (

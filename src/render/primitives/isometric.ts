@@ -1,54 +1,80 @@
-import { getRenderIsometricMethods } from "../core/renderIsometricMethods";
-import type { PartialDrawStyles } from "../types";
-import IsometricView from "../views/IsometricView";
-import AnimatableRegistry from "./AnimatableRegistry";
-import AppliedStylesManager from "./AppliedStylesManager";
-import ClipManager from "./ClipManager";
-import DrawGroupManager from "./DrawGroupManager";
-import OverlayPrimitiveWarningManager from "./OverlayPrimitiveWarningManager";
-import { toIsometricStyles } from "./common";
-import { PRIMITIVE_NAME } from "./primitiveNames";
+import type {
+  IsometricCuboid,
+  IsometricTile,
+  PartialDrawStyles,
+  PartialIsometricStyles,
+} from "../../types";
+import AppliedStylesManager from "../AppliedStylesManager";
+import ClipManager from "../ClipManager";
+import DrawGroupManager from "../DrawGroupManager";
+import IsometricView from "../IsometricView";
+import RenderWarningManager from "../RenderWarningManager";
+import { getClipScopesSignature, toIsometricStyles } from "../common";
+import { cuboid, tile } from "./isometricPrimitives/";
 
 import type {
   DrawPrimitives,
+  DrawProperties,
   IsometricOptions,
+  RenderCollaborators,
   RenderContextController,
-} from "./types";
+} from "../types";
 
-interface CreateIsometricPrimitiveParams {
-  width: number;
-  height: number;
+interface CreateIsometricPrimitiveParams extends RenderCollaborators {
   timeInMs: number;
-  registry: AnimatableRegistry;
-  clipManager: ClipManager;
-  drawGroupManager: DrawGroupManager;
+  drawProperties: DrawProperties;
   appliedStylesManager: AppliedStylesManager;
-  overlayPrimitiveWarningManager: OverlayPrimitiveWarningManager;
-  getClipScopesSignature: (
-    scopes: ReturnType<ClipManager["captureScopes"]>,
-  ) => string;
+  renderWarningManager: RenderWarningManager;
 }
 
+const DEFAULT_FILL_STYLE = "#333";
+const DEFAULT_STROKE_STYLE = "transparent";
+const DEFAULT_STROKE_WIDTH = 1;
+
+const getIsometricMethods = (
+  isometricView: IsometricView,
+  _timeInMs: number,
+  inheritedStyles: PartialIsometricStyles | (() => PartialIsometricStyles) = {},
+) => {
+  const resolveInheritedStyles = (): PartialIsometricStyles =>
+    typeof inheritedStyles === "function" ? inheritedStyles() : inheritedStyles;
+
+  const mergeStyles = <T extends PartialIsometricStyles>(
+    props: T,
+  ): T & PartialIsometricStyles =>
+    ({
+      fillStyle: DEFAULT_FILL_STYLE,
+      strokeStyle: DEFAULT_STROKE_STYLE,
+      strokeWidth: DEFAULT_STROKE_WIDTH,
+      ...resolveInheritedStyles(),
+      ...props,
+    }) as T & PartialIsometricStyles;
+
+  return {
+    tile: (props: IsometricTile) => tile(isometricView, mergeStyles(props)),
+    cuboid: (props: IsometricCuboid) =>
+      cuboid(isometricView, mergeStyles(props)),
+  };
+};
+
 export const createIsometricPrimitive = ({
-  width,
-  height,
   timeInMs,
   registry,
   clipManager,
   drawGroupManager,
+  drawProperties,
   appliedStylesManager,
-  overlayPrimitiveWarningManager,
-  getClipScopesSignature,
+  renderWarningManager,
 }: CreateIsometricPrimitiveParams): DrawPrimitives["isometric"] => {
   return (
-    callback: (methods: ReturnType<typeof getRenderIsometricMethods>) => void,
+    callback: (methods: ReturnType<typeof getIsometricMethods>) => void,
     options: IsometricOptions = {},
   ) => {
     const viewportProps = {
       x: options.x ?? 0,
       y: options.y ?? 0,
-      width: options.width ?? width,
-      height: options.height ?? height,
+      width: options.width ?? drawProperties.measurements.width,
+      height: options.height ?? drawProperties.measurements.height,
       ...(options.tileWidth !== undefined
         ? { tileWidth: options.tileWidth }
         : {}),
@@ -70,7 +96,7 @@ export const createIsometricPrimitive = ({
       (queuedIsometricProps) => {
         drawGroupManager.pushPrimitiveOperation({
           signature: DrawGroupManager.createPrimitiveSignature(
-            PRIMITIVE_NAME.ISOMETRIC,
+            "isometric",
             queuedIsometricProps,
             clipScopes.length,
             `scope-signature:${scopeSignature}`,
@@ -120,22 +146,17 @@ export const createIsometricPrimitive = ({
                         queuedIsometricProps.tileWidth,
                       );
 
-                      overlayPrimitiveWarningManager.withIsometricRenderCallback(
-                        () => {
-                          callback(
-                            getRenderIsometricMethods(
-                              isometricView,
-                              timeInMs,
-                              () =>
-                                toIsometricStyles(
-                                  appliedStylesManager.mergeStyles(
-                                    {} as PartialDrawStyles,
-                                  ),
-                                ),
+                      renderWarningManager.withIsometricRenderCallback(() => {
+                        callback(
+                          getIsometricMethods(isometricView, timeInMs, () =>
+                            toIsometricStyles(
+                              appliedStylesManager.mergeStyles(
+                                {} as PartialDrawStyles,
+                              ),
                             ),
-                          );
-                        },
-                      );
+                          ),
+                        );
+                      });
 
                       isometricView.render();
                     } finally {

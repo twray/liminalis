@@ -1,16 +1,14 @@
 import type { Dimensions2D } from "../types";
 import type { IAnimatableLike } from "./Animatable";
-import AnimatableRegistry from "./AnimatableRegistry";
 
+import BoundsCollectionManager from "./BoundsCollectionManager";
 import ClipManager from "./ClipManager";
 import DrawGroupManager from "./DrawGroupManager";
-import { createGroupScope } from "./clipping";
-import { createBoundsCollector } from "./common";
+import { createGroupScope, withClipScopedGroup } from "./clipping";
+import { createBoundsCollector, getClipScopesSignature } from "./common";
 
 import type {
   Bounds,
-  BoundsCollector,
-  ClipScope,
   ClippingOptionsProps,
   ClosedPathDescriptor,
   CoordinateContextProps,
@@ -20,6 +18,7 @@ import type {
   LayerOptions,
   MeasurementContext,
   Measurements,
+  RenderCollaborators,
   StaticFrameCallback,
   TransformProps,
 } from "./types";
@@ -50,7 +49,6 @@ interface PushContainerShowBoundsOperationParams {
   showBounds: GroupOptions["showBounds"] | LayerOptions["showBounds"];
   clipManager: ClipManager;
   drawGroupManager: DrawGroupManager;
-  getClipScopesSignature: (scopes: ClipScope[]) => string;
   getRenderRect: () => Bounds;
 }
 
@@ -59,7 +57,6 @@ export const pushContainerShowBoundsOperation = ({
   showBounds,
   clipManager,
   drawGroupManager,
-  getClipScopesSignature,
   getRenderRect,
 }: PushContainerShowBoundsOperationParams): void => {
   if (showBounds !== true) {
@@ -129,27 +126,25 @@ interface SeedInitialContainerPropsParams<TOptions extends object, TState> {
   resolveState: () => TState;
 }
 
+export interface ContainerPrimitiveCommonParams extends RenderCollaborators {
+  createMeasurementContext: (
+    getMeasurements: () => Measurements,
+    hasMeasurements: boolean,
+    warnOnUnavailableRead: boolean,
+  ) => MeasurementContext;
+  boundsCollectionManager: BoundsCollectionManager;
+  withFrameBoundsMeasurementPass: <T>(callbackFn: () => T) => T;
+}
+
 interface CreateContainerPrimitiveParams<
   TOptions extends GroupOptions | LayerOptions,
   TState extends ContainerBoundsState,
   TScopeProps extends TransformProps &
     CoordinateContextProps &
     ClippingOptionsProps,
-> {
+> extends ContainerPrimitiveCommonParams {
   containerType: "group" | "layer";
   frameSignatureType: string;
-  registry: AnimatableRegistry;
-  clipManager: ClipManager;
-  drawGroupManager: DrawGroupManager;
-  getClipScopesSignature: (scopes: ClipScope[]) => string;
-  getActiveBoundsCollector: () => BoundsCollector | undefined;
-  createMeasurementContext: (
-    getMeasurements: () => Measurements,
-    hasMeasurements: boolean,
-    warnOnUnavailableRead: boolean,
-  ) => MeasurementContext;
-  boundsCollectorStack: BoundsCollector[];
-  withFrameBoundsMeasurementPass: <T>(callbackFn: () => T) => T;
   resolveState: (params: ResolveContainerStateParams<TOptions>) => TState;
   buildScopeProps: (
     params: BuildContainerScopePropsParams<TOptions, TState>,
@@ -161,21 +156,6 @@ interface CreateContainerPrimitiveParams<
   seedInitialProps?: (
     params: SeedInitialContainerPropsParams<TOptions, TState>,
   ) => void;
-}
-
-export interface ContainerPrimitiveCommonParams {
-  registry: AnimatableRegistry;
-  clipManager: ClipManager;
-  drawGroupManager: DrawGroupManager;
-  getClipScopesSignature: (scopes: ClipScope[]) => string;
-  getActiveBoundsCollector: () => BoundsCollector | undefined;
-  createMeasurementContext: (
-    getMeasurements: () => Measurements,
-    hasMeasurements: boolean,
-    warnOnUnavailableRead: boolean,
-  ) => MeasurementContext;
-  boundsCollectorStack: BoundsCollector[];
-  withFrameBoundsMeasurementPass: <T>(callbackFn: () => T) => T;
 }
 
 export const createContainerPrimitive = <
@@ -190,10 +170,8 @@ export const createContainerPrimitive = <
   registry,
   clipManager,
   drawGroupManager,
-  getClipScopesSignature,
-  getActiveBoundsCollector,
   createMeasurementContext,
-  boundsCollectorStack,
+  boundsCollectionManager,
   withFrameBoundsMeasurementPass,
   resolveState,
   buildScopeProps,
@@ -216,7 +194,7 @@ export const createContainerPrimitive = <
     };
 
     let currentProps: TOptions = mergedProps;
-    const activeBoundsCollector = getActiveBoundsCollector();
+    const activeBoundsCollector = boundsCollectionManager.getActiveCollector();
 
     const resolveCurrentState = (): TState => {
       const state = resolveState({
@@ -264,13 +242,9 @@ export const createContainerPrimitive = <
       options: mergedProps,
       onMeasurePass: () => {
         withFrameBoundsMeasurementPass(() => {
-          boundsCollectorStack.push(contentBoundsCollector);
-
-          try {
+          boundsCollectionManager.withCollector(contentBoundsCollector, () => {
             (frameCallback as FrameCallback)(createFrameContext(false));
-          } finally {
-            boundsCollectorStack.pop();
-          }
+          });
         });
       },
     });
@@ -281,7 +255,6 @@ export const createContainerPrimitive = <
         showBounds: currentProps.showBounds,
         clipManager,
         drawGroupManager,
-        getClipScopesSignature,
         getRenderRect: () => {
           const state = resolveCurrentState();
 
@@ -300,52 +273,39 @@ export const createContainerPrimitive = <
 
     const clipScope = createGroupScope(toScopeProps, pathDescriptor);
 
-    clipManager.withScope(clipScope, () => {
-      const currentScopes = clipManager.captureScopes();
+    withClipScopedGroup({
+      clipManager,
+      drawGroupManager,
+      clipScope,
+      primitiveType: frameSignatureType,
+      getSignatureProps: toScopeProps,
+      run: () => {
+        const frameContext = createFrameContext(true);
 
-      drawGroupManager.withNestedGroup(
-        () => {
-          const scopeSignature = getClipScopesSignature(currentScopes);
+        boundsCollectionManager.withCollector(contentBoundsCollector, () => {
+          (frameCallback as FrameCallback)(frameContext);
+        });
 
-          return DrawGroupManager.createPrimitiveSignature(
-            frameSignatureType,
-            toScopeProps(),
-            currentScopes.length,
-            `scope-signature:${scopeSignature}`,
-          );
-        },
-        () => {
-          const frameContext = createFrameContext(true);
+        if (seedInitialProps) {
+          const state = resolveCurrentState();
 
-          boundsCollectorStack.push(contentBoundsCollector);
+          seedInitialProps({
+            mergedProps,
+            currentProps,
+            setCurrentProps: (nextProps) => {
+              currentProps = nextProps;
+            },
+            animatable: containerAnimatable,
+            state,
+            resolveFrameBounds,
+            resolveState: resolveCurrentState,
+          });
+        }
 
-          try {
-            (frameCallback as FrameCallback)(frameContext);
-          } finally {
-            boundsCollectorStack.pop();
-          }
+        renderShowBounds();
 
-          if (seedInitialProps) {
-            const state = resolveCurrentState();
-
-            seedInitialProps({
-              mergedProps,
-              currentProps,
-              setCurrentProps: (nextProps) => {
-                currentProps = nextProps;
-              },
-              animatable: containerAnimatable,
-              state,
-              resolveFrameBounds,
-              resolveState: resolveCurrentState,
-            });
-          }
-
-          renderShowBounds();
-
-          activeBoundsCollector?.includeBounds(resolveFrameBounds());
-        },
-      );
+        activeBoundsCollector?.includeBounds(resolveFrameBounds());
+      },
     });
 
     return containerAnimatable;

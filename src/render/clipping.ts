@@ -1,5 +1,7 @@
 import { degreesToRadians, stableSerialize } from "../util";
-import { resolveTransformOrigin } from "./common";
+import { getClipScopesSignature, resolveTransformOrigin } from "./common";
+import type ClipManager from "./ClipManager";
+import DrawGroupManager from "./DrawGroupManager";
 
 import type { Point2D } from "../types";
 import type {
@@ -193,4 +195,42 @@ export const createGroupScope = <
       }
     },
   };
+};
+
+interface WithClipScopedGroupParams {
+  clipManager: ClipManager;
+  drawGroupManager: DrawGroupManager;
+  clipScope: ClipScope;
+  primitiveType: string;
+  getSignatureProps: () => Record<string, any>;
+  run: () => void;
+}
+
+// Opens a clip scope, then a nested draw group keyed by that scope's
+// signature, and runs `run` inside both. Shared by any primitive that can
+// act as a clip-scoped container (shape-as-frame primitives in index.ts,
+// group()/layer() in container.ts) so the clip <-> cache-signature wiring
+// exists in exactly one place.
+export const withClipScopedGroup = ({
+  clipManager,
+  drawGroupManager,
+  clipScope,
+  primitiveType,
+  getSignatureProps,
+  run,
+}: WithClipScopedGroupParams): void => {
+  clipManager.withScope(clipScope, () => {
+    const currentScopes = clipManager.captureScopes();
+
+    drawGroupManager.withNestedGroup(() => {
+      const scopeSignature = getClipScopesSignature(currentScopes);
+
+      return DrawGroupManager.createPrimitiveSignature(
+        primitiveType,
+        getSignatureProps(),
+        currentScopes.length,
+        `scope-signature:${scopeSignature}`,
+      );
+    }, run);
+  });
 };
