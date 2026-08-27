@@ -1,8 +1,11 @@
-import type { RenderIsometricMethods } from "../core/renderIsometricMethods";
-import type { DrawMethods, IsometricOptions } from "../render";
+import type {
+  DrawMethods,
+  IsometricMethods,
+  IsometricOptions,
+} from "../render";
 import type { Point2D } from "./";
 
-export type IsometricRenderCallback = (methods: RenderIsometricMethods) => void;
+export type IsometricRenderCallback = (methods: IsometricMethods) => void;
 
 export interface Measurements {
   width: number;
