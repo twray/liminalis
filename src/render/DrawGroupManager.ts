@@ -1,6 +1,8 @@
 import { stableSerialize } from "../util";
 import DrawGroupBitmapCache from "./DrawGroupBitmapCache";
 
+import type { ClipScope } from "./types";
+
 interface DrawGroupOperation {
   type: "primitive" | "group";
   signature?: string;
@@ -10,6 +12,11 @@ interface DrawGroupOperation {
 
 interface DrawGroupNode {
   id: string;
+  // null only for the implicit root — every other group's scope is applied
+  // exactly once, by its parent, when this group is composited in (see
+  // compositeGroup below). Every non-root scope corresponds 1:1 to this
+  // node, per withClipScopedGroup's pairing.
+  scope: ClipScope | null;
   getInvalidationSignature: () => string;
   operations: DrawGroupOperation[];
 }
@@ -19,6 +26,11 @@ interface RenderGroupsParams {
   targetContext: CanvasRenderingContext2D;
   width: number;
   height: number;
+}
+
+interface WithNestedGroupParams {
+  scope: ClipScope | null;
+  getInvalidationSignature: () => string;
 }
 
 // A capability, bound to whichever group is current at the moment it's
@@ -43,16 +55,16 @@ class DrawGroupManager {
   #groupStack: DrawGroupNode[];
 
   constructor() {
-    this.#rootGroup = this.#createDrawGroup(() => "root");
+    this.#rootGroup = this.#createDrawGroup(null, () => "root");
     this.#groupStack = [this.#rootGroup];
   }
 
   withNestedGroup(
-    getInvalidationSignature: () => string,
+    { scope, getInvalidationSignature }: WithNestedGroupParams,
     callbackFn: () => void,
   ): void {
     const parentGroup = this.#getCurrentGroup();
-    const nestedGroup = this.#createDrawGroup(getInvalidationSignature);
+    const nestedGroup = this.#createDrawGroup(scope, getInvalidationSignature);
 
     parentGroup.operations.push({
       type: "group",
@@ -71,10 +83,9 @@ class DrawGroupManager {
   static createPrimitiveSignature(
     type: string,
     props: Record<string, any>,
-    scopeCount: number,
     extraSignature?: string,
   ): string {
-    const base = `${type}|props:${stableSerialize(props)}|scopes:${scopeCount}`;
+    const base = `${type}|props:${stableSerialize(props)}`;
 
     if (!extraSignature || extraSignature.length === 0) {
       return base;
@@ -108,24 +119,14 @@ class DrawGroupManager {
     };
   }
 
-  // KNOWN LIMITATION: every group's cached offscreen surface is sized to
-  // the full canvas (`width`/`height` below), regardless of that group's
-  // own local bounds — a cache HIT still means blitting a canvas-sized
-  // bitmap every frame it's visited. This is why per-group caching skips
-  // the expensive *work* inside a static group but not the blit cost of
-  // reaching it (see the text-mask-gallery benchmark from Aug 2026).
-  //
-  // It isn't just wasteful: it's currently load-bearing. Positioning has no
-  // translate-to-offset step in this recursion at all — every leaf
-  // primitive independently re-applies its *entire* captured chain of
-  // ancestor clip scopes using absolute canvas coordinates (see
-  // ClipManager.renderWithScopes). Because every surface is canvas-sized
-  // and always blitted at (0,0), that absolute-coordinate rendering lands
-  // correctly "for free" at any nesting depth. Shrinking a group's surface
-  // to its own local bounds would require a leaf's ancestor-scope offset to
-  // be absorbed once, at that group's own surface boundary, rather than
-  // re-applied by every descendant leaf independently — a real redesign of
-  // the coordinate/compositing model, not a follow-up patch.
+  // Each non-root group's own scope is applied exactly once, by its parent,
+  // right here — never replayed per descendant leaf. That's what lets each
+  // group's cached surface shrink to its own local bounds (instead of being
+  // canvas-sized and always blitted at (0,0)): a rotated/scaled group's
+  // surface stores unrotated local content, and the rotation/scale is
+  // reapplied by the parent's context at composite time, which `drawImage`
+  // composites correctly natively (the same technique Pixi containers, Konva
+  // groups, and SVG <g> nesting use).
   renderToContext({ cache, targetContext, width, height }: RenderGroupsParams) {
     const groupSignatures = new Map<string, string>();
 
@@ -155,42 +156,90 @@ class DrawGroupManager {
       return signature;
     };
 
-    const renderGroup = (
+    const runOperationsDirectly = (
       group: DrawGroupNode,
       context: CanvasRenderingContext2D,
     ): void => {
-      const signature = buildGroupSignature(group);
+      group.operations.forEach((operation) => {
+        if (operation.type === "primitive") {
+          operation.render?.(context);
+          return;
+        }
 
-      cache.renderGroup({
-        groupId: group.id,
-        signature,
-        targetContext: context,
-        width,
-        height,
-        draw: (groupContext) => {
-          group.operations.forEach((operation) => {
-            if (operation.type === "primitive") {
-              operation.render?.(groupContext as CanvasRenderingContext2D);
-              return;
-            }
-
-            if (operation.group) {
-              renderGroup(
-                operation.group,
-                groupContext as CanvasRenderingContext2D,
-              );
-            }
-          });
-        },
+        if (operation.group) {
+          compositeGroup(operation.group, context);
+        }
       });
     };
 
-    renderGroup(this.#rootGroup, targetContext);
+    const compositeGroup = (
+      group: DrawGroupNode,
+      parentContext: CanvasRenderingContext2D,
+    ): void => {
+      if (!group.scope) {
+        // Root: identity scope, full-canvas bounds — the degenerate case of
+        // the cacheable branch below, not a bypass (preserves "root is also
+        // bitmap-cached").
+        cache.renderGroup({
+          groupId: group.id,
+          signature: buildGroupSignature(group),
+          targetContext: parentContext,
+          bounds: { x: 0, y: 0, width, height },
+          useLocalCoordinateContext: false,
+          scope: null,
+          draw: (surfaceContext) =>
+            runOperationsDirectly(group, surfaceContext as CanvasRenderingContext2D),
+        });
+        return;
+      }
+
+      parentContext.save();
+
+      try {
+        const compositeInfo = group.scope.getCompositeInfo?.(parentContext);
+
+        // The group's own transform/clip/offset/local-translate — unchanged
+        // logic from before, just invoked once here instead of once per
+        // descendant leaf.
+        group.scope.apply?.(parentContext);
+
+        if (!compositeInfo || !compositeInfo.isValid) {
+          // No composite info (a scope that doesn't describe local bounds)
+          // or invalid bounds: apply() has already no-op'd or clipped to
+          // nothing as appropriate — content still runs, unshifted, directly
+          // on the parent context, matching the pre-redesign semantics for
+          // an invalid frame.
+          runOperationsDirectly(group, parentContext);
+          return;
+        }
+
+        const { bounds, useLocalCoordinateContext } = compositeInfo;
+
+        cache.renderGroup({
+          groupId: group.id,
+          signature: buildGroupSignature(group),
+          targetContext: parentContext,
+          bounds,
+          useLocalCoordinateContext,
+          scope: group.scope,
+          draw: (surfaceContext) =>
+            runOperationsDirectly(group, surfaceContext as CanvasRenderingContext2D),
+        });
+      } finally {
+        parentContext.restore();
+      }
+    };
+
+    compositeGroup(this.#rootGroup, targetContext);
   }
 
-  #createDrawGroup(getInvalidationSignature: () => string): DrawGroupNode {
+  #createDrawGroup(
+    scope: ClipScope | null,
+    getInvalidationSignature: () => string,
+  ): DrawGroupNode {
     return {
       id: `group-${this.#groupIdCounter++}`,
+      scope,
       getInvalidationSignature,
       operations: [],
     };

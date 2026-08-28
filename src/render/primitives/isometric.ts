@@ -6,11 +6,10 @@ import type {
 } from "../../types";
 import ActiveMeasurementsManager from "../ActiveMeasurementsManager";
 import AppliedStylesManager from "../AppliedStylesManager";
-import ClipManager from "../ClipManager";
 import DrawGroupManager from "../DrawGroupManager";
 import IsometricView from "../IsometricView";
 import RenderWarningManager from "../RenderWarningManager";
-import { getClipScopesSignature, toIsometricStyles } from "../common";
+import { toIsometricStyles } from "../common";
 import { cuboid, tile } from "./isometricPrimitives/";
 
 import type {
@@ -18,7 +17,6 @@ import type {
   DrawProperties,
   IsometricOptions,
   RenderCollaborators,
-  RenderContextController,
 } from "../types";
 
 interface CreateIsometricPrimitiveParams extends RenderCollaborators {
@@ -62,7 +60,6 @@ const getIsometricMethods = (
 export const createIsometricPrimitive = ({
   timeInMs,
   registry,
-  clipManager,
   drawGroupManager,
   drawProperties,
   appliedStylesManager,
@@ -96,8 +93,6 @@ export const createIsometricPrimitive = ({
       appliedStylesManager.mergeStyles({} as PartialDrawStyles),
     );
 
-    const clipScopes = clipManager.captureScopes();
-    const scopeSignature = getClipScopesSignature(clipScopes);
     const targetGroupHandle = drawGroupManager.captureCurrentGroupHandle();
 
     registry.queue(
@@ -111,75 +106,52 @@ export const createIsometricPrimitive = ({
           signature: DrawGroupManager.createPrimitiveSignature(
             "isometric",
             queuedIsometricProps,
-            clipScopes.length,
-            `scope-signature:${scopeSignature}`,
           ),
           render: (targetContext) => {
-            const targetClipManager = new ClipManager(targetContext);
-            let activeTargetContext = targetContext;
-
-            const targetContextController: RenderContextController = {
-              getContext: () => activeTargetContext,
-              setContext: (nextContext: CanvasRenderingContext2D): void => {
-                activeTargetContext = nextContext;
-              },
-            };
-
             const inheritedStylesFromQueue =
               toIsometricStyles(queuedIsometricProps);
 
-            targetClipManager.renderWithScopes(
-              clipScopes,
-              () => {
-                appliedStylesManager.withStyles(
-                  inheritedStylesFromQueue,
-                  () => {
-                    const currentContext = targetContextController.getContext();
+            appliedStylesManager.withStyles(inheritedStylesFromQueue, () => {
+              targetContext.save();
 
-                    currentContext.save();
-
-                    try {
-                      currentContext.beginPath();
-                      currentContext.rect(
-                        queuedIsometricProps.x,
-                        queuedIsometricProps.y,
-                        queuedIsometricProps.width,
-                        queuedIsometricProps.height,
-                      );
-                      currentContext.clip();
-                      currentContext.translate(
-                        queuedIsometricProps.x,
-                        queuedIsometricProps.y,
-                      );
-
-                      const isometricView = new IsometricView(
-                        currentContext,
-                        queuedIsometricProps.width,
-                        queuedIsometricProps.height,
-                        queuedIsometricProps.tileWidth,
-                      );
-
-                      renderWarningManager.withIsometricRenderCallback(() => {
-                        callback(
-                          getIsometricMethods(isometricView, timeInMs, () =>
-                            toIsometricStyles(
-                              appliedStylesManager.mergeStyles(
-                                {} as PartialDrawStyles,
-                              ),
-                            ),
-                          ),
-                        );
-                      });
-
-                      isometricView.render();
-                    } finally {
-                      currentContext.restore();
-                    }
-                  },
+              try {
+                targetContext.beginPath();
+                targetContext.rect(
+                  queuedIsometricProps.x,
+                  queuedIsometricProps.y,
+                  queuedIsometricProps.width,
+                  queuedIsometricProps.height,
                 );
-              },
-              targetContextController,
-            );
+                targetContext.clip();
+                targetContext.translate(
+                  queuedIsometricProps.x,
+                  queuedIsometricProps.y,
+                );
+
+                const isometricView = new IsometricView(
+                  targetContext,
+                  queuedIsometricProps.width,
+                  queuedIsometricProps.height,
+                  queuedIsometricProps.tileWidth,
+                );
+
+                renderWarningManager.withIsometricRenderCallback(() => {
+                  callback(
+                    getIsometricMethods(isometricView, timeInMs, () =>
+                      toIsometricStyles(
+                        appliedStylesManager.mergeStyles(
+                          {} as PartialDrawStyles,
+                        ),
+                      ),
+                    ),
+                  );
+                });
+
+                isometricView.render();
+              } finally {
+                targetContext.restore();
+              }
+            });
           },
         });
       },

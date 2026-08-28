@@ -3,7 +3,6 @@ import ActiveMeasurementsManager from "./ActiveMeasurementsManager";
 import AnimatableRegistry from "./AnimatableRegistry";
 import AppliedStylesManager from "./AppliedStylesManager";
 import BoundsCollectionManager from "./BoundsCollectionManager";
-import ClipManager from "./ClipManager";
 import DrawGroupBitmapCache from "./DrawGroupBitmapCache";
 import DrawGroupManager from "./DrawGroupManager";
 import FrameMeasurementPassManager from "./FrameMeasurementPassManager";
@@ -14,7 +13,7 @@ import { createClipScope, withClipScopedGroup } from "./clipping";
 
 import type { PartialDrawStyles } from "../types";
 import type { IAnimatableLike } from "./Animatable";
-import type { ClipScope, RenderContextController } from "./types";
+import type { ClipScope } from "./types";
 
 import {
   DEFAULT_BLEND_MODE,
@@ -22,7 +21,6 @@ import {
   DEFAULT_STROKE_WIDTH,
   centerOf,
   createNoopAnimatable,
-  getClipScopesSignature,
 } from "./common";
 
 import { devicePixelRatio } from "../util/common";
@@ -92,7 +90,6 @@ export const createDrawContext = (): DrawContext => {
     drawGroupBitmapCache.beginFrame({ width, height, devicePixelRatio });
     renderWarningManager.beginFrame();
 
-    const clipManager = new ClipManager(context);
     const drawGroupManager = new DrawGroupManager();
     const frameMeasurementPassManager = new FrameMeasurementPassManager();
     const boundsCollectionManager = new BoundsCollectionManager();
@@ -128,7 +125,6 @@ export const createDrawContext = (): DrawContext => {
       renderWarningManager.warnIfOverlayPrimitiveInsideIsometric();
 
       const mergedProps = appliedStylesManager.mergeStyles(props);
-      const clipScopes = clipManager.captureScopes();
       const targetGroupHandle = drawGroupManager.captureCurrentGroupHandle();
       const activeBoundsCollector =
         boundsCollectionManager.getActiveCollector();
@@ -147,43 +143,17 @@ export const createDrawContext = (): DrawContext => {
           activeBoundsCollector?.includeBounds(getBounds?.(p) ?? null);
         }
 
-        const scopeSignature = getClipScopesSignature(clipScopes);
         const extraSignatureFromProps = getExtraSignature?.(p);
-        const combinedExtraSignature = [
-          `scope-signature:${scopeSignature}`,
-          extraSignatureFromProps,
-        ]
-          .filter((signaturePart): signaturePart is string =>
-            Boolean(signaturePart),
-          )
-          .join("|");
 
         const signature = DrawGroupManager.createPrimitiveSignature(
           primitiveType,
           p,
-          clipScopes.length,
-          combinedExtraSignature,
+          extraSignatureFromProps,
         );
 
         targetGroupHandle.pushPrimitiveOperation({
           signature,
-          render: (targetContext) => {
-            const targetClipManager = new ClipManager(targetContext);
-            let activeTargetContext = targetContext;
-
-            const targetContextController: RenderContextController = {
-              getContext: () => activeTargetContext,
-              setContext: (nextContext: CanvasRenderingContext2D): void => {
-                activeTargetContext = nextContext;
-              },
-            };
-
-            targetClipManager.renderWithScopes(
-              clipScopes,
-              () => renderFn(targetContextController.getContext(), p),
-              targetContextController,
-            );
-          },
+          render: (targetContext) => renderFn(targetContext, p),
         });
       });
     };
@@ -277,7 +247,6 @@ export const createDrawContext = (): DrawContext => {
         const clipScope = createScope(() => currentClipProps);
 
         withClipScopedGroup({
-          clipManager,
           drawGroupManager,
           clipScope,
           primitiveType: `${primitiveType}:frame`,
@@ -305,7 +274,6 @@ export const createDrawContext = (): DrawContext => {
 
     const renderCollaborators = {
       registry,
-      clipManager,
       drawGroupManager,
     };
 

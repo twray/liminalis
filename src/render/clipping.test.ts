@@ -2,7 +2,6 @@ import { describe, expect, it, vi } from "vitest";
 import type { ClosedPathDescriptor, TransformProps } from "./types";
 
 import { stableSerialize } from "../util";
-import ClipManager from "./ClipManager";
 import DrawGroupManager from "./DrawGroupManager";
 import { createClipScope, createGroupScope, withClipScopedGroup } from "./clipping";
 
@@ -67,6 +66,45 @@ describe("createClipScope", () => {
       );
 
       expect(scope.getSignature?.()).toContain("valid:0");
+    });
+  });
+
+  describe("getCompositeInfo", () => {
+    it("reports the descriptor's bounds and validity, and the local-coordinate-context flag", () => {
+      const descriptor = validDescriptor();
+      const scope = createClipScope(
+        () => ({ useLocalCoordinateContext: true }),
+        () => descriptor,
+      );
+
+      expect(scope.getCompositeInfo?.({} as CanvasRenderingContext2D)).toEqual({
+        bounds: descriptor.bounds,
+        isValid: true,
+        useLocalCoordinateContext: true,
+      });
+    });
+
+    it("reports isValid: false for an invalid descriptor", () => {
+      const scope = createClipScope(
+        () => ({}),
+        () => invalidDescriptor,
+      );
+
+      expect(
+        scope.getCompositeInfo?.({} as CanvasRenderingContext2D).isValid,
+      ).toBe(false);
+    });
+
+    it("defaults useLocalCoordinateContext to false when unset", () => {
+      const scope = createClipScope(
+        () => ({}),
+        () => validDescriptor(),
+      );
+
+      expect(
+        scope.getCompositeInfo?.({} as CanvasRenderingContext2D)
+          .useLocalCoordinateContext,
+      ).toBe(false);
     });
   });
 
@@ -162,6 +200,33 @@ describe("createGroupScope", () => {
     });
   });
 
+  describe("getCompositeInfo", () => {
+    it("reports the descriptor's bounds, validity, and local-coordinate-context flag", () => {
+      const descriptor = validDescriptor();
+      const scope = createGroupScope(
+        () => ({ useLocalCoordinateContext: true }),
+        () => descriptor,
+      );
+
+      expect(scope.getCompositeInfo?.({} as CanvasRenderingContext2D)).toEqual({
+        bounds: descriptor.bounds,
+        isValid: true,
+        useLocalCoordinateContext: true,
+      });
+    });
+
+    it("reports isValid: false for an invalid descriptor", () => {
+      const scope = createGroupScope(
+        () => ({}),
+        () => invalidDescriptor,
+      );
+
+      expect(
+        scope.getCompositeInfo?.({} as CanvasRenderingContext2D).isValid,
+      ).toBe(false);
+    });
+  });
+
   describe("apply", () => {
     it("does not clip content by default even when the descriptor is valid", () => {
       const { context, callOrder } = createMockContext();
@@ -246,21 +311,24 @@ describe("createGroupScope", () => {
 });
 
 describe("withClipScopedGroup", () => {
-  it("opens the clip scope, then a nested group keyed by the scope signature, then runs the callback", () => {
-    const context = createMockContext().context;
-    const clipManager = new ClipManager(context);
+  it("runs the callback with the nested group current, and threads the clip scope onto it", () => {
+    const { context, callOrder } = createMockContext();
     const drawGroupManager = new DrawGroupManager();
     const clipScope = createClipScope(
       () => ({}),
       () => validDescriptor(),
     );
     const run = vi.fn(() => {
-      // While run() executes, the scope should be active on the clip manager.
-      expect(clipManager.captureScopes()).toEqual([clipScope]);
+      // A primitive pushed during run() must land in the *nested* group, not
+      // root — proven below by it firing only once the nested group's own
+      // scope has been applied.
+      drawGroupManager.pushPrimitiveOperation({
+        signature: "inner-primitive",
+        render: () => callOrder.push("inner-primitive-render"),
+      });
     });
 
     withClipScopedGroup({
-      clipManager,
       drawGroupManager,
       clipScope,
       primitiveType: "group:frame",
@@ -269,12 +337,33 @@ describe("withClipScopedGroup", () => {
     });
 
     expect(run).toHaveBeenCalledTimes(1);
-    expect(clipManager.captureScopes()).toEqual([]);
+
+    const cache = {
+      renderGroup: ({ draw }: { draw: (ctx: CanvasRenderingContext2D) => void }) =>
+        draw(context),
+    };
+
+    drawGroupManager.renderToContext({
+      cache: cache as any,
+      targetContext: context,
+      width: 100,
+      height: 100,
+    });
+
+    // The nested group's own scope (clip trace) applied exactly once,
+    // before its content rendered — never replayed per leaf.
+    expect(callOrder).toEqual([
+      "save",
+      "beginPath",
+      "rect:10,20,100,50",
+      "clip",
+      "inner-primitive-render",
+      "restore",
+    ]);
   });
 
   it("pushes a primitive operation nested inside a new draw group", () => {
     const context = createMockContext().context;
-    const clipManager = new ClipManager(context);
     const drawGroupManager = new DrawGroupManager();
     const clipScope = createClipScope(
       () => ({}),
@@ -283,7 +372,6 @@ describe("withClipScopedGroup", () => {
     const render = vi.fn();
 
     withClipScopedGroup({
-      clipManager,
       drawGroupManager,
       clipScope,
       primitiveType: "group:frame",

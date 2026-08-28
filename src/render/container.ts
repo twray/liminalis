@@ -3,14 +3,9 @@ import type { IAnimatableLike } from "./Animatable";
 
 import type ActiveMeasurementsManager from "./ActiveMeasurementsManager";
 import BoundsCollectionManager from "./BoundsCollectionManager";
-import ClipManager from "./ClipManager";
 import DrawGroupManager from "./DrawGroupManager";
 import { createGroupScope, withClipScopedGroup } from "./clipping";
-import {
-  createBoundsCollector,
-  createNoopAnimatable,
-  getClipScopesSignature,
-} from "./common";
+import { createBoundsCollector, createNoopAnimatable } from "./common";
 
 import type {
   Bounds,
@@ -52,7 +47,6 @@ export const withImplicitMeasurementPass = ({
 interface PushContainerShowBoundsOperationParams {
   containerType: "group" | "layer";
   showBounds: GroupOptions["showBounds"] | LayerOptions["showBounds"];
-  clipManager: ClipManager;
   drawGroupManager: DrawGroupManager;
   getRenderRect: () => Bounds;
 }
@@ -60,7 +54,6 @@ interface PushContainerShowBoundsOperationParams {
 export const pushContainerShowBoundsOperation = ({
   containerType,
   showBounds,
-  clipManager,
   drawGroupManager,
   getRenderRect,
 }: PushContainerShowBoundsOperationParams): void => {
@@ -68,33 +61,25 @@ export const pushContainerShowBoundsOperation = ({
     return;
   }
 
-  const clipScopes = clipManager.captureScopes();
-  const scopeSignature = getClipScopesSignature(clipScopes);
-
   drawGroupManager.pushPrimitiveOperation({
     signature: DrawGroupManager.createPrimitiveSignature(
       `${containerType}:show-bounds`,
       {
         showBounds: true,
       },
-      clipScopes.length,
-      `scope-signature:${scopeSignature}`,
     ),
     render: (targetContext) => {
       const bounds = getRenderRect();
 
-      const targetClipManager = new ClipManager(targetContext);
-      targetClipManager.renderWithScopes(clipScopes, () => {
-        targetContext.save();
-        targetContext.beginPath();
-        targetContext.rect(bounds.x, bounds.y, bounds.width, bounds.height);
-        targetContext.fillStyle = "rgba(255, 0, 0, 0.12)";
-        targetContext.strokeStyle = "rgba(255, 0, 0, 0.7)";
-        targetContext.lineWidth = 1;
-        targetContext.fill();
-        targetContext.stroke();
-        targetContext.restore();
-      });
+      targetContext.save();
+      targetContext.beginPath();
+      targetContext.rect(bounds.x, bounds.y, bounds.width, bounds.height);
+      targetContext.fillStyle = "rgba(255, 0, 0, 0.12)";
+      targetContext.strokeStyle = "rgba(255, 0, 0, 0.7)";
+      targetContext.lineWidth = 1;
+      targetContext.fill();
+      targetContext.stroke();
+      targetContext.restore();
     },
   });
 };
@@ -175,7 +160,6 @@ export const createContainerPrimitive = <
   containerType,
   frameSignatureType,
   registry,
-  clipManager,
   drawGroupManager,
   createMeasurementContext,
   boundsCollectionManager,
@@ -298,7 +282,6 @@ export const createContainerPrimitive = <
         pushContainerShowBoundsOperation({
           containerType,
           showBounds: currentProps.showBounds,
-          clipManager,
           drawGroupManager,
           getRenderRect: () => {
             const state = resolveCurrentState();
@@ -322,7 +305,6 @@ export const createContainerPrimitive = <
       const clipScope = createGroupScope(toScopeProps, pathDescriptor);
 
       withClipScopedGroup({
-        clipManager,
         drawGroupManager,
         clipScope,
         primitiveType: frameSignatureType,

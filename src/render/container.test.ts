@@ -9,7 +9,6 @@ import type {
 import ActiveMeasurementsManager from "./ActiveMeasurementsManager";
 import AnimatableRegistry from "./AnimatableRegistry";
 import BoundsCollectionManager from "./BoundsCollectionManager";
-import ClipManager from "./ClipManager";
 import DrawGroupManager from "./DrawGroupManager";
 import FrameMeasurementPassManager from "./FrameMeasurementPassManager";
 import {
@@ -87,12 +86,10 @@ describe("pushContainerShowBoundsOperation", () => {
   it("does not push a draw operation when showBounds is not true", () => {
     const drawGroupManager = new DrawGroupManager();
     const pushSpy = vi.spyOn(drawGroupManager, "pushPrimitiveOperation");
-    const clipManager = new ClipManager(createMockContext().context);
 
     pushContainerShowBoundsOperation({
       containerType: "group",
       showBounds: undefined,
-      clipManager,
       drawGroupManager,
       getRenderRect: () => ({ x: 0, y: 0, width: 0, height: 0 }),
     });
@@ -102,14 +99,12 @@ describe("pushContainerShowBoundsOperation", () => {
 
   it("draws a translucent red rect over the bounds when showBounds is true", () => {
     const { context, calls } = createMockContext();
-    const clipManager = new ClipManager(context);
     const drawGroupManager = new DrawGroupManager();
     const bounds: Bounds = { x: 5, y: 10, width: 100, height: 50 };
 
     pushContainerShowBoundsOperation({
       containerType: "group",
       showBounds: true,
-      clipManager,
       drawGroupManager,
       getRenderRect: () => bounds,
     });
@@ -163,7 +158,6 @@ describe("createContainerPrimitive", () => {
     const registry = new AnimatableRegistry();
     registry.beginFrame(0);
 
-    const clipManager = new ClipManager(context);
     const drawGroupManager = new DrawGroupManager();
     const boundsCollectionManager = new BoundsCollectionManager();
     const frameMeasurementPassManager = new FrameMeasurementPassManager();
@@ -171,7 +165,6 @@ describe("createContainerPrimitive", () => {
 
     const commonParams: ContainerPrimitiveCommonParams = {
       registry,
-      clipManager,
       drawGroupManager,
       boundsCollectionManager,
       activeMeasurementsManager,

@@ -16,7 +16,6 @@ import type {
 } from "../types";
 import type { IAnimatableLike } from "./Animatable";
 import type AnimatableRegistry from "./AnimatableRegistry";
-import type ClipManager from "./ClipManager";
 import type DrawGroupManager from "./DrawGroupManager";
 
 export interface Bounds {
@@ -54,24 +53,44 @@ export interface TransformProps {
 
 export interface ContextGlobalProps extends WithOpacity, WithBlend {}
 
-export interface ClipScope {
-  apply?: (context: CanvasRenderingContext2D) => void;
-  getSignature?: () => string;
-  renderWithScope?: (params: {
-    context: CanvasRenderingContext2D;
-    renderWithinScope: () => void;
-    contextController: RenderContextController;
-  }) => void;
+// A CompositeInfo-bearing ClipScope corresponds 1:1 to a DrawGroupNode
+// (see withClipScopedGroup) and describes everything the compositor needs to
+// give that group its own correctly-sized, correctly-positioned offscreen
+// surface: its local (pre-own-transform) bounds, whether those bounds are
+// usable, and whether descendants already author coordinates relative to the
+// group's own (0,0) (useLocalCoordinateContext) or relative to the space the
+// group itself was declared in.
+export interface ClipScopeCompositeInfo {
+  bounds: Bounds;
+  isValid: boolean;
+  useLocalCoordinateContext: boolean;
 }
 
-export interface RenderContextController {
-  getContext: () => CanvasRenderingContext2D;
-  setContext: (context: CanvasRenderingContext2D) => void;
+export interface ClipScope {
+  // Applied exactly once, by this scope's *parent*, immediately before the
+  // group's own (possibly cached) local surface is composited in — never
+  // replayed per descendant leaf. See DrawGroupManager's compositeGroup.
+  apply?: (context: CanvasRenderingContext2D) => void;
+  getSignature?: () => string;
+  // context is provided only for scopes that need real canvas measurement
+  // APIs (e.g. text's measureText) to resolve their own bounds; scopes whose
+  // bounds are purely prop-derived (group/clip) can ignore it.
+  getCompositeInfo?: (
+    context: CanvasRenderingContext2D,
+  ) => ClipScopeCompositeInfo;
+  // Runs once, immediately after a group's own content has been drawn into
+  // its local surface and before that surface is cached/blitted — lets a
+  // scope post-process the surface's own pixels (e.g. text's
+  // destination-in glyph masking) in the same local coordinate frame the
+  // content was just drawn in.
+  postProcessLocalSurface?: (
+    surfaceContext: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
+    bounds: Bounds,
+  ) => void;
 }
 
 export interface RenderCollaborators {
   registry: AnimatableRegistry;
-  clipManager: ClipManager;
   drawGroupManager: DrawGroupManager;
 }
 

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import DrawGroupManager from "./DrawGroupManager";
+import type { ClipScope } from "./types";
 
 const createPassthroughCache = () => ({
   renderGroup: vi.fn(
@@ -14,40 +15,43 @@ const createPassthroughCache = () => ({
   ),
 });
 
+// Used throughout for tests that only care about tree/stack mechanics, not
+// scope application — a real ClipScope is only exercised by the dedicated
+// scope-aware tests further down.
+const noScope = null;
+
+const createMockContext = () =>
+  ({ save: vi.fn(), restore: vi.fn() }) as unknown as CanvasRenderingContext2D;
+
 describe("DrawGroupManager", () => {
   describe("createPrimitiveSignature", () => {
-    it("combines type, serialized props, and scope count", () => {
-      const signature = DrawGroupManager.createPrimitiveSignature(
-        "rect",
-        { x: 1, y: 2 },
-        0,
-      );
+    it("combines type and serialized props", () => {
+      const signature = DrawGroupManager.createPrimitiveSignature("rect", {
+        x: 1,
+        y: 2,
+      });
 
-      expect(signature).toBe(
-        "rect|props:{\"x\":1.000000,\"y\":2.000000}|scopes:0",
-      );
+      expect(signature).toBe('rect|props:{"x":1.000000,"y":2.000000}');
     });
 
     it("appends an extra signature segment when provided", () => {
       const signature = DrawGroupManager.createPrimitiveSignature(
         "rect",
         {},
-        1,
         "scope-signature:abc",
       );
 
-      expect(signature).toBe("rect|props:{}|scopes:1|extra:scope-signature:abc");
+      expect(signature).toBe("rect|props:{}|extra:scope-signature:abc");
     });
 
     it("omits the extra segment when it is an empty string", () => {
       const signature = DrawGroupManager.createPrimitiveSignature(
         "rect",
         {},
-        0,
         "",
       );
 
-      expect(signature).toBe("rect|props:{}|scopes:0");
+      expect(signature).toBe("rect|props:{}");
     });
   });
 
@@ -77,7 +81,10 @@ describe("DrawGroupManager", () => {
       const manager = new DrawGroupManager();
       const callback = vi.fn();
 
-      manager.withNestedGroup(() => "sig", callback);
+      manager.withNestedGroup(
+        { scope: noScope, getInvalidationSignature: () => "sig" },
+        callback,
+      );
 
       expect(callback).toHaveBeenCalledTimes(1);
     });
@@ -90,7 +97,7 @@ describe("DrawGroupManager", () => {
       const nestedRender = vi.fn();
 
       manager.withNestedGroup(
-        () => "nested-sig",
+        { scope: noScope, getInvalidationSignature: () => "nested-sig" },
         () => {
           manager.pushPrimitiveOperation({
             signature: "nested",
@@ -119,7 +126,10 @@ describe("DrawGroupManager", () => {
       const targetContext = {} as CanvasRenderingContext2D;
       const render = vi.fn();
 
-      manager.withNestedGroup(() => "sig", () => {});
+      manager.withNestedGroup(
+        { scope: noScope, getInvalidationSignature: () => "sig" },
+        () => {},
+      );
       manager.pushPrimitiveOperation({ signature: "after-nested", render });
 
       manager.renderToContext({
@@ -138,9 +148,12 @@ describe("DrawGroupManager", () => {
       const error = new Error("boom");
 
       expect(() => {
-        manager.withNestedGroup(() => "sig", () => {
-          throw error;
-        });
+        manager.withNestedGroup(
+          { scope: noScope, getInvalidationSignature: () => "sig" },
+          () => {
+            throw error;
+          },
+        );
       }).toThrow(error);
 
       const cache = createPassthroughCache();
@@ -163,7 +176,7 @@ describe("DrawGroupManager", () => {
       const order: string[] = [];
 
       manager.withNestedGroup(
-        () => "outer",
+        { scope: noScope, getInvalidationSignature: () => "outer" },
         () => {
           manager.pushPrimitiveOperation({
             signature: "outer-primitive",
@@ -171,7 +184,7 @@ describe("DrawGroupManager", () => {
           });
 
           manager.withNestedGroup(
-            () => "inner",
+            { scope: noScope, getInvalidationSignature: () => "inner" },
             () => {
               manager.pushPrimitiveOperation({
                 signature: "inner-primitive",
@@ -198,9 +211,15 @@ describe("DrawGroupManager", () => {
       const manager = new DrawGroupManager();
       const cache = createPassthroughCache();
 
-      manager.withNestedGroup(() => "a", () => {
-        manager.withNestedGroup(() => "b", () => {});
-      });
+      manager.withNestedGroup(
+        { scope: noScope, getInvalidationSignature: () => "a" },
+        () => {
+          manager.withNestedGroup(
+            { scope: noScope, getInvalidationSignature: () => "b" },
+            () => {},
+          );
+        },
+      );
 
       manager.renderToContext({
         cache: cache as any,
@@ -209,7 +228,9 @@ describe("DrawGroupManager", () => {
         height: 100,
       });
 
-      const groupIds = cache.renderGroup.mock.calls.map((call) => call[0].groupId);
+      const groupIds = cache.renderGroup.mock.calls.map(
+        (call) => call[0].groupId,
+      );
 
       expect(groupIds).toEqual(["group-0", "group-1", "group-2"]);
     });
@@ -218,7 +239,10 @@ describe("DrawGroupManager", () => {
       const manager = new DrawGroupManager();
       const cache = createPassthroughCache();
 
-      manager.pushPrimitiveOperation({ signature: "primitive-sig", render: vi.fn() });
+      manager.pushPrimitiveOperation({
+        signature: "primitive-sig",
+        render: vi.fn(),
+      });
 
       manager.renderToContext({
         cache: cache as any,
@@ -241,7 +265,7 @@ describe("DrawGroupManager", () => {
       const nestedRender = vi.fn();
 
       manager.withNestedGroup(
-        () => "sig",
+        { scope: noScope, getInvalidationSignature: () => "sig" },
         () => {
           manager.pushPrimitiveOperation({
             signature: "nested",
@@ -273,6 +297,127 @@ describe("DrawGroupManager", () => {
 
       expect(nestedRender).toHaveBeenCalledWith(innerContext);
     });
+
+    it("gives the root group full-canvas bounds and a null scope", () => {
+      const manager = new DrawGroupManager();
+      const cache = createPassthroughCache();
+
+      manager.renderToContext({
+        cache: cache as any,
+        targetContext: {} as CanvasRenderingContext2D,
+        width: 800,
+        height: 600,
+      });
+
+      const rootCall = cache.renderGroup.mock.calls[0]?.[0];
+
+      expect(rootCall.bounds).toEqual({ x: 0, y: 0, width: 800, height: 600 });
+      expect(rootCall.useLocalCoordinateContext).toBe(false);
+      expect(rootCall.scope).toBeNull();
+    });
+
+    it("applies a nested group's own scope exactly once and passes its composite bounds through to the cache", () => {
+      const manager = new DrawGroupManager();
+      const cache = createPassthroughCache();
+      const scope: ClipScope = {
+        apply: vi.fn(),
+        getCompositeInfo: () => ({
+          bounds: { x: 5, y: 10, width: 20, height: 30 },
+          isValid: true,
+          useLocalCoordinateContext: true,
+        }),
+      };
+
+      manager.withNestedGroup(
+        { scope, getInvalidationSignature: () => "scoped" },
+        () => {
+          manager.pushPrimitiveOperation({
+            signature: "inner",
+            render: vi.fn(),
+          });
+        },
+      );
+
+      manager.renderToContext({
+        cache: cache as any,
+        targetContext: createMockContext(),
+        width: 800,
+        height: 600,
+      });
+
+      const nestedCall = cache.renderGroup.mock.calls.find(
+        (call) => call[0].groupId === "group-1",
+      )?.[0];
+
+      expect(nestedCall.bounds).toEqual({ x: 5, y: 10, width: 20, height: 30 });
+      expect(nestedCall.useLocalCoordinateContext).toBe(true);
+      expect(nestedCall.scope).toBe(scope);
+      expect(scope.apply).toHaveBeenCalledTimes(1);
+    });
+
+    it("bypasses the cache and runs a group's operations directly on the parent context when its scope reports invalid bounds", () => {
+      const manager = new DrawGroupManager();
+      const cache = createPassthroughCache();
+      const render = vi.fn();
+      const scope: ClipScope = {
+        apply: vi.fn(),
+        getCompositeInfo: () => ({
+          bounds: { x: 0, y: 0, width: 0, height: 0 },
+          isValid: false,
+          useLocalCoordinateContext: false,
+        }),
+      };
+
+      manager.withNestedGroup(
+        { scope, getInvalidationSignature: () => "invalid" },
+        () => {
+          manager.pushPrimitiveOperation({ signature: "inner", render });
+        },
+      );
+
+      const targetContext = createMockContext();
+
+      manager.renderToContext({
+        cache: cache as any,
+        targetContext,
+        width: 800,
+        height: 600,
+      });
+
+      // Only the root's own renderGroup call happens — the invalid-bounds
+      // group never reaches the cache at all, matching how an invalid clip
+      // scope's apply() already no-ops without transform/clip/offset, so
+      // content still renders, unshifted, directly on the parent context.
+      expect(cache.renderGroup).toHaveBeenCalledTimes(1);
+      expect(scope.apply).toHaveBeenCalledTimes(1);
+      expect(render).toHaveBeenCalledWith(targetContext);
+    });
+
+    it("bypasses the cache when a scope has no getCompositeInfo (e.g. a custom renderWithScope-style scope)", () => {
+      const manager = new DrawGroupManager();
+      const cache = createPassthroughCache();
+      const render = vi.fn();
+      const scope: ClipScope = {};
+
+      manager.withNestedGroup(
+        { scope, getInvalidationSignature: () => "no-composite-info" },
+        () => {
+          manager.pushPrimitiveOperation({ signature: "inner", render });
+        },
+      );
+
+      const targetContext = createMockContext();
+
+      manager.renderToContext({
+        cache: cache as any,
+        targetContext,
+        width: 800,
+        height: 600,
+      });
+
+      expect(cache.renderGroup).toHaveBeenCalledTimes(1);
+      expect(render).toHaveBeenCalledWith(targetContext);
+    });
   });
 
   describe("captureCurrentGroupHandle", () => {
@@ -283,10 +428,13 @@ describe("DrawGroupManager", () => {
       const rootRender = vi.fn();
       let nestedHandle: ReturnType<DrawGroupManager["captureCurrentGroupHandle"]>;
 
-      manager.withNestedGroup(() => "nested", () => {
-        // Captured *while* the nested group is current...
-        nestedHandle = manager.captureCurrentGroupHandle();
-      });
+      manager.withNestedGroup(
+        { scope: noScope, getInvalidationSignature: () => "nested" },
+        () => {
+          // Captured *while* the nested group is current...
+          nestedHandle = manager.captureCurrentGroupHandle();
+        },
+      );
 
       // ...but pushed through only after the nested scope has already
       // exited and the stack is back to root. This mirrors exactly how
@@ -322,9 +470,15 @@ describe("DrawGroupManager", () => {
 
       const handle = manager.captureCurrentGroupHandle();
 
-      manager.withNestedGroup(() => "unrelated", () => {
-        manager.withNestedGroup(() => "deeper", () => {});
-      });
+      manager.withNestedGroup(
+        { scope: noScope, getInvalidationSignature: () => "unrelated" },
+        () => {
+          manager.withNestedGroup(
+            { scope: noScope, getInvalidationSignature: () => "deeper" },
+            () => {},
+          );
+        },
+      );
 
       handle.pushPrimitiveOperation({
         signature: "root-level-primitive",

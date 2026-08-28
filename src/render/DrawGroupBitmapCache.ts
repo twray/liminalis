@@ -1,3 +1,5 @@
+import type { Bounds, ClipScope } from "./types";
+
 interface BitmapCacheEnvironment {
   width: number;
   height: number;
@@ -8,8 +10,19 @@ interface RenderGroupParams {
   groupId: string;
   signature: string;
   targetContext: CanvasRenderingContext2D;
-  width: number;
-  height: number;
+  bounds: Bounds;
+  // Whether descendants already author coordinates relative to this group's
+  // own (0,0) (layer()/place()/text-with-local-context) or relative to the
+  // space the group itself was declared in (group(), shape-as-frame clips).
+  // Determines whether the local surface needs an internal offset translate
+  // to line up authored coordinates with its own small pixel grid, and where
+  // the finished surface gets blitted back onto the parent.
+  useLocalCoordinateContext: boolean;
+  // Only consulted for its optional postProcessLocalSurface hook (e.g.
+  // text()'s destination-in glyph masking) — everything else about this
+  // group's own transform has already been applied to targetContext by the
+  // caller before renderGroup is invoked.
+  scope: ClipScope | null;
   draw: (
     context: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
   ) => void;
@@ -107,13 +120,28 @@ class DrawGroupBitmapCache {
     groupId,
     signature,
     targetContext,
-    width,
-    height,
+    bounds,
+    useLocalCoordinateContext,
+    scope,
     draw,
   }: RenderGroupParams): void {
+    const { x: boundsX, y: boundsY, width, height } = bounds;
     const pixelRatio = Math.max(1, this.#environment.devicePixelRatio || 1);
     const backingWidth = Math.max(1, Math.round(width * pixelRatio));
     const backingHeight = Math.max(1, Math.round(height * pixelRatio));
+
+    // When useLocalCoordinateContext is true, the caller's own apply() has
+    // already translated the parent context's origin to (boundsX, boundsY)
+    // before we were invoked — descendants already author 0,0-relative, so
+    // the surface blits at the (now-shifted) origin. When false, descendants
+    // author coordinates in the pre-group frame, so the surface needs an
+    // internal translate(-boundsX, -boundsY) to remap them onto its own
+    // small pixel grid, and blits back at (boundsX, boundsY) since the
+    // parent's origin was never shifted. Both are sign-agnostic: a negative
+    // boundsX just becomes a positive internal translate and a negative
+    // blit target x, both valid canvas operations.
+    const drawImageX = useLocalCoordinateContext ? 0 : boundsX;
+    const drawImageY = useLocalCoordinateContext ? 0 : boundsY;
 
     const targetCanvas = (targetContext as { canvas?: unknown }).canvas as
       | { getContext?: unknown }
@@ -121,7 +149,14 @@ class DrawGroupBitmapCache {
     const canUseBitmapCaching =
       !!targetCanvas && typeof targetCanvas.getContext === "function";
 
-    if (!canUseBitmapCaching) {
+    // A scope with its own post-processing step (e.g. text()'s
+    // destination-in glyph masking) needs an isolated local surface to
+    // operate on regardless of whether the generic bitmap-caching duck-type
+    // check passes — masking the shared target context directly would erase
+    // whatever unrelated content already sits on it.
+    const requiresLocalSurface = canUseBitmapCaching || !!scope?.postProcessLocalSurface;
+
+    if (!requiresLocalSurface) {
       draw(targetContext);
       return;
     }
@@ -129,7 +164,7 @@ class DrawGroupBitmapCache {
     const cachedEntry = this.#cachedGroups.get(groupId);
 
     if (cachedEntry && cachedEntry.signature === signature) {
-      targetContext.drawImage(cachedEntry.surface, 0, 0, width, height);
+      targetContext.drawImage(cachedEntry.surface, drawImageX, drawImageY, width, height);
       return;
     }
 
@@ -156,14 +191,20 @@ class DrawGroupBitmapCache {
       surfaceContext.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
     }
 
+    if (!useLocalCoordinateContext) {
+      surfaceContext.translate?.(-boundsX, -boundsY);
+    }
+
     draw(surfaceContext);
+
+    scope?.postProcessLocalSurface?.(surfaceContext, bounds);
 
     this.#cachedGroups.set(groupId, {
       signature,
       surface,
     });
 
-    targetContext.drawImage(surface, 0, 0, width, height);
+    targetContext.drawImage(surface, drawImageX, drawImageY, width, height);
   }
 }
 

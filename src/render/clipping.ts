@@ -1,6 +1,5 @@
 import { degreesToRadians, stableSerialize } from "../util";
-import { getClipScopesSignature, resolveTransformOrigin } from "./common";
-import type ClipManager from "./ClipManager";
+import { resolveTransformOrigin } from "./common";
 import DrawGroupManager from "./DrawGroupManager";
 
 import type { Point2D } from "../types";
@@ -113,6 +112,16 @@ export const createClipScope = <
         `valid:${descriptor.isValid ? 1 : 0}`,
       ].join("|");
     },
+    getCompositeInfo: () => {
+      const props = getProps();
+      const descriptor = getPathDescriptor(props);
+
+      return {
+        bounds: descriptor.bounds,
+        isValid: descriptor.isValid,
+        useLocalCoordinateContext: !!props.useLocalCoordinateContext,
+      };
+    },
     apply: (context: CanvasRenderingContext2D): void => {
       const props = getProps();
       const descriptor = getPathDescriptor(props);
@@ -159,6 +168,16 @@ export const createGroupScope = <
         `valid:${descriptor.isValid ? 1 : 0}`,
       ].join("|");
     },
+    getCompositeInfo: () => {
+      const props = getProps();
+      const descriptor = getPathDescriptor(props);
+
+      return {
+        bounds: descriptor.bounds,
+        isValid: descriptor.isValid,
+        useLocalCoordinateContext: !!props.useLocalCoordinateContext,
+      };
+    },
     apply: (context: CanvasRenderingContext2D): void => {
       const props = getProps();
       const descriptor = getPathDescriptor(props);
@@ -198,7 +217,6 @@ export const createGroupScope = <
 };
 
 interface WithClipScopedGroupParams {
-  clipManager: ClipManager;
   drawGroupManager: DrawGroupManager;
   clipScope: ClipScope;
   primitiveType: string;
@@ -206,31 +224,29 @@ interface WithClipScopedGroupParams {
   run: () => void;
 }
 
-// Opens a clip scope, then a nested draw group keyed by that scope's
-// signature, and runs `run` inside both. Shared by any primitive that can
-// act as a clip-scoped container (shape-as-frame primitives in index.ts,
-// group()/layer() in container.ts) so the clip <-> cache-signature wiring
-// exists in exactly one place.
+// Opens a nested draw group carrying this clip scope, and runs `run` inside
+// it. Shared by any primitive that can act as a clip-scoped container
+// (shape-as-frame primitives in index.ts, group()/layer() in container.ts,
+// text()'s mask frame) so the clip <-> cache-signature wiring exists in
+// exactly one place. The scope is applied exactly once, by the compositor,
+// when this group is composited into its parent — never replayed per
+// descendant leaf (see DrawGroupManager.renderToContext).
 export const withClipScopedGroup = ({
-  clipManager,
   drawGroupManager,
   clipScope,
   primitiveType,
   getSignatureProps,
   run,
 }: WithClipScopedGroupParams): void => {
-  clipManager.withScope(clipScope, () => {
-    const currentScopes = clipManager.captureScopes();
-
-    drawGroupManager.withNestedGroup(() => {
-      const scopeSignature = getClipScopesSignature(currentScopes);
-
-      return DrawGroupManager.createPrimitiveSignature(
-        primitiveType,
-        getSignatureProps(),
-        currentScopes.length,
-        `scope-signature:${scopeSignature}`,
-      );
-    }, run);
-  });
+  drawGroupManager.withNestedGroup(
+    {
+      scope: clipScope,
+      getInvalidationSignature: () =>
+        DrawGroupManager.createPrimitiveSignature(
+          primitiveType,
+          getSignatureProps(),
+        ),
+    },
+    run,
+  );
 };

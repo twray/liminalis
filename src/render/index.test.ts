@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { IAnimatableLike } from "./Animatable";
+import { getTextBounds } from "./primitives";
 import type { BezierProps, Bounds, DrawMethods, RectProps } from "./types";
 
 // We test the internal functions by creating a mock canvas context
@@ -1678,10 +1679,25 @@ describe("drawMethods transform props", () => {
           140,
         );
         expect(offscreenContext.strokeText).not.toHaveBeenCalled();
+
+        // The mask's offscreen surface is now sized and positioned to the
+        // text's own local bounds — not the full canvas blitted at (0,0) —
+        // which is the whole point of local-bounds bitmap caching. Bounds
+        // are computed with the same ambient default stroke style/width
+        // appliedStylesManager merges in before text() ever sees its props.
+        const bounds = getTextBounds(mockContext, "Mask", {
+          x: 120,
+          y: 140,
+          fontSize: "48px",
+          strokeStyle: "#333",
+          strokeWidth: 1,
+        });
         expect(mockContext.drawImage).toHaveBeenCalledWith(
           offscreenCanvas,
-          0,
-          0,
+          bounds.x,
+          bounds.y,
+          bounds.width,
+          bounds.height,
         );
       });
 
@@ -1765,10 +1781,20 @@ describe("drawMethods transform props", () => {
 
         expect(offscreenContext.fillText).toHaveBeenCalledWith("Mask", 80, 90);
         expect(offscreenContext.strokeText).not.toHaveBeenCalled();
+
+        const bounds = getTextBounds(mockContext, "Mask", {
+          x: 80,
+          y: 90,
+          fontSize: "36px",
+          strokeStyle: "#333",
+          strokeWidth: 1,
+        });
         expect(mockContext.drawImage).toHaveBeenCalledWith(
           offscreenCanvas,
-          0,
-          0,
+          bounds.x,
+          bounds.y,
+          bounds.width,
+          bounds.height,
         );
 
         vi.doUnmock("../core/ImageAssetCache");
@@ -3389,12 +3415,15 @@ describe("drawMethods transform props", () => {
         0,
       );
 
-      // One translation for child rect + one for show-bounds render under the same local scope.
+      // The layer's own local-scope translate is applied once, by the
+      // compositor, when the layer is composited — not replayed once per
+      // leaf (the child rect and the show-bounds rect both render under a
+      // single shared translate call).
       const localTranslateCalls = vi
         .mocked(mockContext.translate)
         .mock.calls.filter((call) => call[0] === 100 && call[1] === 100).length;
 
-      expect(localTranslateCalls).toBe(2);
+      expect(localTranslateCalls).toBe(1);
       expect(mockContext.rect).toHaveBeenCalledWith(0, 0, 50, 50);
     });
 
@@ -3444,12 +3473,14 @@ describe("drawMethods transform props", () => {
       // Local derived bounds should expand from width 150 -> 250 as child content animates.
       expect(mockContext.rect).toHaveBeenCalledWith(0, 0, 250, 50);
 
-      // Two child rect renders + one show-bounds render all under animated local translation.
+      // The layer's own local-scope translate is applied once, by the
+      // compositor — both child rects and the show-bounds rect render
+      // under that single shared translate call, not one replay each.
       const translatedCalls = vi
         .mocked(mockContext.translate)
         .mock.calls.filter((call) => call[0] === 100 && call[1] === 100).length;
 
-      expect(translatedCalls).toBe(3);
+      expect(translatedCalls).toBe(1);
     });
 
     it("layer() show bounds animate with offset content bounds changes", async () => {
@@ -3793,7 +3824,7 @@ describe("drawMethods transform props", () => {
       (globalThis as any).OffscreenCanvas = previousOffscreenCanvas;
     });
 
-    it("nested layer showBounds rerenders when parent layer rotation animates (cache enabled)", async () => {
+    it("nested layer recomposites without redrawing its own content when only an ancestor's rotation animates (cache enabled)", async () => {
       const { createDrawContext } = await import("./index");
       const drawContext = createDrawContext();
 
@@ -3847,6 +3878,14 @@ describe("drawMethods transform props", () => {
             ),
             canvas: { width, height },
           } as unknown as CanvasRenderingContext2D;
+
+          // A real OffscreenCanvas's context.canvas points back to the
+          // canvas itself (which has its own getContext) — without this, a
+          // group nested inside another cached group's surface sees a
+          // canvas with no getContext on the way down and silently bypasses
+          // its own cache check, which is exactly the bug this test exists
+          // to catch.
+          (this.context as unknown as { canvas: unknown }).canvas = this;
 
           MockOffscreenCanvas.instances.push(this);
         }
@@ -3890,14 +3929,6 @@ describe("drawMethods transform props", () => {
         ).animateTo({ rotate: 45 }, { at: 0, duration: 1000 });
       };
 
-      drawContext.executeDrawCallback(
-        renderCallback,
-        cacheableContext,
-        800,
-        600,
-        0,
-      );
-
       const countRotationsAt45 = (): number =>
         MockOffscreenCanvas.instances.reduce((count, surface) => {
           const rotates = vi
@@ -3909,7 +3940,33 @@ describe("drawMethods transform props", () => {
           return count + rotates;
         }, 0);
 
+      const countInnerShowBoundsRects = (): number =>
+        MockOffscreenCanvas.instances.reduce((count, surface) => {
+          const rectCalls = vi
+            .mocked(surface.context.rect)
+            .mock.calls.filter(
+              (call) =>
+                call[0] === 0 &&
+                call[1] === 0 &&
+                call[2] === 250 &&
+                call[3] === 100,
+            ).length;
+
+          return count + rectCalls;
+        }, 0);
+
+      drawContext.executeDrawCallback(
+        renderCallback,
+        cacheableContext,
+        800,
+        600,
+        0,
+      );
+
       expect(countRotationsAt45()).toBe(0);
+
+      const firstFrameInnerRects = countInnerShowBoundsRects();
+      expect(firstFrameInnerRects).toBeGreaterThan(0);
 
       drawContext.executeDrawCallback(
         renderCallback,
@@ -3919,13 +3976,21 @@ describe("drawMethods transform props", () => {
         1000,
       );
 
-      // Parent rotation should invalidate nested cached groups so inner showBounds rerenders.
+      // The ancestor's rotation is applied when *compositing* it in...
       expect(countRotationsAt45()).toBeGreaterThan(0);
+
+      // ...but the inner layer's own content and props never changed, so
+      // its cache hits — its own show-bounds rect must not redraw a second
+      // time just because an unrelated ancestor's transform changed. This
+      // is the actual point of local-bounds group compositing: a group's
+      // own cache is keyed by its own local state, not by what any ancestor
+      // happens to be doing.
+      expect(countInnerShowBoundsRects()).toBe(firstFrameInnerRects);
 
       (globalThis as any).OffscreenCanvas = previousOffscreenCanvas;
     });
 
-    it("nested explicit layer showBounds redraws while parent layer rotates (cache enabled)", async () => {
+    it("nested explicit layer showBounds does not redraw while parent layer rotates (cache enabled)", async () => {
       const { createDrawContext } = await import("./index");
       const drawContext = createDrawContext();
 
@@ -3979,6 +4044,13 @@ describe("drawMethods transform props", () => {
             ),
             canvas: { width, height },
           } as unknown as CanvasRenderingContext2D;
+
+          // See the equivalent comment in the previous test: without this
+          // self-reference, a group nested inside another cached group's
+          // surface always fails the canvas.getContext duck-type check and
+          // silently bypasses its own cache, redrawing every frame
+          // regardless of whether its own content actually changed.
+          (this.context as unknown as { canvas: unknown }).canvas = this;
 
           MockOffscreenCanvas.instances.push(this);
         }
@@ -4047,6 +4119,17 @@ describe("drawMethods transform props", () => {
           return count + rectCalls;
         }, 0);
 
+      const countRotationsAt45 = (): number =>
+        MockOffscreenCanvas.instances.reduce((count, surface) => {
+          const rotates = vi
+            .mocked(surface.context.rotate)
+            .mock.calls.filter(
+              (call) => Math.abs(call[0] - (45 * Math.PI) / 180) < 1e-9,
+            ).length;
+
+          return count + rotates;
+        }, 0);
+
       drawContext.executeDrawCallback(
         renderCallback,
         cacheableContext,
@@ -4055,6 +4138,8 @@ describe("drawMethods transform props", () => {
         0,
       );
       const firstFrameShowBoundsRects = countInnerShowBoundsRects();
+      expect(firstFrameShowBoundsRects).toBeGreaterThan(0);
+      expect(countRotationsAt45()).toBe(0);
 
       drawContext.executeDrawCallback(
         renderCallback,
@@ -4066,10 +4151,134 @@ describe("drawMethods transform props", () => {
 
       const secondFrameShowBoundsRects = countInnerShowBoundsRects();
 
-      // Inner layer bounds should redraw on the animated frame, not stay frozen in cache.
-      expect(secondFrameShowBoundsRects).toBeGreaterThan(
-        firstFrameShowBoundsRects,
+      // The outer layer's rotation is applied when compositing it in...
+      expect(countRotationsAt45()).toBeGreaterThan(0);
+
+      // ...but the inner layer's own content and props never changed, so its
+      // cache hits — its show-bounds rect must not redraw a second time just
+      // because an unrelated ancestor's transform changed.
+      expect(secondFrameShowBoundsRects).toBe(firstFrameShowBoundsRects);
+
+      (globalThis as any).OffscreenCanvas = previousOffscreenCanvas;
+    });
+
+    it("masks correctly when nested inside a rotated cacheable ancestor group (previously a known gap)", async () => {
+      const { createDrawContext } = await import("./index");
+      const drawContext = createDrawContext();
+
+      const previousOffscreenCanvas = (globalThis as any).OffscreenCanvas;
+
+      class MockOffscreenCanvas {
+        static instances: MockOffscreenCanvas[] = [];
+
+        width: number;
+        height: number;
+        context: CanvasRenderingContext2D;
+
+        constructor(width: number, height: number) {
+          this.width = width;
+          this.height = height;
+          this.context = {
+            save: vi.fn(),
+            restore: vi.fn(),
+            translate: vi.fn(),
+            rotate: vi.fn(),
+            scale: vi.fn(),
+            setTransform: vi.fn(),
+            clearRect: vi.fn(),
+            beginPath: vi.fn(),
+            closePath: vi.fn(),
+            clip: vi.fn(),
+            ellipse: vi.fn(),
+            arc: vi.fn(),
+            rect: vi.fn(),
+            roundRect: vi.fn(),
+            moveTo: vi.fn(),
+            lineTo: vi.fn(),
+            fill: vi.fn(),
+            stroke: vi.fn(),
+            fillRect: vi.fn(),
+            fillText: vi.fn(),
+            strokeText: vi.fn(),
+            drawImage: vi.fn(),
+            globalAlpha: 1,
+            globalCompositeOperation: "source-over",
+            fillStyle: "",
+            strokeStyle: "",
+            lineWidth: 1,
+            measureText: vi.fn(
+              (value: string) =>
+                ({
+                  width: value.length * 10,
+                  actualBoundingBoxAscent: 10,
+                  actualBoundingBoxDescent: 2,
+                }) as TextMetrics,
+            ),
+            canvas: { width, height },
+          } as unknown as CanvasRenderingContext2D;
+
+          (this.context as unknown as { canvas: unknown }).canvas = this;
+
+          MockOffscreenCanvas.instances.push(this);
+        }
+
+        getContext(kind: string) {
+          if (kind !== "2d") {
+            return null;
+          }
+
+          return this.context;
+        }
+      }
+
+      (globalThis as any).OffscreenCanvas = MockOffscreenCanvas;
+
+      const cacheableContext = {
+        ...mockContext,
+        canvas: {
+          width: 800,
+          height: 600,
+          getContext: vi.fn(),
+        },
+      } as unknown as CanvasRenderingContext2D;
+
+      // Previously, text()'s mask read the *live* canvas transform matrix
+      // and sized its scratch canvas to the root canvas — both assumptions
+      // broke once an ancestor's rotation was applied via drawImage
+      // composition (a separate offscreen surface) instead of directly
+      // accumulating onto one shared context. text() now composes through
+      // the same local-surface pipeline as every other group, so masking
+      // still works regardless of what rotated ancestor it's nested inside.
+      drawContext.executeDrawCallback(
+        (d) => {
+          d.group(
+            () => {
+              d.text("Mask", { x: 20, y: 20, fontSize: "24px" }, () => {
+                d.circle({ cx: 30, cy: 30, radius: 15, fillStyle: "red" });
+              });
+            },
+            { x: 0, y: 0, width: 100, height: 100, rotate: 30 },
+          );
+        },
+        cacheableContext,
+        800,
+        600,
+        0,
       );
+
+      const maskSurface = MockOffscreenCanvas.instances.find(
+        (surface) => vi.mocked(surface.context.fillText).mock.calls.length > 0,
+      );
+
+      expect(maskSurface).toBeDefined();
+      expect(maskSurface!.context.fillText).toHaveBeenCalledWith(
+        "Mask",
+        20,
+        20,
+      );
+      // The masked content drew into that same isolated local surface, not
+      // directly onto the rotated ancestor's own surface.
+      expect(maskSurface!.context.ellipse).toHaveBeenCalled();
 
       (globalThis as any).OffscreenCanvas = previousOffscreenCanvas;
     });

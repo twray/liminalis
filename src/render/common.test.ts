@@ -1,12 +1,10 @@
 import { describe, expect, it } from "vitest";
-import type { ClipScope } from "./types";
 
 import {
   centerOf,
   createBoundsCollector,
   createNoopAnimatable,
   DEFAULT_BLEND_MODE,
-  getClipScopesSignature,
   hasBounds,
   renderWithTransform,
   resolveTransformOrigin,
@@ -218,29 +216,6 @@ describe("createBoundsCollector", () => {
       width: 35,
       height: 40,
     });
-  });
-});
-
-describe("getClipScopesSignature", () => {
-  it("joins each scope's signature with '||'", () => {
-    const scopes: ClipScope[] = [
-      { getSignature: () => "scope-a" },
-      { getSignature: () => "scope-b" },
-    ];
-
-    expect(getClipScopesSignature(scopes)).toBe("scope-a||scope-b");
-  });
-
-  it("falls back to an indexed placeholder when getSignature is missing", () => {
-    const scopes: ClipScope[] = [{}, { getSignature: () => "scope-b" }];
-
-    expect(getClipScopesSignature(scopes)).toBe(
-      "scope:0:no-signature||scope-b",
-    );
-  });
-
-  it("returns an empty string for no scopes", () => {
-    expect(getClipScopesSignature([])).toBe("");
   });
 });
 

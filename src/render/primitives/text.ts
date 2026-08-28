@@ -93,72 +93,41 @@ export const createTextMaskScope = ({
   getProps: () => TextProps;
 }): ClipScope => {
   return {
-    renderWithScope: ({
-      context,
-      renderWithinScope,
-      contextController,
-    }): void => {
-      const renderTarget =
-        typeof document !== "undefined"
-          ? document.createElement("canvas")
-          : null;
-
-      if (!renderTarget) {
-        renderWithinScope();
-        return;
-      }
-
-      renderTarget.width = context.canvas.width;
-      renderTarget.height = context.canvas.height;
-
-      const renderTargetContext = renderTarget.getContext("2d");
-
-      if (!renderTargetContext) {
-        renderWithinScope();
-        return;
-      }
-
-      const sourceTransform =
-        typeof context.getTransform === "function"
-          ? context.getTransform()
-          : null;
-
-      if (
-        sourceTransform &&
-        typeof renderTargetContext.setTransform === "function"
-      ) {
-        renderTargetContext.setTransform(sourceTransform);
-      }
-
+    getCompositeInfo: (context: CanvasRenderingContext2D) => {
       const props = getProps();
-      const previousContext = contextController.getContext();
+      const bounds = getTextBounds(context, textValue, props);
 
-      contextController.setContext(renderTargetContext);
+      return {
+        bounds,
+        isValid: bounds.width >= 0.5 && bounds.height >= 0.5,
+        useLocalCoordinateContext: !!props.useLocalCoordinateContext,
+      };
+    },
+    // The compositor already gives this group its own correctly-sized,
+    // correctly-positioned local surface (see DrawGroupManager's
+    // compositeGroup / DrawGroupBitmapCache.renderGroup) — this only needs
+    // to handle the same local-origin translate every other scope applies.
+    apply: (context: CanvasRenderingContext2D): void => {
+      const props = getProps();
 
-      if (props.useLocalCoordinateContext) {
-        const bounds = getTextBounds(renderTargetContext, textValue, props);
-        renderTargetContext.save();
-        renderTargetContext.translate(bounds.x, bounds.y);
-        renderWithinScope();
-        renderTargetContext.restore();
-      } else {
-        renderWithinScope();
+      if (!props.useLocalCoordinateContext) {
+        return;
       }
 
-      contextController.setContext(previousContext);
-
-      renderTargetContext.save();
-      renderTargetContext.globalCompositeOperation = "destination-in";
-      drawTextMask(renderTargetContext, textValue, props);
-      renderTargetContext.restore();
+      const bounds = getTextBounds(context, textValue, props);
+      context.translate(bounds.x, bounds.y);
+    },
+    // Runs once, immediately after this group's real content has been drawn
+    // into its local surface — masks that surface's own pixels down to the
+    // glyph shape via destination-in, in the same local coordinate frame the
+    // content was just drawn in.
+    postProcessLocalSurface: (surfaceContext, _bounds): void => {
+      const props = getProps();
+      const context = surfaceContext as CanvasRenderingContext2D;
 
       context.save();
-
-      if (typeof context.setTransform === "function") {
-        context.setTransform(1, 0, 0, 1, 0, 0);
-      }
-
-      context.drawImage(renderTarget, 0, 0);
+      context.globalCompositeOperation = "destination-in";
+      drawTextMask(context, textValue, props);
       context.restore();
     },
   };

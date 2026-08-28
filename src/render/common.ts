@@ -9,7 +9,6 @@ import type { IAnimatableLike } from "./Animatable";
 import type {
   Bounds,
   BoundsCollector,
-  ClipScope,
   ContextGlobalProps,
   TransformOrigin,
   TransformProps,
@@ -134,13 +133,6 @@ export const createBoundsCollector = (): BoundsCollector => {
     },
   };
 };
-
-export const getClipScopesSignature = (scopes: ClipScope[]): string =>
-  scopes
-    .map(
-      (scope, index) => scope.getSignature?.() ?? `scope:${index}:no-signature`,
-    )
-    .join("||");
 
 export const createNoopAnimatable = <TProps extends object>(
   initialProps: TProps,
