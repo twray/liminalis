@@ -129,6 +129,7 @@ export const createDrawContext = (): DrawContext => {
 
       const mergedProps = appliedStylesManager.mergeStyles(props);
       const clipScopes = clipManager.captureScopes();
+      const targetGroupHandle = drawGroupManager.captureCurrentGroupHandle();
       const activeBoundsCollector =
         boundsCollectionManager.getActiveCollector();
       const shouldCollectBounds = boundsCollectionManager.shouldCollectBounds();
@@ -164,7 +165,7 @@ export const createDrawContext = (): DrawContext => {
           combinedExtraSignature,
         );
 
-        drawGroupManager.pushPrimitiveOperation({
+        targetGroupHandle.pushPrimitiveOperation({
           signature,
           render: (targetContext) => {
             const targetClipManager = new ClipManager(targetContext);

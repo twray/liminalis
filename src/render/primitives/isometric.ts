@@ -98,6 +98,7 @@ export const createIsometricPrimitive = ({
 
     const clipScopes = clipManager.captureScopes();
     const scopeSignature = getClipScopesSignature(clipScopes);
+    const targetGroupHandle = drawGroupManager.captureCurrentGroupHandle();
 
     registry.queue(
       {
@@ -106,7 +107,7 @@ export const createIsometricPrimitive = ({
         frameTime: timeInMs,
       },
       (queuedIsometricProps) => {
-        drawGroupManager.pushPrimitiveOperation({
+        targetGroupHandle.pushPrimitiveOperation({
           signature: DrawGroupManager.createPrimitiveSignature(
             "isometric",
             queuedIsometricProps,

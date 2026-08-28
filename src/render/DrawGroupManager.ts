@@ -21,6 +21,22 @@ interface RenderGroupsParams {
   height: number;
 }
 
+// A capability, bound to whichever group is current at the moment it's
+// captured, for pushing a primitive operation into *that* group later —
+// even after the group stack has moved on. Primitives that defer their
+// actual pushPrimitiveOperation call (via AnimatableRegistry.queue, which
+// only runs at flush time, after the whole synchronous render tree —
+// including every group()/layer()/place() push/pop — has already unwound)
+// need this: without it, a deferred push always lands wherever the stack
+// happens to be *then* (root), not where the primitive was actually
+// declared, and per-group bitmap caching has nothing real to skip.
+export interface DrawGroupHandle {
+  pushPrimitiveOperation: (params: {
+    signature: string;
+    render: (context: CanvasRenderingContext2D) => void;
+  }) => void;
+}
+
 class DrawGroupManager {
   #groupIdCounter = 0;
   #rootGroup: DrawGroupNode;
@@ -78,6 +94,38 @@ class DrawGroupManager {
     });
   }
 
+  captureCurrentGroupHandle(): DrawGroupHandle {
+    const group = this.#getCurrentGroup();
+
+    return {
+      pushPrimitiveOperation: (params) => {
+        group.operations.push({
+          type: "primitive",
+          signature: params.signature,
+          render: params.render,
+        });
+      },
+    };
+  }
+
+  // KNOWN LIMITATION: every group's cached offscreen surface is sized to
+  // the full canvas (`width`/`height` below), regardless of that group's
+  // own local bounds — a cache HIT still means blitting a canvas-sized
+  // bitmap every frame it's visited. This is why per-group caching skips
+  // the expensive *work* inside a static group but not the blit cost of
+  // reaching it (see the text-mask-gallery benchmark from Aug 2026).
+  //
+  // It isn't just wasteful: it's currently load-bearing. Positioning has no
+  // translate-to-offset step in this recursion at all — every leaf
+  // primitive independently re-applies its *entire* captured chain of
+  // ancestor clip scopes using absolute canvas coordinates (see
+  // ClipManager.renderWithScopes). Because every surface is canvas-sized
+  // and always blitted at (0,0), that absolute-coordinate rendering lands
+  // correctly "for free" at any nesting depth. Shrinking a group's surface
+  // to its own local bounds would require a leaf's ancestor-scope offset to
+  // be absorbed once, at that group's own surface boundary, rather than
+  // re-applied by every descendant leaf independently — a real redesign of
+  // the coordinate/compositing model, not a follow-up patch.
   renderToContext({ cache, targetContext, width, height }: RenderGroupsParams) {
     const groupSignatures = new Map<string, string>();
 

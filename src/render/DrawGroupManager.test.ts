@@ -274,4 +274,71 @@ describe("DrawGroupManager", () => {
       expect(nestedRender).toHaveBeenCalledWith(innerContext);
     });
   });
+
+  describe("captureCurrentGroupHandle", () => {
+    it("pushes into the group that was current when captured, not whatever is current when pushed", () => {
+      const manager = new DrawGroupManager();
+      const cache = createPassthroughCache();
+      const nestedRender = vi.fn();
+      const rootRender = vi.fn();
+      let nestedHandle: ReturnType<DrawGroupManager["captureCurrentGroupHandle"]>;
+
+      manager.withNestedGroup(() => "nested", () => {
+        // Captured *while* the nested group is current...
+        nestedHandle = manager.captureCurrentGroupHandle();
+      });
+
+      // ...but pushed through only after the nested scope has already
+      // exited and the stack is back to root. This mirrors exactly how
+      // AnimatableRegistry.flush() invokes pushPrimitiveOperation long after
+      // every group()/layer()/place() has already popped off the stack.
+      nestedHandle!.pushPrimitiveOperation({
+        signature: "nested-primitive",
+        render: nestedRender,
+      });
+      manager.pushPrimitiveOperation({
+        signature: "root-primitive",
+        render: rootRender,
+      });
+
+      manager.renderToContext({
+        cache: cache as any,
+        targetContext: {} as CanvasRenderingContext2D,
+        width: 100,
+        height: 100,
+      });
+
+      // Both groups render, but only the nested group's draw should have
+      // fired the operation captured for it.
+      expect(cache.renderGroup).toHaveBeenCalledTimes(2);
+      expect(nestedRender).toHaveBeenCalledTimes(1);
+      expect(rootRender).toHaveBeenCalledTimes(1);
+    });
+
+    it("keeps working even if further nested groups open and close after capture", () => {
+      const manager = new DrawGroupManager();
+      const cache = createPassthroughCache();
+      const capturedRender = vi.fn();
+
+      const handle = manager.captureCurrentGroupHandle();
+
+      manager.withNestedGroup(() => "unrelated", () => {
+        manager.withNestedGroup(() => "deeper", () => {});
+      });
+
+      handle.pushPrimitiveOperation({
+        signature: "root-level-primitive",
+        render: capturedRender,
+      });
+
+      manager.renderToContext({
+        cache: cache as any,
+        targetContext: {} as CanvasRenderingContext2D,
+        width: 100,
+        height: 100,
+      });
+
+      expect(capturedRender).toHaveBeenCalledTimes(1);
+    });
+  });
 });
