@@ -92,14 +92,35 @@ export const createTextMaskScope = ({
   textValue: string;
   getProps: () => TextProps;
 }): ClipScope => {
+  // A fresh scope is created for every text() call in every frame (see
+  // queueAnimatableWithFrame in index.ts), so this closure only ever lives
+  // for one compositing pass — safe to memoize getTextBounds's real
+  // measureText() call here rather than paying for it twice (once in
+  // getCompositeInfo, once in apply) on every frame, including cache hits.
+  let cachedBounds: Bounds | null = null;
+
+  const resolveBounds = (context: CanvasRenderingContext2D): Bounds => {
+    if (!cachedBounds) {
+      cachedBounds = getTextBounds(context, textValue, getProps());
+    }
+
+    return cachedBounds;
+  };
+
   return {
     getCompositeInfo: (context: CanvasRenderingContext2D) => {
       const props = getProps();
-      const bounds = getTextBounds(context, textValue, props);
 
       return {
-        bounds,
-        isValid: bounds.width >= 0.5 && bounds.height >= 0.5,
+        bounds: resolveBounds(context),
+        // Validity here means "is there any text to mask with", matching
+        // drawTextMask's own no-op condition below — not a pixel-size
+        // threshold. A real but narrow/small piece of text (tiny font,
+        // narrow glyph) can legitimately measure under a pixel in some
+        // fonts; treating that as "invalid" would skip local-surface
+        // compositing entirely and render it unmasked instead of masked
+        // but small.
+        isValid: textValue.length > 0,
         useLocalCoordinateContext: !!props.useLocalCoordinateContext,
       };
     },
@@ -114,7 +135,7 @@ export const createTextMaskScope = ({
         return;
       }
 
-      const bounds = getTextBounds(context, textValue, props);
+      const bounds = resolveBounds(context);
       context.translate(bounds.x, bounds.y);
     },
     // Runs once, immediately after this group's real content has been drawn

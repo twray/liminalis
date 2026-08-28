@@ -1641,6 +1641,115 @@ describe("drawMethods transform props", () => {
         expect(typeof textClipRef.current.animateTo).toBe("function");
       });
 
+      it("resolves text bounds once per frame regardless of useLocalCoordinateContext (memoized across getCompositeInfo/apply)", async () => {
+        const offscreenContext = createOffscreenContext();
+        const offscreenCanvas = {
+          width: 0,
+          height: 0,
+          getContext: vi.fn(() => offscreenContext),
+        };
+
+        Object.defineProperty(globalThis, "document", {
+          configurable: true,
+          writable: true,
+          value: {
+            createElement: vi.fn(() => offscreenCanvas),
+          },
+        });
+
+        const renderWith = (useLocalCoordinateContext: boolean) => {
+          vi.mocked(mockContext.measureText).mockClear();
+
+          drawContextInstance.executeDrawCallback(
+            (d) => {
+              d.text(
+                "Mask",
+                { x: 120, y: 140, fontSize: "48px", useLocalCoordinateContext },
+                () => {
+                  d.circle({ cx: 10, cy: 10, radius: 5, fillStyle: "red" });
+                },
+              );
+            },
+            mockContext,
+            800,
+            600,
+            0,
+          );
+
+          return vi.mocked(mockContext.measureText).mock.calls.length;
+        };
+
+        const { createDrawContext } = await import("./index");
+        let drawContextInstance = createDrawContext();
+        const withoutLocalContext = renderWith(false);
+
+        drawContextInstance = createDrawContext();
+        const withLocalContext = renderWith(true);
+
+        // apply()'s bounds resolution (only needed when
+        // useLocalCoordinateContext is set) reuses the bounds
+        // getCompositeInfo already computed this frame, so turning the
+        // flag on must not add an extra measureText() call.
+        expect(withLocalContext).toBe(withoutLocalContext);
+      });
+
+      it("still masks a real but narrow/small piece of text instead of treating tiny measured bounds as invalid", async () => {
+        const { createDrawContext } = await import("./index");
+        const drawContext = createDrawContext();
+
+        const offscreenContext = createOffscreenContext();
+        // Force an unrealistically tiny measured width (< 0.5px) to
+        // simulate a pathological font/glyph-metrics case for a real,
+        // non-empty string — this must still be masked, not bypassed as if
+        // it were empty/invalid.
+        const tinyMeasureText = vi.fn(
+          () =>
+            ({
+              width: 0.2,
+              actualBoundingBoxAscent: 0.1,
+              actualBoundingBoxDescent: 0,
+            }) as TextMetrics,
+        );
+        offscreenContext.measureText = tinyMeasureText;
+        mockContext.measureText = tinyMeasureText;
+
+        const offscreenCanvas = {
+          width: 0,
+          height: 0,
+          getContext: vi.fn(() => offscreenContext),
+        };
+
+        Object.defineProperty(globalThis, "document", {
+          configurable: true,
+          writable: true,
+          value: {
+            createElement: vi.fn(() => offscreenCanvas),
+          },
+        });
+
+        drawContext.executeDrawCallback(
+          (d) => {
+            // strokeStyle: "transparent" avoids the ambient default stroke
+            // width (1px) inflating these deliberately tiny bounds back
+            // above the old 0.5px threshold before the validity check runs.
+            d.text(
+              "i",
+              { x: 10, y: 10, fontSize: "1px", strokeStyle: "transparent" },
+              () => {
+                d.circle({ cx: 0, cy: 0, radius: 1, fillStyle: "red" });
+              },
+            );
+          },
+          mockContext,
+          800,
+          600,
+          0,
+        );
+
+        expect(offscreenContext.fillText).toHaveBeenCalled();
+        expect(mockContext.drawImage).toHaveBeenCalled();
+      });
+
       it("uses fillText-only masking and renders nested draws to offscreen context", async () => {
         const { createDrawContext } = await import("./index");
         const drawContext = createDrawContext();
