@@ -55,6 +55,30 @@ export const resolveLayerBoundsState = ({
   };
 };
 
+interface BuildLayerShowBoundsRectParams {
+  currentProps: LayerOptions;
+  state: LayerBoundsState;
+}
+
+// Shared by layer() and place() (which is positionally identical to layer(),
+// just placing a reusable component's render function instead of a raw
+// callback) so the two never drift on how the debug show-bounds rect is
+// derived from explicit vs. implicit dimensions.
+export const buildLayerShowBoundsRect = ({
+  currentProps,
+  state,
+}: BuildLayerShowBoundsRectParams): Bounds => {
+  const hasExplicitWidth = currentProps.width !== undefined;
+  const hasExplicitHeight = currentProps.height !== undefined;
+
+  return {
+    x: hasExplicitWidth ? 0 : state.localFrameBounds.x,
+    y: hasExplicitHeight ? 0 : state.localFrameBounds.y,
+    width: state.frameBounds.width,
+    height: state.frameBounds.height,
+  };
+};
+
 export const layer = (
   params: ContainerPrimitiveCommonParams,
 ): DrawPrimitives["layer"] =>
@@ -74,16 +98,6 @@ export const layer = (
       useLocalCoordinateContext: true,
       clipContent: false,
     }),
-    buildShowBoundsRect: ({ currentProps, state }) => {
-      const hasExplicitWidth = currentProps.width !== undefined;
-      const hasExplicitHeight = currentProps.height !== undefined;
-
-      return {
-        x: hasExplicitWidth ? 0 : state.localFrameBounds.x,
-        y: hasExplicitHeight ? 0 : state.localFrameBounds.y,
-        width: state.frameBounds.width,
-        height: state.frameBounds.height,
-      };
-    },
+    buildShowBoundsRect: buildLayerShowBoundsRect,
     pathDescriptor: layerPathDescriptor,
   }) as DrawPrimitives["layer"];

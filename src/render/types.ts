@@ -106,6 +106,13 @@ export interface CoordinateContextProps {
 
 export interface ContainerProps {
   showBounds?: boolean;
+  // Pins this container's animation identity to an explicit value instead of
+  // its positional call order within the enclosing scope. Needed whenever a
+  // container's position among same-shaped siblings can change between
+  // frames (e.g. a conditionally-rendered or list-rendered container) —
+  // without it, identity is call-order-based and a shifted position can
+  // silently pick up another sibling's in-flight animation state.
+  key?: string;
 }
 
 export interface ClippingOptionsProps {
@@ -246,6 +253,9 @@ export interface GroupOptions
 export interface LayerOptions
   extends Positioned2D, Partial<Dimensions2D>, TransformProps, ContainerProps {}
 
+export interface PlaceOptions
+  extends Positioned2D, Partial<Dimensions2D>, TransformProps, ContainerProps {}
+
 export interface IsometricOptions
   extends Partial<Positioned2D>, Partial<Dimensions2D> {
   tileWidth?: number;
@@ -294,6 +304,10 @@ export interface DrawPrimitives {
     ): IAnimatableLike<LayerOptions>;
     (frame: FrameCallback, props?: LayerOptions): IAnimatableLike<LayerOptions>;
   };
+  place: (
+    component: LayerComponent<any>,
+    options?: PlaceOptions,
+  ) => IAnimatableLike<PlaceOptions>;
   text: (
     text: string,
     props?: TextProps,
@@ -334,3 +348,19 @@ export interface DrawContext {
     timeInMs: number,
   ) => void;
 }
+
+// A reusable, independently-defined visual component (see createLayer()).
+// Its render function receives the full DrawMethods toolkit for whichever
+// frame it's placed into (via place()), plus its own typed props — so a
+// component can call any primitive, including place() itself for recursive
+// composition, exactly as if it were written inline.
+export interface LayerComponent<TProps> {
+  props: TProps;
+  render: (ambient: DrawMethods) => void;
+}
+
+export type LayerRenderContext<TProps> = DrawMethods & { props: TProps };
+
+export type LayerRenderer<TProps> = (
+  context: LayerRenderContext<TProps>,
+) => void;

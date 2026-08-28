@@ -7,7 +7,15 @@ interface PendingRender {
 
 class AnimatableRegistry {
   #registry: Map<string, Animatable<object>> = new Map();
-  #callIndex = 0;
+  // Identity is path-based rather than a single flat counter: #scopePath is
+  // the chain of scope segments (see withScope) leading to the current call
+  // site, and #localIndexStack holds one auto-increment counter per active
+  // scope level. This keeps a container's internal identity stable when
+  // unrelated siblings elsewhere in the tree are added, removed, or
+  // reordered — only reordering *within* the same scope still shifts ids,
+  // which withScope's explicit key lets callers opt out of.
+  #scopePath: string[] = [];
+  #localIndexStack: number[] = [0];
   #seenThisFrame: Set<string> = new Set();
   #pendingRenders: PendingRender[] = [];
   #currentTimeInMs = 0;
@@ -16,7 +24,8 @@ class AnimatableRegistry {
   #flushInsertionIndex = 0;
 
   beginFrame(timeInMs: number): void {
-    this.#callIndex = 0;
+    this.#scopePath = [];
+    this.#localIndexStack = [0];
     this.#seenThisFrame.clear();
     this.#pendingRenders = [];
     this.#currentTimeInMs = timeInMs;
@@ -25,8 +34,40 @@ class AnimatableRegistry {
     this.#flushInsertionIndex = 0;
   }
 
+  // Opens a new identity scope for the duration of callbackFn. Every
+  // getOrCreate/queue call made inside (directly or via further nested
+  // scopes) gets an id rooted at this scope's path rather than the frame's
+  // flat call sequence. Pass an explicit key to pin identity for content
+  // whose position among same-shaped siblings may change between frames
+  // (e.g. a list of placed components); omit it to fall back to positional
+  // numbering within the parent scope, matching today's call-order identity.
+  withScope<T>(explicitKey: string | undefined, callbackFn: () => T): T {
+    const parentLocalIndex = this.#localIndexStack.length - 1;
+    const segment =
+      explicitKey !== undefined
+        ? `key:${explicitKey}`
+        : String(this.#localIndexStack[parentLocalIndex]++);
+
+    this.#scopePath.push(segment);
+    this.#localIndexStack.push(0);
+
+    try {
+      return callbackFn();
+    } finally {
+      this.#localIndexStack.pop();
+      this.#scopePath.pop();
+    }
+  }
+
+  #nextId(): string {
+    const currentLocalIndex = this.#localIndexStack.length - 1;
+    const localIndex = this.#localIndexStack[currentLocalIndex]++;
+
+    return [...this.#scopePath, String(localIndex)].join("/");
+  }
+
   getOrCreate<T extends object>(props: T, timeInMs: number): Animatable<T> {
-    const id = String(this.#callIndex++);
+    const id = this.#nextId();
     this.#seenThisFrame.add(id);
 
     const existing = this.#registry.get(id);
@@ -118,7 +159,8 @@ class AnimatableRegistry {
 
   clear(): void {
     this.#registry.clear();
-    this.#callIndex = 0;
+    this.#scopePath = [];
+    this.#localIndexStack = [0];
     this.#seenThisFrame.clear();
     this.#pendingRenders = [];
     this.#isFlushing = false;

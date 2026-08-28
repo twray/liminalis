@@ -6,6 +6,7 @@ import type {
   GroupOptions,
 } from "./types";
 
+import ActiveMeasurementsManager from "./ActiveMeasurementsManager";
 import AnimatableRegistry from "./AnimatableRegistry";
 import BoundsCollectionManager from "./BoundsCollectionManager";
 import ClipManager from "./ClipManager";
@@ -166,12 +167,14 @@ describe("createContainerPrimitive", () => {
     const drawGroupManager = new DrawGroupManager();
     const boundsCollectionManager = new BoundsCollectionManager();
     const frameMeasurementPassManager = new FrameMeasurementPassManager();
+    const activeMeasurementsManager = new ActiveMeasurementsManager();
 
     const commonParams: ContainerPrimitiveCommonParams = {
       registry,
       clipManager,
       drawGroupManager,
       boundsCollectionManager,
+      activeMeasurementsManager,
       createMeasurementContext: (getMeasurements, hasMeasurements, warnOnUnavailableRead) =>
         frameMeasurementPassManager.createMeasurementContext(
           getMeasurements,
@@ -180,9 +183,17 @@ describe("createContainerPrimitive", () => {
         ),
       withFrameBoundsMeasurementPass: (callbackFn) =>
         frameMeasurementPassManager.withFrameBoundsMeasurementPass(callbackFn),
+      isMeasuringFrameBounds: () =>
+        frameMeasurementPassManager.isMeasuringFrameBounds(),
     };
 
-    return { context, registry, boundsCollectionManager, commonParams };
+    return {
+      context,
+      registry,
+      boundsCollectionManager,
+      frameMeasurementPassManager,
+      commonParams,
+    };
   };
 
   const makeGroupPrimitive = (commonParams: ContainerPrimitiveCommonParams) =>
@@ -411,5 +422,32 @@ describe("createContainerPrimitive", () => {
     expect(animatable.currentProps).toEqual(
       expect.objectContaining({ x: 1, y: 2, width: 10, height: 10 }),
     );
+  });
+
+  it("regression: does not double-invoke a nested container when the ancestor is mid implicit-size measurement pass", () => {
+    const { commonParams } = createCollaborators();
+    const outerGroup = makeGroupPrimitive(commonParams);
+    const innerGroup = makeGroupPrimitive(commonParams);
+    const innerCallback = vi.fn();
+    const withNestedGroupSpy = vi.spyOn(
+      commonParams.drawGroupManager,
+      "withNestedGroup",
+    );
+
+    // The outer group has no explicit dimensions, so it runs an implicit
+    // measurement pass over its frameCallback before its real pass. Without
+    // the isMeasuringFrameBounds guard, the inner group nested inside would
+    // fully execute (registry.queue + draw-group push + invoking its own
+    // callback) during *both* the outer's measurement pass and its real
+    // pass, even though the inner group itself has explicit dimensions and
+    // needs no measurement pass of its own.
+    outerGroup(() => {
+      innerGroup(innerCallback, { x: 0, y: 0, width: 10, height: 10 });
+    });
+
+    expect(innerCallback).toHaveBeenCalledTimes(1);
+    // One nested group for the outer container's own wrapper, one for the
+    // inner container's — not a third "phantom" one from the measuring pass.
+    expect(withNestedGroupSpy).toHaveBeenCalledTimes(2);
   });
 });

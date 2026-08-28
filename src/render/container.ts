@@ -1,11 +1,16 @@
 import type { Dimensions2D } from "../types";
 import type { IAnimatableLike } from "./Animatable";
 
+import type ActiveMeasurementsManager from "./ActiveMeasurementsManager";
 import BoundsCollectionManager from "./BoundsCollectionManager";
 import ClipManager from "./ClipManager";
 import DrawGroupManager from "./DrawGroupManager";
 import { createGroupScope, withClipScopedGroup } from "./clipping";
-import { createBoundsCollector, getClipScopesSignature } from "./common";
+import {
+  createBoundsCollector,
+  createNoopAnimatable,
+  getClipScopesSignature,
+} from "./common";
 
 import type {
   Bounds,
@@ -134,6 +139,8 @@ export interface ContainerPrimitiveCommonParams extends RenderCollaborators {
   ) => MeasurementContext;
   boundsCollectionManager: BoundsCollectionManager;
   withFrameBoundsMeasurementPass: <T>(callbackFn: () => T) => T;
+  isMeasuringFrameBounds: () => boolean;
+  activeMeasurementsManager: ActiveMeasurementsManager;
 }
 
 interface CreateContainerPrimitiveParams<
@@ -173,6 +180,8 @@ export const createContainerPrimitive = <
   createMeasurementContext,
   boundsCollectionManager,
   withFrameBoundsMeasurementPass,
+  isMeasuringFrameBounds,
+  activeMeasurementsManager,
   resolveState,
   buildScopeProps,
   buildShowBoundsRect,
@@ -182,132 +191,176 @@ export const createContainerPrimitive = <
   return (
     frameCallback: FrameCallback | StaticFrameCallback,
     options: TOptions = {} as TOptions,
-  ): IAnimatableLike<TOptions> => {
-    const mergedProps = { ...options };
-    const contentBoundsCollector = createBoundsCollector();
+  ): IAnimatableLike<TOptions> =>
+    // Scopes this entire invocation — including the container's own
+    // identity (registry.queue below) and everything its frameCallback
+    // does — under one path segment. An explicit `key` pins that segment so
+    // a container's identity (and its content's) survives reordering among
+    // same-shaped siblings; omitted, it falls back to positional numbering
+    // within the enclosing scope, matching call-order identity elsewhere.
+    registry.withScope(options.key, (): IAnimatableLike<TOptions> => {
+      const mergedProps = { ...options };
+      const contentBoundsCollector = createBoundsCollector();
 
-    let derivedBounds: Bounds = {
-      x: 0,
-      y: 0,
-      width: 0,
-      height: 0,
-    };
+      let derivedBounds: Bounds = {
+        x: 0,
+        y: 0,
+        width: 0,
+        height: 0,
+      };
 
-    let currentProps: TOptions = mergedProps;
-    const activeBoundsCollector = boundsCollectionManager.getActiveCollector();
+      let currentProps: TOptions = mergedProps;
+      const activeBoundsCollector =
+        boundsCollectionManager.getActiveCollector();
 
-    const resolveCurrentState = (): TState => {
-      const state = resolveState({
-        currentProps,
-        derivedBounds,
-        collectedBounds: contentBoundsCollector.getBounds(),
-      });
-
-      derivedBounds = state.derivedBounds;
-
-      return state;
-    };
-
-    const resolveFrameBounds = (): Bounds => {
-      const { frameBounds } = resolveCurrentState();
-
-      return frameBounds;
-    };
-
-    const toScopeProps = () => {
-      const state = resolveCurrentState();
-
-      return buildScopeProps({
-        currentProps,
-        state,
-      });
-    };
-
-    const createFrameContext = (hasMeasurements: boolean): FrameContext =>
-      createMeasurementContext(
-        () => {
-          const { frameBounds, frameCenter } = resolveCurrentState();
-
-          return {
-            width: frameBounds.width,
-            height: frameBounds.height,
-            center: frameCenter,
-          };
-        },
-        hasMeasurements,
-        !hasMeasurements,
-      ) as FrameContext;
-
-    withImplicitMeasurementPass({
-      options: mergedProps,
-      onMeasurePass: () => {
-        withFrameBoundsMeasurementPass(() => {
-          boundsCollectionManager.withCollector(contentBoundsCollector, () => {
-            (frameCallback as FrameCallback)(createFrameContext(false));
-          });
+      const resolveCurrentState = (): TState => {
+        const state = resolveState({
+          currentProps,
+          derivedBounds,
+          collectedBounds: contentBoundsCollector.getBounds(),
         });
-      },
-    });
 
-    const renderShowBounds = (): void => {
-      pushContainerShowBoundsOperation({
-        containerType,
-        showBounds: currentProps.showBounds,
+        derivedBounds = state.derivedBounds;
+
+        return state;
+      };
+
+      const resolveFrameBounds = (): Bounds => {
+        const { frameBounds } = resolveCurrentState();
+
+        return frameBounds;
+      };
+
+      const toScopeProps = () => {
+        const state = resolveCurrentState();
+
+        return buildScopeProps({
+          currentProps,
+          state,
+        });
+      };
+
+      const getLocalMeasurements = (): Measurements => {
+        const { frameBounds, frameCenter } = resolveCurrentState();
+
+        return {
+          width: frameBounds.width,
+          height: frameBounds.height,
+          center: frameCenter,
+        };
+      };
+
+      const createFrameContext = (hasMeasurements: boolean): FrameContext =>
+        createMeasurementContext(
+          getLocalMeasurements,
+          hasMeasurements,
+          !hasMeasurements,
+        ) as FrameContext;
+
+      const runOwnImplicitMeasurementPass = (): void => {
+        withImplicitMeasurementPass({
+          options: mergedProps,
+          onMeasurePass: () => {
+            withFrameBoundsMeasurementPass(() => {
+              boundsCollectionManager.withCollector(
+                contentBoundsCollector,
+                () => {
+                  activeMeasurementsManager.withMeasurements(
+                    getLocalMeasurements,
+                    () => {
+                      (frameCallback as FrameCallback)(
+                        createFrameContext(false),
+                      );
+                    },
+                  );
+                },
+              );
+            });
+          },
+        });
+      };
+
+      // An ancestor container is currently running its own implicit-size
+      // measurement pass, so this invocation exists only to report bounds
+      // upward — it must not register an animatable or push draw content,
+      // otherwise the real pass (once the ancestor re-invokes this same
+      // callback for real) would duplicate both.
+      if (isMeasuringFrameBounds()) {
+        runOwnImplicitMeasurementPass();
+        activeBoundsCollector?.includeBounds(resolveFrameBounds());
+
+        return createNoopAnimatable(mergedProps);
+      }
+
+      runOwnImplicitMeasurementPass();
+
+      const renderShowBounds = (): void => {
+        pushContainerShowBoundsOperation({
+          containerType,
+          showBounds: currentProps.showBounds,
+          clipManager,
+          drawGroupManager,
+          getRenderRect: () => {
+            const state = resolveCurrentState();
+
+            return buildShowBoundsRect({
+              currentProps,
+              state,
+            });
+          },
+        });
+      };
+
+      const containerAnimatable = registry.queue(
+        mergedProps,
+        (animatedProps) => {
+          currentProps = animatedProps;
+          activeBoundsCollector?.includeBounds(resolveFrameBounds());
+        },
+      );
+
+      const clipScope = createGroupScope(toScopeProps, pathDescriptor);
+
+      withClipScopedGroup({
         clipManager,
         drawGroupManager,
-        getRenderRect: () => {
-          const state = resolveCurrentState();
+        clipScope,
+        primitiveType: frameSignatureType,
+        getSignatureProps: toScopeProps,
+        run: () => {
+          const frameContext = createFrameContext(true);
 
-          return buildShowBoundsRect({
-            currentProps,
-            state,
+          activeMeasurementsManager.withMeasurements(getLocalMeasurements, () => {
+            boundsCollectionManager.withCollector(
+              contentBoundsCollector,
+              () => {
+                (frameCallback as FrameCallback)(frameContext);
+              },
+            );
           });
+
+          if (seedInitialProps) {
+            const state = resolveCurrentState();
+
+            seedInitialProps({
+              mergedProps,
+              currentProps,
+              setCurrentProps: (nextProps) => {
+                currentProps = nextProps;
+              },
+              animatable: containerAnimatable,
+              state,
+              resolveFrameBounds,
+              resolveState: resolveCurrentState,
+            });
+          }
+
+          renderShowBounds();
+
+          activeBoundsCollector?.includeBounds(resolveFrameBounds());
         },
       });
-    };
 
-    const containerAnimatable = registry.queue(mergedProps, (animatedProps) => {
-      currentProps = animatedProps;
-      activeBoundsCollector?.includeBounds(resolveFrameBounds());
+      return containerAnimatable;
     });
-
-    const clipScope = createGroupScope(toScopeProps, pathDescriptor);
-
-    withClipScopedGroup({
-      clipManager,
-      drawGroupManager,
-      clipScope,
-      primitiveType: frameSignatureType,
-      getSignatureProps: toScopeProps,
-      run: () => {
-        const frameContext = createFrameContext(true);
-
-        boundsCollectionManager.withCollector(contentBoundsCollector, () => {
-          (frameCallback as FrameCallback)(frameContext);
-        });
-
-        if (seedInitialProps) {
-          const state = resolveCurrentState();
-
-          seedInitialProps({
-            mergedProps,
-            currentProps,
-            setCurrentProps: (nextProps) => {
-              currentProps = nextProps;
-            },
-            animatable: containerAnimatable,
-            state,
-            resolveFrameBounds,
-            resolveState: resolveCurrentState,
-          });
-        }
-
-        renderShowBounds();
-
-        activeBoundsCollector?.includeBounds(resolveFrameBounds());
-      },
-    });
-
-    return containerAnimatable;
-  };
 };

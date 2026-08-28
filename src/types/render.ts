@@ -1,52 +1,12 @@
-import type {
-  DrawMethods,
-  IsometricMethods,
-  IsometricOptions,
-} from "../render";
-import type { Point2D } from "./";
+import type { DrawMethods } from "../render";
 
-export type IsometricRenderCallback = (methods: IsometricMethods) => void;
-
-export interface Measurements {
-  width: number;
-  height: number;
-  center: Point2D;
-}
-
-export interface RenderProps {
-  centerOf: DrawMethods["centerOf"];
-  withStyles: DrawMethods["withStyles"];
-  background: DrawMethods["background"];
-  line: DrawMethods["line"];
-  polygon: DrawMethods["polygon"];
-  bezier: DrawMethods["bezier"];
-  arc: DrawMethods["arc"];
-  circle: DrawMethods["circle"];
-  ellipse: DrawMethods["ellipse"];
-  rect: DrawMethods["rect"];
-  group: DrawMethods["group"];
-  layer: DrawMethods["layer"];
-  text: DrawMethods["text"];
-  getTextBounds: DrawMethods["getTextBounds"];
-  image: DrawMethods["image"];
-  defineBackgroundProps: DrawMethods["defineBackgroundProps"];
-  defineLineProps: DrawMethods["defineLineProps"];
-  definePolygonProps: DrawMethods["definePolygonProps"];
-  defineBezierProps: DrawMethods["defineBezierProps"];
-  defineArcProps: DrawMethods["defineArcProps"];
-  defineCircleProps: DrawMethods["defineCircleProps"];
-  defineEllipseProps: DrawMethods["defineEllipseProps"];
-  defineRectProps: DrawMethods["defineRectProps"];
-  defineGroupProps: DrawMethods["defineGroupProps"];
-  defineLayerProps: DrawMethods["defineLayerProps"];
-  defineTextProps: DrawMethods["defineTextProps"];
+// Every DrawMethods member is designed to be exposed to renderable
+// callbacks (onRender, visual()), so RenderProps extends it directly rather
+// than hand-copying members one by one — a prior version did that, and it
+// silently fell out of sync with DrawMethods (missing newly-added
+// primitives like place()) since nothing enforced the two stayed aligned.
+export interface RenderProps extends DrawMethods {
   context: CanvasRenderingContext2D;
   hasMeasurements: true;
-  measurements: Measurements;
-  getMeasurements: () => Measurements;
   time: number;
-  isometric: (
-    callback: IsometricRenderCallback,
-    options?: IsometricOptions,
-  ) => void;
 }

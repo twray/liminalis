@@ -7,6 +7,7 @@ export * from "./group";
 export * from "./image";
 export * from "./layer";
 export * from "./line";
+export * from "./place";
 export * from "./polygon";
 export * from "./rect";
 export * from "./text";

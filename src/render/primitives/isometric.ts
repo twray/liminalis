@@ -4,6 +4,7 @@ import type {
   PartialDrawStyles,
   PartialIsometricStyles,
 } from "../../types";
+import ActiveMeasurementsManager from "../ActiveMeasurementsManager";
 import AppliedStylesManager from "../AppliedStylesManager";
 import ClipManager from "../ClipManager";
 import DrawGroupManager from "../DrawGroupManager";
@@ -25,6 +26,7 @@ interface CreateIsometricPrimitiveParams extends RenderCollaborators {
   drawProperties: DrawProperties;
   appliedStylesManager: AppliedStylesManager;
   renderWarningManager: RenderWarningManager;
+  activeMeasurementsManager: ActiveMeasurementsManager;
 }
 
 const DEFAULT_FILL_STYLE = "#333";
@@ -65,16 +67,26 @@ export const createIsometricPrimitive = ({
   drawProperties,
   appliedStylesManager,
   renderWarningManager,
+  activeMeasurementsManager,
 }: CreateIsometricPrimitiveParams): DrawPrimitives["isometric"] => {
   return (
     callback: (methods: ReturnType<typeof getIsometricMethods>) => void,
     options: IsometricOptions = {},
   ) => {
+    // Defaults to the nearest enclosing container's measurements (the
+    // group()/layer()/place() this isometric() is nested inside, if any),
+    // falling back to the outer canvas's own measurements at the top level —
+    // matching how every other implicitly-sized primitive derives its size
+    // from its immediate context rather than the whole canvas.
+    const ambientMeasurements =
+      activeMeasurementsManager.getActiveMeasurements() ??
+      drawProperties.measurements;
+
     const viewportProps = {
       x: options.x ?? 0,
       y: options.y ?? 0,
-      width: options.width ?? drawProperties.measurements.width,
-      height: options.height ?? drawProperties.measurements.height,
+      width: options.width ?? ambientMeasurements.width,
+      height: options.height ?? ambientMeasurements.height,
       ...(options.tileWidth !== undefined
         ? { tileWidth: options.tileWidth }
         : {}),

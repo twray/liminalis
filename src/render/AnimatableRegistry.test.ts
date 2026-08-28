@@ -497,6 +497,157 @@ describe("AnimatableRegistry", () => {
     });
   });
 
+  describe("withScope", () => {
+    it("gives content inside a scope a different identity than the same call pattern at the root", () => {
+      const registry = new AnimatableRegistry();
+
+      registry.beginFrame(0);
+      const rootAnim = registry.getOrCreate({ x: 0 }, 0);
+      const scopedAnim = registry.withScope(undefined, () =>
+        registry.getOrCreate({ x: 0 }, 0),
+      );
+
+      expect(scopedAnim).not.toBe(rootAnim);
+    });
+
+    it("keeps identity inside a scope stable when a sibling is added after it", () => {
+      const registry = new AnimatableRegistry();
+
+      registry.beginFrame(0);
+      registry.getOrCreate({ label: "before" }, 0);
+      const scopedAnimFrame1 = registry.withScope(undefined, () =>
+        registry.getOrCreate({ label: "inside" }, 0),
+      );
+      registry.endFrame();
+
+      // Frame 2: an extra sibling is appended after the scope. Because the
+      // scope-opening call's own position among its parent's siblings is
+      // unchanged (still the second call at the root), everything inside it
+      // keeps its identity — only a shift *before* the scope's own call
+      // would perturb it (that fragility is inherent to unkeyed positional
+      // scopes and is exactly what an explicit key opts out of).
+      registry.beginFrame(100);
+      registry.getOrCreate({ label: "before" }, 100);
+      const scopedAnimFrame2 = registry.withScope(undefined, () =>
+        registry.getOrCreate({ label: "inside" }, 100),
+      );
+      registry.getOrCreate({ label: "new-sibling" }, 100);
+      registry.endFrame();
+
+      expect(scopedAnimFrame2).toBe(scopedAnimFrame1);
+    });
+
+    it("scopes nested content independently of a sibling scope's internal call count", () => {
+      const registry = new AnimatableRegistry();
+
+      registry.beginFrame(0);
+      registry.withScope("scope-a", () => {
+        registry.getOrCreate({ label: "a-child" }, 0);
+      });
+      const bChildFrame1 = registry.withScope("scope-b", () =>
+        registry.getOrCreate({ label: "b-child" }, 0),
+      );
+      registry.endFrame();
+
+      // Frame 2: scope-a now creates an extra child before scope-b runs.
+      registry.beginFrame(100);
+      registry.withScope("scope-a", () => {
+        registry.getOrCreate({ label: "a-child" }, 100);
+        registry.getOrCreate({ label: "a-extra-child" }, 100);
+      });
+      const bChildFrame2 = registry.withScope("scope-b", () =>
+        registry.getOrCreate({ label: "b-child" }, 100),
+      );
+      registry.endFrame();
+
+      expect(bChildFrame2).toBe(bChildFrame1);
+    });
+
+    it("keeps identity stable by explicit key even when position among siblings changes", () => {
+      const registry = new AnimatableRegistry();
+
+      const createKeyed = (key: string, timeInMs: number) =>
+        registry.withScope(key, () =>
+          registry.getOrCreate({ key }, timeInMs),
+        );
+
+      registry.beginFrame(0);
+      const animAFrame1 = createKeyed("a", 0);
+      const animBFrame1 = createKeyed("b", 0);
+      registry.endFrame();
+
+      // Frame 2: order flips.
+      registry.beginFrame(100);
+      const animBFrame2 = createKeyed("b", 100);
+      const animAFrame2 = createKeyed("a", 100);
+      registry.endFrame();
+
+      expect(animAFrame2).toBe(animAFrame1);
+      expect(animBFrame2).toBe(animBFrame1);
+    });
+
+    it("without an explicit key, reordering scope-opening calls themselves still shifts identity", () => {
+      const registry = new AnimatableRegistry();
+
+      const createUnkeyed = (label: string, timeInMs: number) =>
+        registry.withScope(undefined, () =>
+          registry.getOrCreate({ label }, timeInMs),
+        );
+
+      registry.beginFrame(0);
+      const animFirstFrame1 = createUnkeyed("first", 0);
+      const animSecondFrame1 = createUnkeyed("second", 0);
+      registry.endFrame();
+
+      // Frame 2: same two scopes, but called in the opposite order.
+      registry.beginFrame(100);
+      const animSecondFrame2 = createUnkeyed("second", 100);
+      const animFirstFrame2 = createUnkeyed("first", 100);
+      registry.endFrame();
+
+      // Positional (unkeyed) identity is tied to call order, so the instance
+      // that used to represent "first" now represents whatever is called
+      // first this frame ("second") — this is the exact fragility explicit
+      // keys are meant to opt out of.
+      expect(animSecondFrame2).toBe(animFirstFrame1);
+      expect(animFirstFrame2).toBe(animSecondFrame1);
+    });
+
+    it("restores the parent scope after the callback throws", () => {
+      const registry = new AnimatableRegistry();
+      const error = new Error("scope body failed");
+
+      registry.beginFrame(0);
+      const beforeAnim = registry.getOrCreate({ label: "before" }, 0);
+
+      expect(() => {
+        registry.withScope("will-throw", () => {
+          throw error;
+        });
+      }).toThrow(error);
+
+      const afterAnim = registry.getOrCreate({ label: "before" }, 0);
+
+      // Still at root scope, so the next root-level call reuses... a fresh
+      // id (call index advanced by one), not corrupted scope state.
+      expect(afterAnim).not.toBe(beforeAnim);
+      registry.endFrame();
+
+      registry.beginFrame(100);
+      const rootAnimFrame2 = registry.getOrCreate({ label: "before" }, 100);
+      expect(rootAnimFrame2).toBe(beforeAnim);
+    });
+
+    it("returns the callback's result", () => {
+      const registry = new AnimatableRegistry();
+
+      registry.beginFrame(0);
+      const result = registry.withScope("scope", () => 42);
+
+      expect(result).toBe(42);
+    });
+  });
+
   describe("multiple registries", () => {
     it("maintains independent state", () => {
       const registry1 = new AnimatableRegistry();

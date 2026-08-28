@@ -1,4 +1,5 @@
 import { imageAssetCache } from "../core/ImageAssetCache";
+import ActiveMeasurementsManager from "./ActiveMeasurementsManager";
 import AnimatableRegistry from "./AnimatableRegistry";
 import AppliedStylesManager from "./AppliedStylesManager";
 import BoundsCollectionManager from "./BoundsCollectionManager";
@@ -44,6 +45,7 @@ import {
   image,
   layer,
   line,
+  place,
   polygon,
   polygonPathDescriptor,
   rect,
@@ -94,6 +96,7 @@ export const createDrawContext = (): DrawContext => {
     const drawGroupManager = new DrawGroupManager();
     const frameMeasurementPassManager = new FrameMeasurementPassManager();
     const boundsCollectionManager = new BoundsCollectionManager();
+    const activeMeasurementsManager = new ActiveMeasurementsManager();
 
     const appliedStylesManager = new AppliedStylesManager({
       strokeStyle: DEFAULT_STROKE_STYLE,
@@ -316,7 +319,20 @@ export const createDrawContext = (): DrawContext => {
         frameMeasurementPassManager.withFrameBoundsMeasurementPass.bind(
           frameMeasurementPassManager,
         ),
+      isMeasuringFrameBounds:
+        frameMeasurementPassManager.isMeasuringFrameBounds.bind(
+          frameMeasurementPassManager,
+        ),
+      activeMeasurementsManager,
     };
+
+    // Forward-declared so place() can close over the *complete* DrawMethods
+    // object below, even though place() itself is built as part of
+    // drawPrimitives (before drawMethods is assembled). Safe because
+    // place()'s closure only reads drawMethods when actually invoked from
+    // inside the user's callback, which happens strictly after the
+    // assignment below.
+    let drawMethods!: DrawMethods;
 
     const drawPrimitives = {
       isometric: createIsometricPrimitive({
@@ -325,6 +341,7 @@ export const createDrawContext = (): DrawContext => {
         timeInMs,
         appliedStylesManager,
         renderWarningManager,
+        activeMeasurementsManager,
       }),
       withStyles: appliedStylesManager.withStyles.bind(appliedStylesManager),
       background: (props: BackgroundProps) => background(context, props),
@@ -380,6 +397,7 @@ export const createDrawContext = (): DrawContext => {
       ),
       group: group(containerPrimitiveCommonParams),
       layer: layer(containerPrimitiveCommonParams),
+      place: place(containerPrimitiveCommonParams, () => drawMethods),
       text: (
         textValue: string,
         props: TextProps = {},
@@ -433,13 +451,19 @@ export const createDrawContext = (): DrawContext => {
       defineTextProps: (props: TextProps) => props,
     };
 
-    const drawMethods: DrawMethods = {
+    drawMethods = {
       ...drawProperties,
       ...drawPrimitives,
       ...drawPrimitivePropHelpers,
     };
 
-    callback(drawMethods);
+    // Seeds the ambient-measurements stack with the canvas's own size for
+    // the whole callback, so a top-level isometric() (or any primitive that
+    // consults it) without an enclosing container still defaults correctly.
+    activeMeasurementsManager.withMeasurements(
+      () => drawProperties.measurements,
+      () => callback(drawMethods),
+    );
 
     registry.flush();
     registry.endFrame();

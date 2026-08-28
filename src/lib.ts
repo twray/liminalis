@@ -1,6 +1,7 @@
 // Main library entry point for npm package
 export { createScene, logMessage, visual } from "./core";
 export { default as Animatable } from "./render/Animatable";
+export { createLayer } from "./render/createLayer";
 export type {
   AnimationSegment,
   AnimationSegmentOptions,
