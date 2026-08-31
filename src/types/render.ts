@@ -1,4 +1,5 @@
-import type { DrawMethods } from "../render";
+import { NormalizedFloat } from "./common";
+import { DrawMethods } from "../render";
 
 // Every DrawMethods member is designed to be exposed to renderable
 // callbacks (onRender, visual()), so RenderProps extends it directly rather
@@ -9,4 +10,14 @@ export interface RenderProps extends DrawMethods {
   context: CanvasRenderingContext2D;
   hasMeasurements: true;
   time: number;
+}
+
+export type ReactiveStatus = "idle" | "sustained" | "releasing";
+
+export interface ReactiveProps {
+  status: ReactiveStatus;
+  attackValue: NormalizedFloat;
+  releasePeriod: number;
+  timeAttacked: number | null;
+  timeReleased: number | null;
 }

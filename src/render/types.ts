@@ -7,6 +7,7 @@ import type {
   PartialDrawStyles,
   Point2D,
   Positioned2D,
+  ReactiveProps,
   StrokeAlignment,
   StrokeStyles,
   TextStyles,
@@ -84,7 +85,9 @@ export interface ClipScope {
   // destination-in glyph masking) in the same local coordinate frame the
   // content was just drawn in.
   postProcessLocalSurface?: (
-    surfaceContext: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
+    surfaceContext:
+      | CanvasRenderingContext2D
+      | OffscreenCanvasRenderingContext2D,
     bounds: Bounds,
   ) => void;
 }
@@ -368,18 +371,26 @@ export interface DrawContext {
   ) => void;
 }
 
-// A reusable, independently-defined visual component (see createLayer()).
-// Its render function receives the full DrawMethods toolkit for whichever
-// frame it's placed into (via place()), plus its own typed props — so a
-// component can call any primitive, including place() itself for recursive
-// composition, exactly as if it were written inline.
-export interface LayerComponent<TProps> {
-  props: TProps;
-  render: (ambient: DrawMethods) => void;
-}
-
 export type LayerRenderContext<TProps> = DrawMethods & { props: TProps };
 
 export type LayerRenderer<TProps> = (
   context: LayerRenderContext<TProps>,
 ) => void;
+
+export interface LayerComponent<TProps> {
+  props: TProps;
+  render: (ambient: DrawMethods) => void;
+}
+
+export type ReactiveLayerRenderContext<TProps> = LayerRenderContext<TProps> &
+  ReactiveProps;
+
+export type ReactiveLayerRenderer<TProps> = (
+  context: ReactiveLayerRenderContext<TProps>,
+) => void;
+
+export interface ReactiveLayerComponent<TProps> {
+  readonly __componentKind: "reactiveLayer";
+  props: TProps;
+  render: (ambient: DrawMethods & ReactiveProps) => void;
+}

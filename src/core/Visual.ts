@@ -1,18 +1,15 @@
 import { createDrawContext } from "../render";
-import { NormalizedFloat, RenderProps } from "../types";
+import {
+  NormalizedFloat,
+  ReactiveProps,
+  ReactiveStatus,
+  RenderProps,
+} from "../types";
 
 import { toNormalizedFloat } from "../util";
 
-export type VisualStatus = "idle" | "sustained" | "releasing";
-
-export interface VisualRenderProps<TProps> extends RenderProps {
+export interface VisualRenderProps<TProps> extends RenderProps, ReactiveProps {
   props: TProps;
-  status: VisualStatus;
-  attackValue: NormalizedFloat;
-  releasePeriod: number;
-  timeFirstRender: number | null;
-  timeAttacked: number | null;
-  timeReleased: number | null;
 }
 
 export type VisualRenderer<TProps> = (
@@ -96,7 +93,7 @@ class Visual<TProps = {}> {
       center: { x: width / 2, y: height / 2 },
     };
 
-    let status: VisualStatus = "idle";
+    let status: ReactiveStatus = "idle";
     if (isSustaining) status = "sustained";
     if (isReleasing) status = "releasing";
 
@@ -115,7 +112,6 @@ class Visual<TProps = {}> {
           status,
           attackValue,
           releasePeriod,
-          timeFirstRender: 0,
           timeAttacked,
           timeReleased,
         });
