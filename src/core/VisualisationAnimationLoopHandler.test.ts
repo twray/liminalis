@@ -1367,4 +1367,210 @@ describe("VisualisationAnimationLoopHandler note dispatch", () => {
       }),
     );
   });
+
+  // Step 4 of spec/reactive-layer-plan.md: placeInScene(), exposed on
+  // RenderProps, is the bridge that lets a reactive layer (createReactiveLayer())
+  // be positioned via the real place()/layer() engine every frame. These
+  // tests exercise it through the real createDrawContext() pipeline (not
+  // mocked, unlike everything else in this file) since the whole point is
+  // to prove the wiring — registry -> adaptToLayerComponent -> place() ->
+  // the component's own render — actually works end to end.
+  describe("placeInScene", () => {
+    // Mirrors createMockContext() in src/render/index.test.ts: rich enough
+    // for real place()/layer() container machinery (DrawGroupManager,
+    // bitmap caching, clip scopes) to run without throwing, unlike this
+    // file's own minimal createCanvasProps() context.
+    const createRichMockContext = () =>
+      ({
+        save: vi.fn(),
+        restore: vi.fn(),
+        translate: vi.fn(),
+        rotate: vi.fn(),
+        scale: vi.fn(),
+        beginPath: vi.fn(),
+        closePath: vi.fn(),
+        clip: vi.fn(),
+        rect: vi.fn(),
+        roundRect: vi.fn(),
+        arc: vi.fn(),
+        ellipse: vi.fn(),
+        moveTo: vi.fn(),
+        lineTo: vi.fn(),
+        fill: vi.fn(),
+        stroke: vi.fn(),
+        fillRect: vi.fn(),
+        drawImage: vi.fn(),
+        measureText: vi.fn(() => ({ width: 0 })),
+        canvas: { width: 800, height: 600 },
+      }) as unknown as CanvasRenderingContext2D;
+
+    it("renders the reactive component via place(), injecting idle-default lifecycle props and the component's own props", async () => {
+      const { default: VisualisationAnimationLoopHandler } =
+        await import("./VisualisationAnimationLoopHandler");
+      const { createReactiveLayer } = await import(
+        "./factories/createReactiveLayer"
+      );
+
+      const seenContexts: any[] = [];
+      const badge = createReactiveLayer<{ fillStyle: string }>((ctx) => {
+        seenContexts.push(ctx);
+        ctx.circle({ cx: 0, cy: 0, radius: 10, fillStyle: ctx.props.fillStyle });
+      });
+
+      const handler = new VisualisationAnimationLoopHandler()
+        .withSettings({ computerKeyboardDebugEnabled: false })
+        .setup(({ onRender }) => {
+          onRender(({ placeInScene }) => {
+            placeInScene(
+              badge({ fillStyle: "orange" }),
+              { x: 10, y: 20, width: 50, height: 50 },
+              "badge-1",
+            );
+          });
+        });
+
+      handler.render();
+      await flushPromises();
+
+      expect(mockState.latestRenderCallback).not.toBeNull();
+      const mockContext = createRichMockContext();
+      mockState.latestRenderCallback!({
+        context: mockContext,
+        width: 800,
+        height: 600,
+      });
+
+      expect(seenContexts).toHaveLength(1);
+      const [ctx] = seenContexts;
+
+      // The reactive component's own props survive the bridge unchanged.
+      expect(ctx.props).toEqual({ fillStyle: "orange" });
+      // Never attacked yet — the registry auto-vivified a fresh, idle entry.
+      expect(ctx.status).toBe("idle");
+      expect(ctx.attackValue).toBe(0);
+      expect(ctx.timeAttacked).toBeNull();
+      expect(ctx.timeReleased).toBeNull();
+      // Real ambient DrawMethods (from place()) are present, not stubbed.
+      expect(typeof ctx.circle).toBe("function");
+
+      // Positioned like layer()/place() — translated to the given x/y.
+      expect(mockContext.translate).toHaveBeenCalledWith(10, 20);
+    });
+
+    it("keeps two differently-id'd reactive layers independent within the same frame", async () => {
+      const { default: VisualisationAnimationLoopHandler } =
+        await import("./VisualisationAnimationLoopHandler");
+      const { createReactiveLayer } = await import(
+        "./factories/createReactiveLayer"
+      );
+
+      const seenLabels: string[] = [];
+      const marker = createReactiveLayer<{ label: string }>((ctx) => {
+        seenLabels.push(ctx.props.label);
+        ctx.rect({ x: 0, y: 0, width: 5, height: 5, fillStyle: "red" });
+      });
+
+      const handler = new VisualisationAnimationLoopHandler()
+        .withSettings({ computerKeyboardDebugEnabled: false })
+        .setup(({ onRender }) => {
+          onRender(({ placeInScene }) => {
+            placeInScene(
+              marker({ label: "a" }),
+              { x: 0, y: 0, width: 10, height: 10 },
+              "marker-a",
+            );
+            placeInScene(
+              marker({ label: "b" }),
+              { x: 10, y: 0, width: 10, height: 10 },
+              "marker-b",
+            );
+          });
+        });
+
+      handler.render();
+      await flushPromises();
+
+      mockState.latestRenderCallback!({
+        context: createRichMockContext(),
+        width: 800,
+        height: 600,
+      });
+
+      expect(seenLabels).toEqual(["a", "b"]);
+    });
+
+    it("threads a stable per-id key through to place(), per the plan's animation-identity requirement", async () => {
+      vi.resetModules();
+
+      const capturedPlaceOptions: any[] = [];
+
+      // Scoped mock (per the ImageAssetCache/IsometricView pattern already
+      // used elsewhere in this codebase): wraps the real createDrawContext()
+      // so the real drawMethods object it builds is still used everywhere
+      // except .place(), which is swapped for a spy. This isolates exactly
+      // what placeInScene passes to place() without needing to run the real
+      // container/bitmap-cache pipeline at all.
+      vi.doMock("../render", async () => {
+        const actual =
+          await vi.importActual<typeof import("../render")>("../render");
+        return {
+          ...actual,
+          createDrawContext: () => {
+            const real = actual.createDrawContext();
+            return {
+              executeDrawCallback: (
+                callback: any,
+                context: any,
+                width: any,
+                height: any,
+                timeInMs: any,
+              ) =>
+                real.executeDrawCallback(
+                  (drawMethods: any) => {
+                    const placeSpy = vi.fn((_component: any, options: any) => {
+                      capturedPlaceOptions.push(options);
+                    });
+                    callback({ ...drawMethods, place: placeSpy });
+                  },
+                  context,
+                  width,
+                  height,
+                  timeInMs,
+                ),
+            };
+          },
+        };
+      });
+
+      const { default: VisualisationAnimationLoopHandler } =
+        await import("./VisualisationAnimationLoopHandler");
+      const { createReactiveLayer } = await import(
+        "./factories/createReactiveLayer"
+      );
+
+      const marker = createReactiveLayer(() => {});
+
+      const handler = new VisualisationAnimationLoopHandler()
+        .withSettings({ computerKeyboardDebugEnabled: false })
+        .setup(({ onRender }) => {
+          onRender(({ placeInScene }) => {
+            placeInScene(
+              marker(),
+              { x: 0, y: 0, width: 10, height: 10 },
+              "note-42",
+            );
+          });
+        });
+
+      handler.render();
+      await flushPromises();
+
+      mockState.latestRenderCallback!(createCanvasProps());
+
+      expect(capturedPlaceOptions).toHaveLength(1);
+      expect(capturedPlaceOptions[0]).toMatchObject({ key: "note-42" });
+
+      vi.doUnmock("../render");
+    });
+  });
 });

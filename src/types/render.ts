@@ -1,4 +1,4 @@
-import { DrawMethods } from "../render";
+import { DrawMethods, PlaceOptions, ReactiveLayerComponent } from "../render";
 import { NormalizedFloat } from "./common";
 
 // Every DrawMethods member is designed to be exposed to renderable
@@ -10,6 +10,11 @@ export interface RenderProps extends DrawMethods {
   context: CanvasRenderingContext2D;
   hasMeasurements: true;
   time: number;
+  placeInScene: (
+    component: ReactiveLayerComponent<any>,
+    options: PlaceOptions,
+    id: string,
+  ) => void;
 }
 
 export type ReactiveStatus = "idle" | "sustained" | "releasing";

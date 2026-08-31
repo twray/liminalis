@@ -8,7 +8,10 @@ import {
 
 import { toNormalizedFloat } from "../util";
 
-export interface VisualRenderProps<TProps> extends RenderProps, ReactiveProps {
+// Omitting the "placeInScene" property from RenderProps as we will soon
+// deprecare this
+export interface VisualRenderProps<TProps>
+  extends Omit<RenderProps, "placeInScene">, ReactiveProps {
   props: TProps;
 }
 

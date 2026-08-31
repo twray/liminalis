@@ -1,6 +1,10 @@
 import { Utilities, WebMidi } from "webmidi";
 
-import { createDrawContext } from "../render";
+import {
+  createDrawContext,
+  PlaceOptions,
+  ReactiveLayerComponent,
+} from "../render";
 import type { AssetCacheEntry } from "./AsyncAssetCache";
 import AudioCapture, { type AudioCaptureSession } from "./AudioCapture";
 import CanvasRenderer from "./CanvasRenderer";
@@ -29,6 +33,7 @@ import Scene from "./Scene";
 
 import keyMappings from "../data/keyMappings.json";
 import ReactiveLayerRegistry from "./ReactiveLayerRegistry";
+import { adaptToLayerComponent } from "./transformers/adaptToLayerComponent";
 
 type VideoFormatPreference = "auto" | "webm" | "mp4";
 
@@ -395,6 +400,18 @@ class VisualisationAnimationLoopHandler<TState> {
         this.#frameRenderCallbacks.forEach((frameRenderCallback) => {
           drawContext.executeDrawCallback(
             (drawMethods) => {
+              const placeInScene = (
+                component: ReactiveLayerComponent<any>,
+                options: PlaceOptions,
+                id: string,
+              ) => {
+                const state = this.#reactiveLayerRegistry.getOrCreate(id, true);
+                drawMethods.place(adaptToLayerComponent(component, state), {
+                  ...options,
+                  key: id,
+                });
+              };
+
               frameRenderCallback({
                 ...drawMethods,
                 context,
@@ -406,6 +423,7 @@ class VisualisationAnimationLoopHandler<TState> {
                 afterTime,
                 duringTimeInterval,
                 activeNotes: activeNotesForFrame,
+                placeInScene,
               });
             },
             context,
