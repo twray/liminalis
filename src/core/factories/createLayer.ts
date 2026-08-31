@@ -1,8 +1,5 @@
-import type {
-  LayerComponent,
-  LayerRenderer,
-  PropsFirstFactory,
-} from "../../render/types";
+import type { LayerComponent, LayerRenderer } from "../../render/types";
+import type { PropsFirstFactory } from "../../types";
 
 export type LayerFactory<TProps> = PropsFirstFactory<
   TProps,

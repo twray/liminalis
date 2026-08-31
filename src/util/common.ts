@@ -103,8 +103,3 @@ export function stableSerialize(value: unknown): string {
 
   return JSON.stringify(String(value));
 }
-
-export const devicePixelRatio =
-  typeof window !== "undefined" && Number.isFinite(window.devicePixelRatio)
-    ? window.devicePixelRatio
-    : 1;

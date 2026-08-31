@@ -28,6 +28,7 @@ import NoteEventManager from "./NoteEventManager";
 import Scene from "./Scene";
 
 import keyMappings from "../data/keyMappings.json";
+import ReactiveLayerRegistry from "./ReactiveLayerRegistry";
 
 type VideoFormatPreference = "auto" | "webm" | "mp4";
 
@@ -145,6 +146,7 @@ class VisualisationAnimationLoopHandler<TState> {
   #noteEventManager = new NoteEventManager("major");
 
   #scene = new Scene();
+  #reactiveLayerRegistry = new ReactiveLayerRegistry();
   #sceneState: TState = {} as TState;
 
   // Callbacks from event-based handlers that
