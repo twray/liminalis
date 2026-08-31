@@ -66,7 +66,7 @@ describe("createLayer", () => {
     });
   });
 
-  it("re-invokes the renderer with fresh props on each render call", () => {
+  it("re-invokes the renderer on each render call", () => {
     const renderer = vi.fn();
     const logo = createLayer<{ fillStyle: string }>(renderer);
     const component = logo({ fillStyle: "red" });

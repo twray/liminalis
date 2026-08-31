@@ -1,8 +1,4 @@
-import type { LayerComponent, LayerRenderer } from "./types";
-
-type PropsFirstFactory<TProps, TInstance> = {} extends TProps
-  ? (props?: TProps) => TInstance
-  : (props: TProps) => TInstance;
+import type { LayerComponent, LayerRenderer, PropsFirstFactory } from "./types";
 
 export type LayerFactory<TProps> = PropsFirstFactory<
   TProps,
