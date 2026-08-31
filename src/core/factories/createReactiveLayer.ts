@@ -1,8 +1,8 @@
 import type {
-  PropsFirstFactory,
   ReactiveLayerComponent,
   ReactiveLayerRenderer,
-} from "./types";
+} from "../../render/types";
+import type { PropsFirstFactory } from "../../types";
 
 export type ReactiveLayerFactory<TProps> = PropsFirstFactory<
   TProps,

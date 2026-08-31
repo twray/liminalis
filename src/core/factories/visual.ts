@@ -1,12 +1,9 @@
-import Visual, { VisualRenderer } from "./Visual";
-
-type PropsFirstFactory<TProps, TInstance> = {} extends TProps
-  ? (props?: TProps) => TInstance
-  : (props: TProps) => TInstance;
+import { PropsFirstFactory } from "../../types";
+import Visual, { VisualRenderer } from "../Visual";
 
 export type VisualComponent<TProps> = PropsFirstFactory<TProps, Visual<TProps>>;
 
-export const defineVisual = <TProps = {}>(
+export const visual = <TProps = {}>(
   renderer: VisualRenderer<TProps>,
 ): VisualComponent<TProps> => {
   const factory = (props?: TProps) => new Visual<TProps>(props, renderer);

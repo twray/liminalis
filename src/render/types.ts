@@ -371,10 +371,6 @@ export interface DrawContext {
   ) => void;
 }
 
-export type PropsFirstFactory<TProps, TInstance> = {} extends TProps
-  ? (props?: TProps) => TInstance
-  : (props: TProps) => TInstance;
-
 export type LayerRenderContext<TProps> = DrawMethods & { props: TProps };
 
 export type LayerRenderer<TProps> = (

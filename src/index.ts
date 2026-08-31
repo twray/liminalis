@@ -1,6 +1,6 @@
 import { createScene, logMessage } from "./core";
 
-createScene
+createScene()
   .setup(({ atStart }) => {
     atStart(() => {
       logMessage("Welcome to Liminalis");

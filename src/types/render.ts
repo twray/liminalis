@@ -1,5 +1,5 @@
-import { NormalizedFloat } from "./common";
 import { DrawMethods } from "../render";
+import { NormalizedFloat } from "./common";
 
 // Every DrawMethods member is designed to be exposed to renderable
 // callbacks (onRender, visual()), so RenderProps extends it directly rather
@@ -21,3 +21,9 @@ export interface ReactiveProps {
   timeAttacked: number | null;
   timeReleased: number | null;
 }
+
+// Generic factory type that takes an optionl props first and returns an
+// instance of the component.
+export type PropsFirstFactory<TProps, TInstance> = {} extends TProps
+  ? (props?: TProps) => TInstance
+  : (props: TProps) => TInstance;

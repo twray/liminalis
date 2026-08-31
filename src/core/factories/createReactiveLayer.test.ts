@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { ReactiveProps } from "../types";
+import { DrawMethods } from "../../render/types";
+import { ReactiveProps } from "../../types";
 import { createReactiveLayer } from "./createReactiveLayer";
-import { DrawMethods } from "./types";
 
 describe("createReactiveLayer", () => {
   it("creates a props-first factory that returns a ReactiveLayerComponent", () => {

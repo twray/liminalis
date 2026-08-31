@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type { DrawMethods } from "./types";
+import type { DrawMethods } from "../../render/types";
 
 import { createLayer } from "./createLayer";
 
