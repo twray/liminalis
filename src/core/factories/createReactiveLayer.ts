@@ -23,7 +23,8 @@ export const createReactiveLayer = <TProps = {}>(
   const factory = (props?: TProps): ReactiveLayerComponent<TProps> => ({
     __componentKind: "reactiveLayer",
     props: props as TProps,
-    render: (ambient) => renderer({ ...ambient, props: props as TProps }),
+    render: (ambient) =>
+      renderer({ ...ambient, props: props ?? ({} as TProps) }),
   });
   return factory as ReactiveLayerFactory<TProps>;
 };

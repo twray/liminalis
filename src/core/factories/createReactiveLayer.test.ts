@@ -104,4 +104,16 @@ describe("createReactiveLayer", () => {
       expect.objectContaining({ status: "sustained" }),
     );
   });
+
+  it("provides an empty props object if none is supplied within the render call", () => {
+    const renderer = vi.fn();
+    const logo = createReactiveLayer<{ fillStyle?: string }>(renderer);
+    const component = logo();
+
+    component.render({} as DrawMethods & ReactiveProps);
+
+    expect(renderer).toHaveBeenCalledWith({
+      props: {},
+    });
+  });
 });

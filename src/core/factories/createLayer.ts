@@ -19,7 +19,8 @@ export const createLayer = <TProps = {}>(
 ): LayerFactory<TProps> => {
   const factory = (props?: TProps): LayerComponent<TProps> => ({
     props: props as TProps,
-    render: (ambient) => renderer({ ...ambient, props: props as TProps }),
+    render: (ambient) =>
+      renderer({ ...ambient, props: props ?? ({} as TProps) }),
   });
 
   return factory as LayerFactory<TProps>;

@@ -76,4 +76,16 @@ describe("createLayer", () => {
 
     expect(renderer).toHaveBeenCalledTimes(2);
   });
+
+  it("provides an empty props object if none is supplied within the render call", () => {
+    const renderer = vi.fn();
+    const logo = createLayer<{ fillStyle?: string }>(renderer);
+    const component = logo();
+
+    component.render({} as DrawMethods);
+
+    expect(renderer).toHaveBeenCalledWith({
+      props: {},
+    });
+  });
 });
