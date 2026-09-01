@@ -23,7 +23,7 @@ import {
   createNoopAnimatable,
 } from "./common";
 
-import { devicePixelRatio } from "../util/common";
+import { devicePixelRatio } from "../util/";
 
 import {
   arc,
