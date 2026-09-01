@@ -26,13 +26,13 @@ describe("ReactiveLayerEnvelope", () => {
       expect(envelope.isReleasing).toBe(false);
       expect(envelope.status).toBe("idle");
       expect(envelope.hasBeenReleased).toBe(false);
-      expect(envelope.msSinceAttacked).toBeNull();
-      expect(envelope.msSinceReleased).toBeNull();
+      expect(envelope.timeAttacked).toBeNull();
+      expect(envelope.timeReleased).toBeNull();
     });
   });
 
   describe("attack", () => {
-    it("sets attackValue and timeAttacked, deriving isSustaining/status", () => {
+    it("sets attackValue and timeAttacked (ms since first render), deriving isSustaining/status", () => {
       const envelope = new ReactiveLayerEnvelope(true);
 
       envelope.attack(0.75);
@@ -41,7 +41,9 @@ describe("ReactiveLayerEnvelope", () => {
       expect(envelope.isSustaining).toBe(true);
       expect(envelope.isReleasing).toBe(false);
       expect(envelope.status).toBe("sustained");
-      expect(envelope.msSinceAttacked).toBe(0);
+      // Construction (first render) and this attack happen at the same
+      // fake-clock instant, so ms-since-first-render is 0 here.
+      expect(envelope.timeAttacked).toBe(0);
     });
 
     it("rejects an attackValue outside the normalized 0-1 range", () => {
@@ -51,7 +53,7 @@ describe("ReactiveLayerEnvelope", () => {
       expect(() => envelope.attack(-0.1)).toThrow();
     });
 
-    it("re-attacking updates attackValue and resets msSinceAttacked", () => {
+    it("re-attacking updates attackValue and timeAttacked to ms since first render at the moment of THIS attack", () => {
       const envelope = new ReactiveLayerEnvelope(true);
 
       envelope.attack(0.5);
@@ -59,16 +61,26 @@ describe("ReactiveLayerEnvelope", () => {
       envelope.attack(1);
 
       expect(envelope.attackValue).toBe(1);
-      expect(envelope.msSinceAttacked).toBe(0);
+      // First render was at construction (t=0); this second attack happens
+      // at t=50, so timeAttacked reflects that, not "0" or "time since now".
+      expect(envelope.timeAttacked).toBe(50);
     });
 
-    it("advancing time without any further action increases msSinceAttacked", () => {
+    it("timeAttacked is a frozen snapshot — it does not grow as time passes without a new attack", () => {
       const envelope = new ReactiveLayerEnvelope(true);
 
-      envelope.attack(1);
       vi.advanceTimersByTime(42);
+      envelope.attack(1);
 
-      expect(envelope.msSinceAttacked).toBe(42);
+      expect(envelope.timeAttacked).toBe(42);
+
+      vi.advanceTimersByTime(1000);
+
+      // Unlike a live "ms since now" value, this must stay fixed at 42 —
+      // that's the whole point of "since first render", matching
+      // Visual.ts's timeAttackedSinceFirstRender behavior instead of
+      // recomputing against the current time on every read.
+      expect(envelope.timeAttacked).toBe(42);
       expect(envelope.status).toBe("sustained");
     });
   });
@@ -144,17 +156,21 @@ describe("ReactiveLayerEnvelope", () => {
       expect(envelope.hasBeenReleased).toBe(true);
     });
 
-    it("reports msSinceReleased once released, and null before", () => {
+    it("reports timeReleased (ms since first render, frozen at the moment of release) once released, and null before", () => {
       const envelope = new ReactiveLayerEnvelope(true);
 
       envelope.attack(1);
-      expect(envelope.msSinceReleased).toBeNull();
+      expect(envelope.timeReleased).toBeNull();
 
       envelope.release(100);
-      vi.advanceTimersByTime(0);
+      vi.advanceTimersByTime(0); // release takes effect at t=0
+
+      expect(envelope.timeReleased).toBe(0);
 
       vi.advanceTimersByTime(30);
-      expect(envelope.msSinceReleased).toBe(30);
+
+      // Frozen, not live — must still read 0, not 30.
+      expect(envelope.timeReleased).toBe(0);
     });
 
     it("a re-attack before a scheduled release fires supersedes it", () => {

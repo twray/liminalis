@@ -1368,6 +1368,36 @@ describe("VisualisationAnimationLoopHandler note dispatch", () => {
     );
   });
 
+  // Mirrors createMockContext() in src/render/index.test.ts: rich enough for
+  // real place()/layer() container machinery (DrawGroupManager, bitmap
+  // caching, clip scopes) to run without throwing, unlike this file's own
+  // minimal createCanvasProps() context. Hoisted here (rather than scoped
+  // inside a single describe) so both the placeInScene and getFromScene
+  // describes below can share it instead of each keeping their own copy.
+  const createRichMockContext = () =>
+    ({
+      save: vi.fn(),
+      restore: vi.fn(),
+      translate: vi.fn(),
+      rotate: vi.fn(),
+      scale: vi.fn(),
+      beginPath: vi.fn(),
+      closePath: vi.fn(),
+      clip: vi.fn(),
+      rect: vi.fn(),
+      roundRect: vi.fn(),
+      arc: vi.fn(),
+      ellipse: vi.fn(),
+      moveTo: vi.fn(),
+      lineTo: vi.fn(),
+      fill: vi.fn(),
+      stroke: vi.fn(),
+      fillRect: vi.fn(),
+      drawImage: vi.fn(),
+      measureText: vi.fn(() => ({ width: 0 })),
+      canvas: { width: 800, height: 600 },
+    }) as unknown as CanvasRenderingContext2D;
+
   // Step 4 of spec/reactive-layer-plan.md: placeInScene(), exposed on
   // RenderProps, is the bridge that lets a reactive layer (createReactiveLayer())
   // be positioned via the real place()/layer() engine every frame. These
@@ -1376,45 +1406,21 @@ describe("VisualisationAnimationLoopHandler note dispatch", () => {
   // to prove the wiring — registry -> adaptToLayerComponent -> place() ->
   // the component's own render — actually works end to end.
   describe("placeInScene", () => {
-    // Mirrors createMockContext() in src/render/index.test.ts: rich enough
-    // for real place()/layer() container machinery (DrawGroupManager,
-    // bitmap caching, clip scopes) to run without throwing, unlike this
-    // file's own minimal createCanvasProps() context.
-    const createRichMockContext = () =>
-      ({
-        save: vi.fn(),
-        restore: vi.fn(),
-        translate: vi.fn(),
-        rotate: vi.fn(),
-        scale: vi.fn(),
-        beginPath: vi.fn(),
-        closePath: vi.fn(),
-        clip: vi.fn(),
-        rect: vi.fn(),
-        roundRect: vi.fn(),
-        arc: vi.fn(),
-        ellipse: vi.fn(),
-        moveTo: vi.fn(),
-        lineTo: vi.fn(),
-        fill: vi.fn(),
-        stroke: vi.fn(),
-        fillRect: vi.fn(),
-        drawImage: vi.fn(),
-        measureText: vi.fn(() => ({ width: 0 })),
-        canvas: { width: 800, height: 600 },
-      }) as unknown as CanvasRenderingContext2D;
-
     it("renders the reactive component via place(), injecting idle-default lifecycle props and the component's own props", async () => {
       const { default: VisualisationAnimationLoopHandler } =
         await import("./VisualisationAnimationLoopHandler");
-      const { createReactiveLayer } = await import(
-        "./factories/createReactiveLayer"
-      );
+      const { createReactiveLayer } =
+        await import("./factories/createReactiveLayer");
 
       const seenContexts: any[] = [];
       const badge = createReactiveLayer<{ fillStyle: string }>((ctx) => {
         seenContexts.push(ctx);
-        ctx.circle({ cx: 0, cy: 0, radius: 10, fillStyle: ctx.props.fillStyle });
+        ctx.circle({
+          cx: 0,
+          cy: 0,
+          radius: 10,
+          fillStyle: ctx.props.fillStyle,
+        });
       });
 
       const handler = new VisualisationAnimationLoopHandler()
@@ -1460,9 +1466,8 @@ describe("VisualisationAnimationLoopHandler note dispatch", () => {
     it("keeps two differently-id'd reactive layers independent within the same frame", async () => {
       const { default: VisualisationAnimationLoopHandler } =
         await import("./VisualisationAnimationLoopHandler");
-      const { createReactiveLayer } = await import(
-        "./factories/createReactiveLayer"
-      );
+      const { createReactiveLayer } =
+        await import("./factories/createReactiveLayer");
 
       const seenLabels: string[] = [];
       const marker = createReactiveLayer<{ label: string }>((ctx) => {
@@ -1544,9 +1549,8 @@ describe("VisualisationAnimationLoopHandler note dispatch", () => {
 
       const { default: VisualisationAnimationLoopHandler } =
         await import("./VisualisationAnimationLoopHandler");
-      const { createReactiveLayer } = await import(
-        "./factories/createReactiveLayer"
-      );
+      const { createReactiveLayer } =
+        await import("./factories/createReactiveLayer");
 
       const marker = createReactiveLayer(() => {});
 
@@ -1572,5 +1576,220 @@ describe("VisualisationAnimationLoopHandler note dispatch", () => {
 
       vi.doUnmock("../render");
     });
+  });
+
+  // Step 5 of spec/reactive-layer-plan.md: dispatch by id — onNoteDown/
+  // onNoteUp (and atTime/atStart) reach a placeInScene-registered reactive
+  // layer via getFromScene(id), the same ergonomic shape as today's
+  // scene.getByKey(id)?.attack(...). None of this is covered yet; these are
+  // stubs for the plan's own Step 5 verification bar, plus a regression
+  // test for the isPermanent call-order fix at
+  // VisualisationAnimationLoopHandler.ts:167-169 (#getFromScene).
+  describe("getFromScene / MIDI dispatch by id", () => {
+    it("getFromScene(id) resolves to the same envelope regardless of whether onNoteDown or placeInScene is the first call site to touch that id", async () => {
+      const { default: VisualisationAnimationLoopHandler } =
+        await import("./VisualisationAnimationLoopHandler");
+      const { createReactiveLayer } =
+        await import("./factories/createReactiveLayer");
+
+      const seenProps: Record<
+        string,
+        Array<{ status: string; attackValue: number }>
+      > = { "note-first": [], "render-first": [] };
+
+      const marker = createReactiveLayer<{ id: "note-first" | "render-first" }>(
+        (ctx) => {
+          seenProps[ctx.props.id]!.push({
+            status: ctx.status,
+            attackValue: ctx.attackValue,
+          });
+          ctx.rect({ x: 0, y: 0, width: 5, height: 5, fillStyle: "red" });
+        },
+      );
+
+      const handler = new VisualisationAnimationLoopHandler()
+        .withSettings({ computerKeyboardDebugEnabled: false })
+        .setup(({ onNoteDown, onRender }) => {
+          onNoteDown(({ note, attack, getFromScene }) => {
+            getFromScene(note).attack(attack);
+          });
+
+          onRender(({ placeInScene }) => {
+            placeInScene(
+              marker({ id: "note-first" }),
+              { x: 0, y: 0, width: 10, height: 10 },
+              "note-first",
+            );
+            placeInScene(
+              marker({ id: "render-first" }),
+              { x: 10, y: 0, width: 10, height: 10 },
+              "render-first",
+            );
+          });
+        });
+
+      handler.render();
+      await flushPromises();
+
+      const [noteOn] = mockState.midiListeners.noteon;
+      expect(noteOn).toBeDefined();
+
+      noteOn!({ note: { identifier: "note-first", number: 1, attack: 0.6 } });
+
+      mockState.latestRenderCallback!({
+        context: createRichMockContext(),
+        width: 800,
+        height: 600,
+      });
+
+      noteOn!({ note: { identifier: "render-first", number: 2, attack: 0.9 } });
+
+      mockState.latestRenderCallback!({
+        context: createRichMockContext(),
+        width: 800,
+        height: 600,
+      });
+
+      expect(seenProps["note-first"]).toEqual([
+        { status: "sustained", attackValue: 0.6 },
+        { status: "sustained", attackValue: 0.6 },
+      ]);
+
+      expect(seenProps["render-first"]).toEqual([
+        { status: "idle", attackValue: 0 },
+        { status: "sustained", attackValue: 0.9 },
+      ]);
+    });
+
+    it("onNoteDown calling getFromScene(id).attack(value) is reflected in the reactive layer's own render props (status: 'sustained', attackValue) on the next placeInScene-driven frame", async () => {
+      const { default: VisualisationAnimationLoopHandler } =
+        await import("./VisualisationAnimationLoopHandler");
+      const { createReactiveLayer } = await import(
+        "./factories/createReactiveLayer"
+      );
+
+      const seenProps: Array<{ status: string; attackValue: number }> = [];
+      const badge = createReactiveLayer((ctx) => {
+        seenProps.push({ status: ctx.status, attackValue: ctx.attackValue });
+        ctx.rect({ x: 0, y: 0, width: 5, height: 5, fillStyle: "blue" });
+      });
+
+      const handler = new VisualisationAnimationLoopHandler()
+        .withSettings({ computerKeyboardDebugEnabled: false })
+        .setup(({ onNoteDown, onRender }) => {
+          onNoteDown(({ note, attack, getFromScene }) => {
+            getFromScene(note).attack(attack);
+          });
+
+          onRender(({ placeInScene }) => {
+            placeInScene(
+              badge(),
+              { x: 0, y: 0, width: 10, height: 10 },
+              "badge-1",
+            );
+          });
+        });
+
+      handler.render();
+      await flushPromises();
+
+      const [noteOn] = mockState.midiListeners.noteon;
+      expect(noteOn).toBeDefined();
+
+      noteOn!({ note: { identifier: "badge-1", number: 1, attack: 0.75 } });
+
+      mockState.latestRenderCallback!({
+        context: createRichMockContext(),
+        width: 800,
+        height: 600,
+      });
+
+      expect(seenProps).toEqual([{ status: "sustained", attackValue: 0.75 }]);
+    });
+
+    it("a full note-on/note-off cycle -- attack via onNoteDown, then release via onNoteUp -- is observed by the placed reactive layer's render props transitioning status: 'sustained' -> 'releasing' -> 'idle' (hasBeenReleased: true) across successive frames, using fake timers for sustainPeriod/releasePeriod", async () => {
+      vi.useFakeTimers();
+
+      try {
+        const { default: VisualisationAnimationLoopHandler } =
+          await import("./VisualisationAnimationLoopHandler");
+        const { createReactiveLayer } = await import(
+          "./factories/createReactiveLayer"
+        );
+
+        const seenStatuses: string[] = [];
+        const pulse = createReactiveLayer((ctx) => {
+          seenStatuses.push(ctx.status);
+          ctx.rect({ x: 0, y: 0, width: 5, height: 5, fillStyle: "green" });
+        });
+
+        const handler = new VisualisationAnimationLoopHandler()
+          .withSettings({ computerKeyboardDebugEnabled: false })
+          .setup(({ onNoteDown, onNoteUp, onRender }) => {
+            onNoteDown(({ note, attack, getFromScene }) => {
+              getFromScene(note).attack(attack);
+            });
+
+            // No .sustain() call -- sustainPeriod defaults to 0, so
+            // release() takes effect on the next scheduled-timer tick
+            // rather than being held for a minimum duration first (see
+            // ReactiveLayerEnvelope.test.ts's own "defaults sustainPeriod
+            // to 0" case).
+            onNoteUp(({ note, getFromScene }) => {
+              getFromScene(note).release(100);
+            });
+
+            onRender(({ placeInScene }) => {
+              placeInScene(
+                pulse(),
+                { x: 0, y: 0, width: 10, height: 10 },
+                "pulse-1",
+              );
+            });
+          });
+
+        handler.render();
+        await flushPromises();
+
+        const [noteOn] = mockState.midiListeners.noteon;
+        const [noteOff] = mockState.midiListeners.noteoff;
+        expect(noteOn).toBeDefined();
+        expect(noteOff).toBeDefined();
+
+        const renderFrame = () =>
+          mockState.latestRenderCallback!({
+            context: createRichMockContext(),
+            width: 800,
+            height: 600,
+          });
+
+        noteOn!({ note: { identifier: "pulse-1", number: 1, attack: 1 } });
+        renderFrame(); // attacked -> sustained
+
+        noteOff!({ note: { identifier: "pulse-1", number: 1 } });
+        // release(100) is scheduled but its 0ms-delay timer hasn't fired
+        // yet -- still sustained until timers advance.
+        renderFrame();
+
+        vi.advanceTimersByTime(0); // release takes effect now
+        renderFrame(); // releasing
+
+        vi.advanceTimersByTime(100); // releasePeriod elapses
+        renderFrame(); // idle, hasBeenReleased
+
+        expect(seenStatuses).toEqual([
+          "sustained",
+          "sustained",
+          "releasing",
+          "idle",
+        ]);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it.todo(
+      "a reactive layer stops being rendered once fully decayed only when isPermanent is false (the Step 8 scene.add()-style path) -- a directly placeInScene'd (always-permanent) layer keeps rendering through and after decay",
+    );
   });
 });

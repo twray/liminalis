@@ -1,11 +1,11 @@
 import type {
   Dimensions2D,
+  IAnimatableLike,
   PartialDrawStyles,
   PartialIsometricStyles,
   Point2D,
 } from "../types";
 import { degreesToRadians } from "../util";
-import type { IAnimatableLike } from "./Animatable";
 import type {
   Bounds,
   BoundsCollector,

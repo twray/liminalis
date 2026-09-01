@@ -1,5 +1,5 @@
 import type { NormalizedFloat, ReactiveStatus } from "../types";
-import { toNormalizedFloat, getMsSince } from "../util";
+import { getMsSince, toNormalizedFloat } from "../util";
 
 // "Envelope" borrows the audio-synthesis term for exactly this shape: a
 // value that rises on attack, holds during sustain, and decays on release
@@ -12,6 +12,11 @@ class ReactiveLayerEnvelope {
   #releasePeriod = 0;
   #timeAttacked: Date | null = null;
   #timeReleased: Date | null = null;
+  // Set once, at construction — the single choke point every entry path
+  // (placeInScene, attack, sustain, release) goes through via
+  // ReactiveLayerRegistry.getOrCreate — so "first render" is correct
+  // regardless of which of those happens to create this envelope first.
+  #timeFirstRender: Date = new Date();
   readonly isPermanent: boolean;
 
   constructor(isPermanent: boolean) {
@@ -54,26 +59,23 @@ class ReactiveLayerEnvelope {
     return "idle";
   }
 
-  // True once a release has ever been scheduled and taken effect — lets
-  // Step 6's removal check tell "never attacked yet, keep waiting" apart
-  // from "attacked, released, now fully decayed" even though both are
-  // `status: "idle"`. Unlike Visual/Scene's equivalent check (Scene.ts's
-  // `isReleasing: hasBeenReleased` destructure), this needs no "catch the
-  // exact tick it flipped" mutation dance — it's just testing whether
-  // timeReleased is set, so checking it a frame late is harmless.
+  get timeAttacked(): number | null {
+    return this.#timeAttacked
+      ? getMsSince(this.#timeFirstRender, this.#timeAttacked)
+      : null;
+  }
+
+  get timeReleased(): number | null {
+    return this.#timeReleased
+      ? getMsSince(this.#timeFirstRender, this.#timeReleased)
+      : null;
+  }
+
   get hasBeenReleased(): boolean {
     return this.#timeReleased !== null;
   }
 
-  get msSinceAttacked(): number | null {
-    return this.#timeAttacked ? getMsSince(this.#timeAttacked) : null;
-  }
-
-  get msSinceReleased(): number | null {
-    return this.#timeReleased ? getMsSince(this.#timeReleased) : null;
-  }
-
-  attack(attackValue: number): void {
+  attack(attackValue: number = 1): void {
     this.#attackValue = toNormalizedFloat(attackValue);
     this.#timeAttacked = new Date();
   }

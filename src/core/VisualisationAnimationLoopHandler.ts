@@ -34,13 +34,17 @@ import NoteEventManager from "./NoteEventManager";
 import Scene from "./Scene";
 
 import keyMappings from "../data/keyMappings.json";
+import { createNoopAnimatable } from "../render/common";
+import ReactiveLayerEnvelope from "./ReactiveLayerEnvelope";
 import ReactiveLayerRegistry from "./ReactiveLayerRegistry";
 import { adaptToLayerComponent } from "./transformers/adaptToLayerComponent";
 
 type VideoFormatPreference = "auto" | "webm" | "mp4";
 
 interface WithSceneContext {
+  // TODO: This will be deprecated
   scene: Scene;
+  getFromScene: (id: string) => ReactiveLayerEnvelope;
 }
 
 type MidiEventCallback = (event: MidiNoteEvent) => void;
@@ -157,9 +161,13 @@ class VisualisationAnimationLoopHandler<TState> {
 
   #noteEventManager = new NoteEventManager("major");
 
-  #scene = new Scene();
   #reactiveLayerRegistry = new ReactiveLayerRegistry();
+  #scene = new Scene();
   #sceneState: TState = {} as TState;
+
+  #getFromScene = (id: string) => {
+    return this.#reactiveLayerRegistry.getOrCreate(id, true);
+  };
 
   // Callbacks from event-based handlers that
   // are registered in the 'setup' function
@@ -413,6 +421,15 @@ class VisualisationAnimationLoopHandler<TState> {
                 id: string,
               ) => {
                 const state = this.#reactiveLayerRegistry.getOrCreate(id, true);
+
+                if (
+                  !state.isPermanent &&
+                  state.status === "idle" &&
+                  state.hasBeenReleased
+                ) {
+                  return createNoopAnimatable<PlaceOptions>(options);
+                }
+
                 return drawMethods.place(
                   adaptToLayerComponent(component, state),
                   {
@@ -450,7 +467,10 @@ class VisualisationAnimationLoopHandler<TState> {
           .filter((timeCallback) => !timeCallback.expired)
           .forEach((timeCallback) => {
             if (timeInMs >= timeCallback.time) {
-              timeCallback.callback({ scene: this.#scene });
+              timeCallback.callback({
+                scene: this.#scene,
+                getFromScene: this.#getFromScene,
+              });
               timeCallback.expired = true;
             }
           });
@@ -643,6 +663,7 @@ class VisualisationAnimationLoopHandler<TState> {
       callback({
         ...noteDownEvent,
         scene: this.#scene,
+        getFromScene: this.#getFromScene,
       });
     });
   };
@@ -652,6 +673,7 @@ class VisualisationAnimationLoopHandler<TState> {
       callback({
         ...noteUpEvent,
         scene: this.#scene,
+        getFromScene: this.#getFromScene,
       });
     });
   };

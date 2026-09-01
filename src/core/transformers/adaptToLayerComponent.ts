@@ -5,9 +5,8 @@ export const adaptToLayerComponent = (
   reactiveComponent: ReactiveLayerComponent<any>,
   state: ReactiveLayerEnvelope,
 ): LayerComponent<any> => {
-  const { status, attackValue, releasePeriod } = state;
-  const timeAttacked = state.msSinceAttacked;
-  const timeReleased = state.msSinceReleased;
+  const { status, attackValue, releasePeriod, timeAttacked, timeReleased } =
+    state;
 
   return {
     props: reactiveComponent.props,

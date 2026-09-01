@@ -1,5 +1,4 @@
-import type { Dimensions2D } from "../types";
-import type { IAnimatableLike } from "./Animatable";
+import type { Dimensions2D, IAnimatableLike } from "../types";
 
 import type ActiveMeasurementsManager from "./ActiveMeasurementsManager";
 import BoundsCollectionManager from "./BoundsCollectionManager";
@@ -312,14 +311,17 @@ export const createContainerPrimitive = <
         run: () => {
           const frameContext = createFrameContext(true);
 
-          activeMeasurementsManager.withMeasurements(getLocalMeasurements, () => {
-            boundsCollectionManager.withCollector(
-              contentBoundsCollector,
-              () => {
-                (frameCallback as FrameCallback)(frameContext);
-              },
-            );
-          });
+          activeMeasurementsManager.withMeasurements(
+            getLocalMeasurements,
+            () => {
+              boundsCollectionManager.withCollector(
+                contentBoundsCollector,
+                () => {
+                  (frameCallback as FrameCallback)(frameContext);
+                },
+              );
+            },
+          );
 
           if (seedInitialProps) {
             const state = resolveCurrentState();
