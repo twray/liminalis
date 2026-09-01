@@ -8,7 +8,6 @@ import { createBoundsCollector, createNoopAnimatable } from "./common";
 
 import type {
   Bounds,
-  ClippingOptionsProps,
   ClosedPathDescriptor,
   CoordinateContextProps,
   FrameCallback,
@@ -130,9 +129,7 @@ export interface ContainerPrimitiveCommonParams extends RenderCollaborators {
 interface CreateContainerPrimitiveParams<
   TOptions extends GroupOptions | LayerOptions,
   TState extends ContainerBoundsState,
-  TScopeProps extends TransformProps &
-    CoordinateContextProps &
-    ClippingOptionsProps,
+  TScopeProps extends TransformProps & CoordinateContextProps,
 > extends ContainerPrimitiveCommonParams {
   containerType: "group" | "layer";
   frameSignatureType: string;
@@ -152,9 +149,7 @@ interface CreateContainerPrimitiveParams<
 export const createContainerPrimitive = <
   TOptions extends GroupOptions | LayerOptions,
   TState extends ContainerBoundsState,
-  TScopeProps extends TransformProps &
-    CoordinateContextProps &
-    ClippingOptionsProps,
+  TScopeProps extends TransformProps & CoordinateContextProps,
 >({
   containerType,
   frameSignatureType,

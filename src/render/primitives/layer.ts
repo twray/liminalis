@@ -96,7 +96,6 @@ export const layer = (
       ...currentProps,
       ...state.frameBounds,
       useLocalCoordinateContext: true,
-      clipContent: false,
     }),
     buildShowBoundsRect: buildLayerShowBoundsRect,
     pathDescriptor: layerPathDescriptor,

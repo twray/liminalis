@@ -228,7 +228,14 @@ describe("createGroupScope", () => {
   });
 
   describe("apply", () => {
-    it("does not clip content by default even when the descriptor is valid", () => {
+    // group()/layer()/place() never mask content to their frame's path --
+    // per the current design decision (spec/reactive-layer-plan.md, Step 7),
+    // any visual cropping for these container-like primitives comes only as
+    // a side effect of bitmap-cache surface sizing (DrawGroupBitmapCache),
+    // not from an explicit clip here. There is no caller-facing option to
+    // turn this on -- unlike createClipScope, used by the shape-as-frame
+    // primitives above, which always clips.
+    it("never clips content, even when the descriptor is valid", () => {
       const { context, callOrder } = createMockContext();
       const descriptor = validDescriptor();
       const scope = createGroupScope(
@@ -241,32 +248,7 @@ describe("createGroupScope", () => {
       expect(callOrder).toEqual([]);
     });
 
-    it("clips content when clipContent is true", () => {
-      const { context, callOrder } = createMockContext();
-      const descriptor = validDescriptor();
-      const scope = createGroupScope(
-        () => ({ clipContent: true }),
-        () => descriptor,
-      );
-
-      scope.apply?.(context);
-
-      expect(callOrder).toEqual(["beginPath", "rect:10,20,100,50", "clip"]);
-    });
-
-    it("clips to an empty region when invalid and clipContent is true", () => {
-      const { context, callOrder } = createMockContext();
-      const scope = createGroupScope(
-        () => ({ clipContent: true }),
-        () => invalidDescriptor,
-      );
-
-      scope.apply?.(context);
-
-      expect(callOrder).toEqual(["beginPath", "rect:0,0,0,0", "clip"]);
-    });
-
-    it("is a no-op when invalid and clipContent is not set", () => {
+    it("is a no-op when the descriptor is invalid", () => {
       const { context, callOrder } = createMockContext();
       const scope = createGroupScope(
         () => ({}),

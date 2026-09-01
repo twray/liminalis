@@ -5,7 +5,6 @@ import DrawGroupManager from "./DrawGroupManager";
 import type { Point2D } from "../types";
 import type {
   Bounds,
-  ClippingOptionsProps,
   ClipScope,
   ClosedPathDescriptor,
   CoordinateContextProps,
@@ -151,7 +150,7 @@ export const createClipScope = <
 };
 
 export const createGroupScope = <
-  T extends TransformProps & CoordinateContextProps & ClippingOptionsProps,
+  T extends TransformProps & CoordinateContextProps,
 >(
   getProps: () => T,
   getPathDescriptor: (props: T) => ClosedPathDescriptor,
@@ -181,7 +180,6 @@ export const createGroupScope = <
     apply: (context: CanvasRenderingContext2D): void => {
       const props = getProps();
       const descriptor = getPathDescriptor(props);
-      const shouldClipContent = props.clipContent === true;
       const internalGroupProps = props as unknown as {
         groupOffsetX?: number;
         groupOffsetY?: number;
@@ -190,20 +188,10 @@ export const createGroupScope = <
       const groupOffsetY = internalGroupProps.groupOffsetY ?? 0;
 
       if (!descriptor.isValid) {
-        if (shouldClipContent) {
-          clipToEmptyRegion(context);
-        }
-
         return;
       }
 
       applyForwardTransform(context, props, descriptor.bounds);
-
-      if (shouldClipContent) {
-        context.beginPath();
-        descriptor.tracePath(context);
-        context.clip();
-      }
 
       if (groupOffsetX !== 0 || groupOffsetY !== 0) {
         context.translate(groupOffsetX, groupOffsetY);

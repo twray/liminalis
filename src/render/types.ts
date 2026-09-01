@@ -137,10 +137,6 @@ export interface ContainerProps {
   key?: string;
 }
 
-export interface ClippingOptionsProps {
-  clipContent?: boolean;
-}
-
 export interface LineProps
   extends StrokeStyles, WithOpacity, WithBlend, TransformProps {
   start: Point2D;

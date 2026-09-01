@@ -34,7 +34,6 @@ export const place = (
       ...currentProps,
       ...state.frameBounds,
       useLocalCoordinateContext: true,
-      clipContent: false,
     }),
     buildShowBoundsRect: buildLayerShowBoundsRect,
     pathDescriptor: layerPathDescriptor,

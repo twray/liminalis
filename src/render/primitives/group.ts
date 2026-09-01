@@ -60,7 +60,6 @@ export const group = (
       ...state.frameBounds,
       groupOffsetX: state.frameBounds.x - state.derivedBounds.x,
       groupOffsetY: state.frameBounds.y - state.derivedBounds.y,
-      clipContent: false,
     }),
     buildShowBoundsRect: ({ state }) => ({
       x: state.derivedBounds.x,
