@@ -11,8 +11,7 @@ import { createIsometricPrimitive } from "./primitives/isometric";
 
 import { createClipScope, withClipScopedGroup } from "./clipping";
 
-import type { PartialDrawStyles } from "../types";
-import type { IAnimatableLike } from "./Animatable";
+import type { PartialDrawStyles, IAnimatableLike } from "../types";
 import type { ClipScope } from "./types";
 
 import {

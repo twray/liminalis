@@ -1,12 +1,13 @@
 import * as easingUtils from "easing-utils";
 
-import type { EasingFunction } from "../types";
-import {
+import type {
   AnimationSegmentOptions,
+  EasingFunction,
   EasingUtilsFunctionName,
   PartialNumericProps,
-} from "../types/animatable";
+} from "../types";
 import { eventTimeToMs } from "../util";
+import type { IAnimatableLike } from "../types";
 
 interface Segment<TProps> {
   targetProps: PartialNumericProps<TProps>;
@@ -15,32 +16,15 @@ interface Segment<TProps> {
 
 type BuiltInEasingFunctions = Pick<typeof easingUtils, EasingUtilsFunctionName>;
 
-type TimelineEntry<TProps> = {
+type AnimatableTimelineEntry<TProps> = {
   segment: Segment<TProps>;
   startTime: number | null;
   duration: number;
 };
 
-interface NumericLeafTarget {
+interface AnimatableNumericLeafTarget {
   path: string;
   value: number;
-}
-
-export interface IAnimatableLike<TProps extends object> {
-  readonly currentProps: Readonly<TProps>;
-  setCurrentFrameTime(timeInMs: number): void;
-  updateInitialProps(props: TProps): void;
-  captureCurrentProps(timeInMs: number): void;
-  clearSegments(): void;
-  clearSnapshot(): void;
-  animateTo(
-    targetProps: PartialNumericProps<TProps>,
-    options?: AnimationSegmentOptions,
-  ): IAnimatableLike<TProps>;
-  withOptions(
-    options: Partial<AnimationSegmentOptions>,
-  ): IAnimatableLike<TProps>;
-  getCurrentProps(timeInMs: number): TProps;
 }
 
 class Animatable<TProps extends object> implements IAnimatableLike<TProps> {
@@ -127,8 +111,8 @@ class Animatable<TProps extends object> implements IAnimatableLike<TProps> {
     return this.#evaluatePropsAtTime(timeline, baseProps, relativeTime);
   }
 
-  #buildTimeline(): TimelineEntry<TProps>[] {
-    const timeline: TimelineEntry<TProps>[] = [];
+  #buildTimeline(): AnimatableTimelineEntry<TProps>[] {
+    const timeline: AnimatableTimelineEntry<TProps>[] = [];
 
     let cumulativeEnd = 0;
 
@@ -190,7 +174,7 @@ class Animatable<TProps extends object> implements IAnimatableLike<TProps> {
   }
 
   #evaluatePropsAtTime(
-    timeline: TimelineEntry<TProps>[],
+    timeline: AnimatableTimelineEntry<TProps>[],
     baseProps: TProps,
     time: number,
   ): TProps {
@@ -201,7 +185,10 @@ class Animatable<TProps extends object> implements IAnimatableLike<TProps> {
       .filter((e) => e.startTime !== null)
       .sort((a, b) => a.startTime! - b.startTime!);
 
-    const segmentTargetsCache = new Map<Segment<TProps>, NumericLeafTarget[]>();
+    const segmentTargetsCache = new Map<
+      Segment<TProps>,
+      AnimatableNumericLeafTarget[]
+    >();
 
     this.#pruneSegmentStartValues(sortedEntries, segmentTargetsCache);
 
@@ -326,8 +313,8 @@ class Animatable<TProps extends object> implements IAnimatableLike<TProps> {
   #collectNumericLeafTargets(
     value: unknown,
     currentPath = "",
-    targets: NumericLeafTarget[] = [],
-  ): NumericLeafTarget[] {
+    targets: AnimatableNumericLeafTarget[] = [],
+  ): AnimatableNumericLeafTarget[] {
     if (typeof value === "number" && currentPath !== "") {
       targets.push({ path: currentPath, value });
       return targets;
@@ -367,8 +354,8 @@ class Animatable<TProps extends object> implements IAnimatableLike<TProps> {
 
   #getSegmentTargets(
     segment: Segment<TProps>,
-    cache: Map<Segment<TProps>, NumericLeafTarget[]>,
-  ): NumericLeafTarget[] {
+    cache: Map<Segment<TProps>, AnimatableNumericLeafTarget[]>,
+  ): AnimatableNumericLeafTarget[] {
     const cached = cache.get(segment);
 
     if (cached !== undefined) {
@@ -384,7 +371,7 @@ class Animatable<TProps extends object> implements IAnimatableLike<TProps> {
   #hasTargetPath(
     segment: Segment<TProps>,
     path: string,
-    cache: Map<Segment<TProps>, NumericLeafTarget[]>,
+    cache: Map<Segment<TProps>, AnimatableNumericLeafTarget[]>,
   ): boolean {
     return this.#getSegmentTargets(segment, cache).some(
       (target) => target.path === path,
@@ -394,7 +381,7 @@ class Animatable<TProps extends object> implements IAnimatableLike<TProps> {
   #getTargetValue(
     segment: Segment<TProps>,
     path: string,
-    cache: Map<Segment<TProps>, NumericLeafTarget[]>,
+    cache: Map<Segment<TProps>, AnimatableNumericLeafTarget[]>,
   ): number | undefined {
     const matchingTarget = this.#getSegmentTargets(segment, cache).find(
       (target) => target.path === path,
@@ -497,12 +484,12 @@ class Animatable<TProps extends object> implements IAnimatableLike<TProps> {
   }
 
   #getPropertyValueAtTime(
-    sortedEntries: TimelineEntry<TProps>[],
-    excludeEntry: TimelineEntry<TProps>,
+    sortedEntries: AnimatableTimelineEntry<TProps>[],
+    excludeEntry: AnimatableTimelineEntry<TProps>,
     path: string,
     atTime: number,
     baseProps: TProps,
-    segmentTargetsCache: Map<Segment<TProps>, NumericLeafTarget[]>,
+    segmentTargetsCache: Map<Segment<TProps>, AnimatableNumericLeafTarget[]>,
     allowSnapshotFallback = true,
   ): number {
     // Start with base value.
@@ -589,12 +576,12 @@ class Animatable<TProps extends object> implements IAnimatableLike<TProps> {
   }
 
   #computeSegmentStartValue(
-    sortedEntries: TimelineEntry<TProps>[],
-    entry: TimelineEntry<TProps>,
+    sortedEntries: AnimatableTimelineEntry<TProps>[],
+    entry: AnimatableTimelineEntry<TProps>,
     path: string,
     startTime: number,
     baseProps: TProps,
-    segmentTargetsCache: Map<Segment<TProps>, NumericLeafTarget[]>,
+    segmentTargetsCache: Map<Segment<TProps>, AnimatableNumericLeafTarget[]>,
   ): number {
     return this.#getPropertyValueAtTime(
       sortedEntries,
@@ -608,10 +595,10 @@ class Animatable<TProps extends object> implements IAnimatableLike<TProps> {
   }
 
   #shouldUseSnapshotFallbackForSegment(
-    sortedEntries: TimelineEntry<TProps>[],
-    excludeEntry: TimelineEntry<TProps>,
+    sortedEntries: AnimatableTimelineEntry<TProps>[],
+    excludeEntry: AnimatableTimelineEntry<TProps>,
     path: string,
-    segmentTargetsCache: Map<Segment<TProps>, NumericLeafTarget[]>,
+    segmentTargetsCache: Map<Segment<TProps>, AnimatableNumericLeafTarget[]>,
   ): boolean {
     if (
       this.#propsSnapshot === null ||
@@ -637,7 +624,7 @@ class Animatable<TProps extends object> implements IAnimatableLike<TProps> {
   }
 
   #getSegmentStartValueKey(
-    entry: TimelineEntry<TProps>,
+    entry: AnimatableTimelineEntry<TProps>,
     path: string,
     targetValue: number,
   ): string {
@@ -647,8 +634,8 @@ class Animatable<TProps extends object> implements IAnimatableLike<TProps> {
   }
 
   #pruneSegmentStartValues(
-    sortedEntries: TimelineEntry<TProps>[],
-    segmentTargetsCache: Map<Segment<TProps>, NumericLeafTarget[]>,
+    sortedEntries: AnimatableTimelineEntry<TProps>[],
+    segmentTargetsCache: Map<Segment<TProps>, AnimatableNumericLeafTarget[]>,
   ): void {
     if (this.#segmentStartValues.size === 0) {
       return;

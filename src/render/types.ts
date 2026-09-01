@@ -14,8 +14,8 @@ import type {
   WithBlend,
   WithOpacity,
   XOR,
+  IAnimatableLike,
 } from "../types";
-import type { IAnimatableLike } from "./Animatable";
 import type AnimatableRegistry from "./AnimatableRegistry";
 import type DrawGroupManager from "./DrawGroupManager";
 

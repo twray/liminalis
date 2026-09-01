@@ -60,3 +60,23 @@ export interface AnimationSegment<TProps> {
   startProps: Partial<TProps> | null; // null until segment becomes active
   effectiveStartTime: number | null;
 }
+
+/**
+ * Interface of an animatable-like object
+ */
+export interface IAnimatableLike<TProps extends object> {
+  readonly currentProps: Readonly<TProps>;
+  setCurrentFrameTime(timeInMs: number): void;
+  updateInitialProps(props: TProps): void;
+  captureCurrentProps(timeInMs: number): void;
+  clearSegments(): void;
+  clearSnapshot(): void;
+  animateTo(
+    targetProps: PartialNumericProps<TProps>,
+    options?: AnimationSegmentOptions,
+  ): IAnimatableLike<TProps>;
+  withOptions(
+    options: Partial<AnimationSegmentOptions>,
+  ): IAnimatableLike<TProps>;
+  getCurrentProps(timeInMs: number): TProps;
+}

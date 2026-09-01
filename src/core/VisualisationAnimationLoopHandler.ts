@@ -2,6 +2,7 @@ import { Utilities, WebMidi } from "webmidi";
 
 import {
   createDrawContext,
+  LayerOptions,
   PlaceOptions,
   ReactiveLayerComponent,
 } from "../render";
@@ -17,6 +18,7 @@ import type {
   AppSettings,
   CanvasProps,
   EventTime,
+  IAnimatableLike,
   MidiNoteEvent,
   NormalizedFloat,
   NoteDownEvent,
@@ -47,7 +49,7 @@ type NoteDownEventCallback = (params: NoteDownEvent & WithSceneContext) => void;
 
 type NoteUpEventCallback = (params: NoteUpEvent & WithSceneContext) => void;
 
-type FrameEventCallback = (params: FrameRenderProps) => void;
+type FrameEventCallback = (params: SceneRenderProps) => void;
 
 type TimeEventCallback = (params: WithSceneContext) => void;
 
@@ -111,11 +113,16 @@ interface SetupAssetLoadOptions {
   deferRender?: boolean;
 }
 
-interface FrameRenderProps extends RenderProps {
+interface SceneRenderProps extends RenderProps {
   beforeTime: (time: EventTime) => boolean;
   afterTime: (time: EventTime) => boolean;
   duringTimeInterval: (startTime: EventTime, endTime: EventTime) => boolean;
   activeNotes: NoteDownEvent[];
+  placeInScene: (
+    component: ReactiveLayerComponent<any>,
+    options: PlaceOptions,
+    id: string,
+  ) => IAnimatableLike<LayerOptions>;
 }
 
 const KEYBOARD_DEBUG_ATTACK_KEY_REGEX = /^[1-9]$/;
@@ -406,10 +413,13 @@ class VisualisationAnimationLoopHandler<TState> {
                 id: string,
               ) => {
                 const state = this.#reactiveLayerRegistry.getOrCreate(id, true);
-                drawMethods.place(adaptToLayerComponent(component, state), {
-                  ...options,
-                  key: id,
-                });
+                return drawMethods.place(
+                  adaptToLayerComponent(component, state),
+                  {
+                    ...options,
+                    key: id,
+                  },
+                );
               };
 
               frameRenderCallback({
