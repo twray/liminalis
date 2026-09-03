@@ -1,9 +1,4 @@
-import {
-  DynamicMeasurementContext,
-  MeasurementContext,
-  Measurements,
-  StaticMeasurementContext,
-} from "./types";
+import { DynamicMeasurementContext, Measurements } from "./types";
 
 class FrameMeasurementPassManager {
   #frameBoundsMeasurementDepth = 0;
@@ -24,24 +19,9 @@ class FrameMeasurementPassManager {
 
   createMeasurementContext(
     getMeasurements: () => Measurements,
-    hasMeasurements: true,
-    warnOnUnavailableRead: boolean,
-  ): StaticMeasurementContext;
-  createMeasurementContext(
-    getMeasurements: () => Measurements,
-    hasMeasurements: false,
-    warnOnUnavailableRead: boolean,
-  ): DynamicMeasurementContext;
-  createMeasurementContext(
-    getMeasurements: () => Measurements,
     hasMeasurements: boolean,
     warnOnUnavailableRead: boolean,
-  ): MeasurementContext;
-  createMeasurementContext(
-    getMeasurements: () => Measurements,
-    hasMeasurements: boolean,
-    warnOnUnavailableRead: boolean,
-  ): MeasurementContext {
+  ): DynamicMeasurementContext {
     let hasWarnedOnMeasureRead = false;
 
     const context: DynamicMeasurementContext = {
@@ -63,18 +43,6 @@ class FrameMeasurementPassManager {
         return getMeasurements();
       },
     };
-
-    if (hasMeasurements) {
-      const staticContext = context as StaticMeasurementContext;
-
-      Object.defineProperty(staticContext, "measurements", {
-        enumerable: true,
-        configurable: false,
-        get: () => getMeasurements(),
-      });
-
-      return staticContext;
-    }
 
     return context;
   }

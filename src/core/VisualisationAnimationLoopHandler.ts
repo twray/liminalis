@@ -2,9 +2,12 @@ import { Utilities, WebMidi } from "webmidi";
 
 import {
   createDrawContext,
+  DrawMethods,
   LayerOptions,
   PlaceOptions,
+  PlaceOptionsNonPermanent,
   ReactiveLayerComponent,
+  StaticMeasurementContext
 } from "../render";
 import type { AssetCacheEntry } from "./AsyncAssetCache";
 import AudioCapture, { type AudioCaptureSession } from "./AudioCapture";
@@ -31,20 +34,22 @@ import { eventTimeToMs, toNormalizedFloat } from "../util";
 import { logMessage } from "../util/log";
 
 import NoteEventManager from "./NoteEventManager";
-import Scene from "./Scene";
 
 import keyMappings from "../data/keyMappings.json";
 import { createNoopAnimatable } from "../render/common";
 import ReactiveLayerEnvelope from "./ReactiveLayerEnvelope";
 import ReactiveLayerRegistry from "./ReactiveLayerRegistry";
-import { adaptToLayerComponent } from "./transformers/adaptToLayerComponent";
+import { adaptToLayerComponent } from "./adapters/adaptToLayerComponent";
 
 type VideoFormatPreference = "auto" | "webm" | "mp4";
 
 interface WithSceneContext {
-  // TODO: This will be deprecated
-  scene: Scene;
   getFromScene: (id: string) => ReactiveLayerEnvelope;
+  placeInScene: (
+    component: ReactiveLayerComponent<any>,
+    options: PlaceOptionsNonPermanent,
+    id: string,
+  ) => void;
 }
 
 type MidiEventCallback = (event: MidiNoteEvent) => void;
@@ -84,19 +89,8 @@ interface SceneSettings {
   audioInputDeviceId?: string;
 }
 
-interface SetupFunctionProps<TState> {
+interface SetupFunctionProps<TState> extends StaticMeasurementContext {
   state: TState;
-  hasMeasurements: true;
-  measurements: {
-    width: number;
-    height: number;
-    center: { x: number; y: number };
-  };
-  getMeasurements: () => {
-    width: number;
-    height: number;
-    center: { x: number; y: number };
-  };
   load: (
     callback: (loaders: SetupAssetLoaders) => void,
     options?: SetupAssetLoadOptions,
@@ -162,8 +156,11 @@ class VisualisationAnimationLoopHandler<TState> {
   #noteEventManager = new NoteEventManager("major");
 
   #reactiveLayerRegistry = new ReactiveLayerRegistry();
-  #scene = new Scene();
   #sceneState: TState = {} as TState;
+  #sceneEntries = new Map<
+    string,
+    { component: ReactiveLayerComponent<any>; options: PlaceOptions }
+  >();
 
   #getFromScene = (id: string) => {
     return this.#reactiveLayerRegistry.getOrCreate(id, true);
@@ -346,14 +343,14 @@ class VisualisationAnimationLoopHandler<TState> {
     const setupMeasurements = {
       width: canvasWidth,
       height: canvasHeight,
+      sceneWidth: canvasWidth,
+      sceneHeight: canvasHeight,
       center: { x: canvasWidth / 2, y: canvasHeight / 2 },
     };
 
     setupFunction({
       state: this.#sceneState,
-      hasMeasurements: true,
       measurements: setupMeasurements,
-      getMeasurements: () => setupMeasurements,
       load,
       onNoteDown,
       onNoteUp,
@@ -363,6 +360,28 @@ class VisualisationAnimationLoopHandler<TState> {
     });
 
     return this;
+  }
+
+  #placeReactiveLayer(
+    drawMethods: DrawMethods,
+    component: ReactiveLayerComponent<any>,
+    options: PlaceOptions,
+    id: string,
+  ) {
+    const state = this.#reactiveLayerRegistry.getOrCreate(id, true);
+
+    if (
+      !state.isPermanent &&
+      state.status === "idle" &&
+      state.hasBeenReleased
+    ) {
+      return createNoopAnimatable<PlaceOptions>(options);
+    }
+
+    return drawMethods.place(adaptToLayerComponent(component, state), {
+      ...options,
+      key: id,
+    });
   }
 
   render() {
@@ -388,6 +407,8 @@ class VisualisationAnimationLoopHandler<TState> {
         const measurements = {
           width,
           height,
+          sceneWidth: width,
+          sceneHeight: height,
           center: { x: width / 2, y: height / 2 },
         };
         const timeInMs = this.#getInternalElapsedTimeInMs(nowInMs);
@@ -415,42 +436,32 @@ class VisualisationAnimationLoopHandler<TState> {
         this.#frameRenderCallbacks.forEach((frameRenderCallback) => {
           drawContext.executeDrawCallback(
             (drawMethods) => {
-              const placeInScene = (
-                component: ReactiveLayerComponent<any>,
-                options: PlaceOptions,
-                id: string,
-              ) => {
-                const state = this.#reactiveLayerRegistry.getOrCreate(id, true);
-
-                if (
-                  !state.isPermanent &&
-                  state.status === "idle" &&
-                  state.hasBeenReleased
-                ) {
-                  return createNoopAnimatable<PlaceOptions>(options);
-                }
-
-                return drawMethods.place(
-                  adaptToLayerComponent(component, state),
-                  {
-                    ...options,
-                    key: id,
-                  },
-                );
-              };
-
               frameRenderCallback({
                 ...drawMethods,
                 context,
-                hasMeasurements: true,
                 measurements,
-                getMeasurements: () => measurements,
                 time: timeInMs,
                 beforeTime,
                 afterTime,
                 duringTimeInterval,
                 activeNotes: activeNotesForFrame,
-                placeInScene,
+                placeInScene: (component, options, id) =>
+                  this.#placeReactiveLayer(drawMethods, component, options, id),
+              });
+
+              this.#sceneEntries.forEach(({ component, options }, id) => {
+                this.#placeReactiveLayer(drawMethods, component, options, id);
+
+                const state = this.#reactiveLayerRegistry.get(id);
+                if (
+                  state &&
+                  !state.isPermanent &&
+                  state.status === "idle" &&
+                  state.hasBeenReleased
+                ) {
+                  this.#sceneEntries.delete(id);
+                  this.#reactiveLayerRegistry.delete(id);
+                }
               });
             },
             context,
@@ -468,18 +479,17 @@ class VisualisationAnimationLoopHandler<TState> {
           .forEach((timeCallback) => {
             if (timeInMs >= timeCallback.time) {
               timeCallback.callback({
-                scene: this.#scene,
                 getFromScene: this.#getFromScene,
+                placeInScene: (component, options, id) => {
+                  this.#sceneEntries.set(id, {
+                    component,
+                    options,
+                  });
+                },
               });
               timeCallback.expired = true;
             }
           });
-
-        // Remove objects that are either released or not visible
-        this.#scene.cleanUp();
-
-        // Render all animatable objects
-        this.#scene.renderObjects(context, width, height, timeInMs);
 
         if (this.#videoRecorder.isRecording) {
           this.#videoRecorder.captureFrame(timeInMs);
@@ -662,8 +672,10 @@ class VisualisationAnimationLoopHandler<TState> {
     this.#noteDownCallbacks.forEach((callback) => {
       callback({
         ...noteDownEvent,
-        scene: this.#scene,
         getFromScene: this.#getFromScene,
+        placeInScene: (component, options, id) => {
+          this.#sceneEntries.set(id, { component, options });
+        },
       });
     });
   };
@@ -672,8 +684,10 @@ class VisualisationAnimationLoopHandler<TState> {
     this.#noteUpCallbacks.forEach((callback) => {
       callback({
         ...noteUpEvent,
-        scene: this.#scene,
         getFromScene: this.#getFromScene,
+        placeInScene: (component, options, id) => {
+          this.#sceneEntries.set(id, { component, options });
+        },
       });
     });
   };

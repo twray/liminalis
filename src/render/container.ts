@@ -10,11 +10,11 @@ import type {
   Bounds,
   ClosedPathDescriptor,
   CoordinateContextProps,
+  DynamicMeasurementContext,
   FrameCallback,
   FrameContext,
   GroupOptions,
   LayerOptions,
-  MeasurementContext,
   Measurements,
   RenderCollaborators,
   StaticFrameCallback,
@@ -119,11 +119,13 @@ export interface ContainerPrimitiveCommonParams extends RenderCollaborators {
     getMeasurements: () => Measurements,
     hasMeasurements: boolean,
     warnOnUnavailableRead: boolean,
-  ) => MeasurementContext;
+  ) => DynamicMeasurementContext;
   boundsCollectionManager: BoundsCollectionManager;
   withFrameBoundsMeasurementPass: <T>(callbackFn: () => T) => T;
   isMeasuringFrameBounds: () => boolean;
   activeMeasurementsManager: ActiveMeasurementsManager;
+  sceneWidth: number;
+  sceneHeight: number;
 }
 
 interface CreateContainerPrimitiveParams<
@@ -165,6 +167,8 @@ export const createContainerPrimitive = <
   buildShowBoundsRect,
   pathDescriptor,
   seedInitialProps,
+  sceneWidth,
+  sceneHeight,
 }: CreateContainerPrimitiveParams<TOptions, TState, TScopeProps>) => {
   return (
     frameCallback: FrameCallback | StaticFrameCallback,
@@ -225,6 +229,8 @@ export const createContainerPrimitive = <
           width: frameBounds.width,
           height: frameBounds.height,
           center: frameCenter,
+          sceneWidth,
+          sceneHeight,
         };
       };
 

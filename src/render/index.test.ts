@@ -3021,7 +3021,8 @@ describe("drawMethods transform props", () => {
       drawContext.executeDrawCallback(
         (d) => {
           d.group(
-            ({ measurements }) => {
+            ({ getMeasurements }) => {
+              const measurements = getMeasurements();
               frameValues.width = measurements.width;
               frameValues.height = measurements.height;
               frameValues.centerX = measurements.center.x;
@@ -3073,10 +3074,11 @@ describe("drawMethods transform props", () => {
                 height: 20,
                 fillStyle: "red",
               });
-              frameValues.width = frameContext.measurements.width;
-              frameValues.height = frameContext.measurements.height;
-              frameValues.centerX = frameContext.measurements.center.x;
-              frameValues.centerY = frameContext.measurements.center.y;
+              const measurements = frameContext.getMeasurements();
+              frameValues.width = measurements.width;
+              frameValues.height = measurements.height;
+              frameValues.centerX = measurements.center.x;
+              frameValues.centerY = measurements.center.y;
             },
             { x: 0, y: 0, width: 200, height: 100, rotate: 45 },
           );
@@ -3111,7 +3113,8 @@ describe("drawMethods transform props", () => {
       drawContext.executeDrawCallback(
         (d) => {
           d.layer(
-            ({ measurements }) => {
+            ({ getMeasurements }) => {
+              const measurements = getMeasurements();
               frameValues.width = measurements.width;
               frameValues.height = measurements.height;
               frameValues.centerX = measurements.center.x;
@@ -5055,7 +5058,8 @@ describe("place()", () => {
     let sawMeasurements: { width: number; height: number } | null = null;
 
     const logo = createLayer<{ fillStyle: string }>(
-      ({ props, circle, measurements }) => {
+      ({ props, circle, getMeasurements }) => {
+        const measurements = getMeasurements();
         sawMeasurements = {
           width: measurements.width,
           height: measurements.height,

@@ -59,30 +59,6 @@ describe("FrameMeasurementPassManager", () => {
   });
 
   describe("measurement contexts", () => {
-    it("creates static context with live measurements getter", () => {
-      const manager = new FrameMeasurementPassManager();
-      let width = 10;
-
-      const staticContext = manager.createMeasurementContext(
-        () => ({
-          width,
-          height: 20,
-          center: { x: width / 2, y: 10 },
-        }),
-        true,
-        true,
-      );
-
-      expect(staticContext.hasMeasurements).toBe(true);
-      expect(staticContext.measurements.width).toBe(10);
-      expect(staticContext.getMeasurements().width).toBe(10);
-
-      width = 30;
-
-      expect(staticContext.measurements.width).toBe(30);
-      expect(staticContext.getMeasurements().width).toBe(30);
-    });
-
     it("warns once when dynamic measurements are read while unavailable", () => {
       const manager = new FrameMeasurementPassManager();
       const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});

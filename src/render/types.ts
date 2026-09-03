@@ -2,6 +2,7 @@ import type {
   Corners,
   Dimensions2D,
   FillStyles,
+  IAnimatableLike,
   IsometricCuboid,
   IsometricTile,
   PartialDrawStyles,
@@ -14,7 +15,6 @@ import type {
   WithBlend,
   WithOpacity,
   XOR,
-  IAnimatableLike,
 } from "../types";
 import type AnimatableRegistry from "./AnimatableRegistry";
 import type DrawGroupManager from "./DrawGroupManager";
@@ -100,21 +100,19 @@ export interface RenderCollaborators {
 export interface Measurements {
   width: number;
   height: number;
+  sceneWidth: number;
+  sceneHeight: number;
   center: Point2D;
+}
+
+export interface StaticMeasurementContext {
+  measurements: Measurements;
 }
 
 export interface DynamicMeasurementContext {
   hasMeasurements: boolean;
   getMeasurements: () => Measurements;
 }
-
-export interface StaticMeasurementContext extends DynamicMeasurementContext {
-  measurements: Measurements;
-}
-
-export type MeasurementContext =
-  | DynamicMeasurementContext
-  | StaticMeasurementContext;
 
 export type FrameContext = DynamicMeasurementContext;
 export type StaticFrameContext = StaticMeasurementContext;
@@ -274,6 +272,10 @@ export interface LayerOptions
 export interface PlaceOptions
   extends Positioned2D, Partial<Dimensions2D>, TransformProps, ContainerProps {}
 
+export interface PlaceOptionsNonPermanent extends PlaceOptions {
+  isTemporary?: boolean;
+}
+
 export interface IsometricOptions
   extends Partial<Positioned2D>, Partial<Dimensions2D> {
   tileWidth?: number;
@@ -349,8 +351,14 @@ export interface DrawPrimitivePropHelpers {
   defineTextProps: (props: TextProps) => TextProps;
 }
 
-export interface DrawMethods
+interface DrawMethodsBase
   extends DrawProperties, DrawPrimitives, DrawPrimitivePropHelpers {}
+
+export interface DrawMethods
+  extends DrawMethodsBase, StaticMeasurementContext {}
+
+export interface ContainerDrawMethods
+  extends DrawMethodsBase, DynamicMeasurementContext {}
 
 export interface IsometricMethods {
   tile: (props: IsometricTile) => void;
@@ -367,7 +375,9 @@ export interface DrawContext {
   ) => void;
 }
 
-export type LayerRenderContext<TProps> = DrawMethods & { props: TProps };
+export type LayerRenderContext<TProps> = ContainerDrawMethods & {
+  props: TProps;
+};
 
 export type LayerRenderer<TProps> = (
   context: LayerRenderContext<TProps>,
@@ -375,7 +385,7 @@ export type LayerRenderer<TProps> = (
 
 export interface LayerComponent<TProps> {
   props: TProps;
-  render: (ambient: DrawMethods) => void;
+  render: (ambient: ContainerDrawMethods) => void;
 }
 
 export type ReactiveLayerRenderContext<TProps> = LayerRenderContext<TProps> &
@@ -388,5 +398,5 @@ export type ReactiveLayerRenderer<TProps> = (
 export interface ReactiveLayerComponent<TProps> {
   readonly __componentKind: "reactiveLayer";
   props: TProps;
-  render: (ambient: DrawMethods & ReactiveProps) => void;
+  render: (ambient: ContainerDrawMethods & ReactiveProps) => void;
 }

@@ -60,6 +60,7 @@ import type {
   CoordinateContextProps,
   DrawContext,
   DrawMethods,
+  DrawProperties,
   EllipseProps,
   FrameCallback,
   FrameContext,
@@ -209,6 +210,8 @@ export const createDrawContext = (): DrawContext => {
             () => ({
               width: frameBounds.width,
               height: frameBounds.height,
+              sceneWidth: width,
+              sceneHeight: height,
               center: lifecycleProps.useLocalCoordinateContext
                 ? { x: frameBounds.width / 2, y: frameBounds.height / 2 }
                 : {
@@ -261,15 +264,21 @@ export const createDrawContext = (): DrawContext => {
       };
     };
 
-    const drawProperties = frameMeasurementPassManager.createMeasurementContext(
-      () => ({
+    // Root-level measurements are always known before a frame renders — no
+    // "might not have a size yet" ambiguity like a container can have — so
+    // this is built directly as a plain StaticMeasurementContext rather than
+    // through FrameMeasurementPassManager, which exists specifically to
+    // manage that ambiguity for containers and can no longer produce a
+    // static shape at all.
+    const drawProperties: DrawProperties = {
+      measurements: {
         width,
         height,
+        sceneWidth: width,
+        sceneHeight: height,
         center: { x: width / 2, y: height / 2 },
-      }),
-      true,
-      false,
-    );
+      },
+    };
 
     const renderCollaborators = {
       registry,
@@ -292,6 +301,8 @@ export const createDrawContext = (): DrawContext => {
           frameMeasurementPassManager,
         ),
       activeMeasurementsManager,
+      sceneWidth: width,
+      sceneHeight: height,
     };
 
     // Forward-declared so place() can close over the *complete* DrawMethods

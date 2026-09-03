@@ -3,7 +3,6 @@ import { NormalizedFloat } from "./common";
 
 export interface RenderProps extends DrawMethods {
   context: CanvasRenderingContext2D;
-  hasMeasurements: true;
   time: number;
 }
 
