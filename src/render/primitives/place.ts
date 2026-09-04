@@ -2,23 +2,27 @@ import { createContainerPrimitive } from "../container";
 
 import type { ContainerPrimitiveCommonParams } from "../container";
 import type {
-  DrawMethods,
+  DrawAPIBase,
   DrawPrimitives,
   FrameContext,
   LayerComponent,
   PlaceOptions,
 } from "../types";
-import { buildLayerShowBoundsRect, layerPathDescriptor, resolveLayerBoundsState } from "./layer";
+import {
+  buildLayerShowBoundsRect,
+  layerPathDescriptor,
+  resolveLayerBoundsState,
+} from "./layer";
 
 // place() is positionally identical to layer() (same local-coordinate,
 // implicit-sizing, clip/bounds semantics — reused verbatim from layer.ts),
 // but instead of a user-supplied callback it renders a reusable
-// LayerComponent (see createLayer()), injecting that frame's DrawMethods so
+// LayerComponent (see createLayer()), injecting that frame's DrawAPI so
 // the component's render function can call any primitive as if it were
 // written inline — including place() itself, for recursive composition.
 export const place = (
   params: ContainerPrimitiveCommonParams,
-  getAmbientDrawMethods: () => DrawMethods,
+  getAmbientDrawApi: () => DrawAPIBase,
 ): DrawPrimitives["place"] => {
   const placeContainer = createContainerPrimitive({
     containerType: "layer",
@@ -41,6 +45,6 @@ export const place = (
 
   return (component: LayerComponent<any>, options: PlaceOptions = {}) =>
     placeContainer((frameContext: FrameContext) => {
-      component.render({ ...getAmbientDrawMethods(), ...frameContext });
+      component.render({ ...getAmbientDrawApi(), ...frameContext });
     }, options);
 };

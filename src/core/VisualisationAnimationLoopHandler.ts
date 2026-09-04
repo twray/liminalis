@@ -2,12 +2,12 @@ import { Utilities, WebMidi } from "webmidi";
 
 import {
   createDrawContext,
-  DrawMethods,
+  DrawAPI,
   LayerOptions,
   PlaceOptions,
   PlaceOptionsNonPermanent,
   ReactiveLayerComponent,
-  StaticMeasurementContext
+  StaticMeasurementContext,
 } from "../render";
 import type { AssetCacheEntry } from "./AsyncAssetCache";
 import AudioCapture, { type AudioCaptureSession } from "./AudioCapture";
@@ -363,7 +363,7 @@ class VisualisationAnimationLoopHandler<TState> {
   }
 
   #placeReactiveLayer(
-    drawMethods: DrawMethods,
+    drawAPI: DrawAPI,
     component: ReactiveLayerComponent<any>,
     options: PlaceOptions,
     id: string,
@@ -378,7 +378,7 @@ class VisualisationAnimationLoopHandler<TState> {
       return createNoopAnimatable<PlaceOptions>(options);
     }
 
-    return drawMethods.place(adaptToLayerComponent(component, state), {
+    return drawAPI.place(adaptToLayerComponent(component, state), {
       ...options,
       key: id,
     });
@@ -435,9 +435,9 @@ class VisualisationAnimationLoopHandler<TState> {
 
         this.#frameRenderCallbacks.forEach((frameRenderCallback) => {
           drawContext.executeDrawCallback(
-            (drawMethods) => {
+            (drawApi) => {
               frameRenderCallback({
-                ...drawMethods,
+                ...drawApi,
                 context,
                 measurements,
                 time: timeInMs,
@@ -446,11 +446,11 @@ class VisualisationAnimationLoopHandler<TState> {
                 duringTimeInterval,
                 activeNotes: activeNotesForFrame,
                 placeInScene: (component, options, id) =>
-                  this.#placeReactiveLayer(drawMethods, component, options, id),
+                  this.#placeReactiveLayer(drawApi, component, options, id),
               });
 
               this.#sceneEntries.forEach(({ component, options }, id) => {
-                this.#placeReactiveLayer(drawMethods, component, options, id);
+                this.#placeReactiveLayer(drawApi, component, options, id);
 
                 const state = this.#reactiveLayerRegistry.get(id);
                 if (

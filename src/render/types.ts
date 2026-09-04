@@ -100,8 +100,6 @@ export interface RenderCollaborators {
 export interface Measurements {
   width: number;
   height: number;
-  sceneWidth: number;
-  sceneHeight: number;
   center: Point2D;
 }
 
@@ -281,7 +279,7 @@ export interface IsometricOptions
   tileWidth?: number;
 }
 
-export type DrawProperties = StaticMeasurementContext;
+export interface DrawProperties extends StaticMeasurementContext {}
 
 export interface DrawPrimitives {
   withStyles: (styles: PartialDrawStyles, callback: () => void) => void;
@@ -351,14 +349,12 @@ export interface DrawPrimitivePropHelpers {
   defineTextProps: (props: TextProps) => TextProps;
 }
 
-interface DrawMethodsBase
-  extends DrawProperties, DrawPrimitives, DrawPrimitivePropHelpers {}
+export interface DrawAPIBase extends DrawPrimitives, DrawPrimitivePropHelpers {}
 
-export interface DrawMethods
-  extends DrawMethodsBase, StaticMeasurementContext {}
+export interface DrawAPI extends DrawAPIBase, StaticMeasurementContext {}
 
-export interface ContainerDrawMethods
-  extends DrawMethodsBase, DynamicMeasurementContext {}
+export interface ContainerDrawAPI
+  extends DrawAPIBase, DynamicMeasurementContext {}
 
 export interface IsometricMethods {
   tile: (props: IsometricTile) => void;
@@ -367,7 +363,7 @@ export interface IsometricMethods {
 
 export interface DrawContext {
   executeDrawCallback: (
-    callback: (methods: DrawMethods) => void,
+    callback: (methods: DrawAPI) => void,
     context: CanvasRenderingContext2D,
     width: number,
     height: number,
@@ -375,7 +371,7 @@ export interface DrawContext {
   ) => void;
 }
 
-export type LayerRenderContext<TProps> = ContainerDrawMethods & {
+export type LayerRenderContext<TProps> = ContainerDrawAPI & {
   props: TProps;
 };
 
@@ -385,7 +381,7 @@ export type LayerRenderer<TProps> = (
 
 export interface LayerComponent<TProps> {
   props: TProps;
-  render: (ambient: ContainerDrawMethods) => void;
+  render: (ambient: ContainerDrawAPI) => void;
 }
 
 export type ReactiveLayerRenderContext<TProps> = LayerRenderContext<TProps> &
@@ -398,5 +394,5 @@ export type ReactiveLayerRenderer<TProps> = (
 export interface ReactiveLayerComponent<TProps> {
   readonly __componentKind: "reactiveLayer";
   props: TProps;
-  render: (ambient: ContainerDrawMethods & ReactiveProps) => void;
+  render: (ambient: ContainerDrawAPI & ReactiveProps) => void;
 }

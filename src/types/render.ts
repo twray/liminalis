@@ -1,7 +1,7 @@
-import { DrawMethods } from "../render";
+import { DrawAPI } from "../render";
 import { NormalizedFloat } from "./common";
 
-export interface RenderProps extends DrawMethods {
+export interface RenderProps extends DrawAPI {
   context: CanvasRenderingContext2D;
   time: number;
 }

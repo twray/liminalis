@@ -11,8 +11,8 @@ import { createIsometricPrimitive } from "./primitives/isometric";
 
 import { createClipScope, withClipScopedGroup } from "./clipping";
 
-import type { PartialDrawStyles, IAnimatableLike } from "../types";
-import type { ClipScope } from "./types";
+import type { IAnimatableLike, PartialDrawStyles } from "../types";
+import type { ClipScope, DrawAPIBase } from "./types";
 
 import {
   DEFAULT_BLEND_MODE,
@@ -58,8 +58,8 @@ import type {
   Bounds,
   CircleProps,
   CoordinateContextProps,
+  DrawAPI,
   DrawContext,
-  DrawMethods,
   DrawProperties,
   EllipseProps,
   FrameCallback,
@@ -80,7 +80,7 @@ export const createDrawContext = (): DrawContext => {
   const renderWarningManager = new RenderWarningManager();
 
   const executeDrawCallback = (
-    callback: (methods: DrawMethods) => void,
+    callback: (methods: DrawAPI) => void,
     context: CanvasRenderingContext2D,
     width: number,
     height: number,
@@ -274,8 +274,6 @@ export const createDrawContext = (): DrawContext => {
       measurements: {
         width,
         height,
-        sceneWidth: width,
-        sceneHeight: height,
         center: { x: width / 2, y: height / 2 },
       },
     };
@@ -305,13 +303,14 @@ export const createDrawContext = (): DrawContext => {
       sceneHeight: height,
     };
 
-    // Forward-declared so place() can close over the *complete* DrawMethods
+    // Forward-declared so place() can close over the *complete* DrawApi
     // object below, even though place() itself is built as part of
-    // drawPrimitives (before drawMethods is assembled). Safe because
-    // place()'s closure only reads drawMethods when actually invoked from
+    // drawPrimitives (before drawApi is assembled). Safe because
+    // place()'s closure only reads drawApi when actually invoked from
     // inside the user's callback, which happens strictly after the
     // assignment below.
-    let drawMethods!: DrawMethods;
+    let drawApi!: DrawAPI;
+    let drawApiBase!: DrawAPIBase;
 
     const drawPrimitives = {
       isometric: createIsometricPrimitive({
@@ -376,7 +375,7 @@ export const createDrawContext = (): DrawContext => {
       ),
       group: group(containerPrimitiveCommonParams),
       layer: layer(containerPrimitiveCommonParams),
-      place: place(containerPrimitiveCommonParams, () => drawMethods),
+      place: place(containerPrimitiveCommonParams, () => drawApiBase),
       text: (
         textValue: string,
         props: TextProps = {},
@@ -430,10 +429,14 @@ export const createDrawContext = (): DrawContext => {
       defineTextProps: (props: TextProps) => props,
     };
 
-    drawMethods = {
-      ...drawProperties,
+    drawApiBase = {
       ...drawPrimitives,
       ...drawPrimitivePropHelpers,
+    };
+
+    drawApi = {
+      ...drawProperties,
+      ...drawApiBase,
     };
 
     // Seeds the ambient-measurements stack with the canvas's own size for
@@ -441,7 +444,7 @@ export const createDrawContext = (): DrawContext => {
     // consults it) without an enclosing container still defaults correctly.
     activeMeasurementsManager.withMeasurements(
       () => drawProperties.measurements,
-      () => callback(drawMethods),
+      () => callback(drawApi),
     );
 
     registry.flush();

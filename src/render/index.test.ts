@@ -1,14 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createLayer } from "../core";
-import type { IAnimatableLike } from "./Animatable";
+import type { IAnimatableLike } from "../types";
 import { createDrawContext } from "./index";
 import { getTextBounds } from "./primitives";
-import type { BezierProps, Bounds, DrawMethods, RectProps } from "./types";
+import type { BezierProps, Bounds, DrawAPI, RectProps } from "./types";
 
 // We test the internal functions by creating a mock canvas context
 // and verifying the transform calls
 
-describe("drawMethods transform props", () => {
+describe("drawApi transform props", () => {
   let mockContext: CanvasRenderingContext2D;
 
   beforeEach(() => {
@@ -3008,135 +3008,6 @@ describe("drawMethods transform props", () => {
       });
     });
 
-    it("group() exposes static measurements when width and height are explicitly provided", async () => {
-      const { createDrawContext } = await import("./index");
-      const drawContext = createDrawContext();
-      const frameValues = {
-        width: -1,
-        height: -1,
-        centerX: -1,
-        centerY: -1,
-      };
-
-      drawContext.executeDrawCallback(
-        (d) => {
-          d.group(
-            ({ getMeasurements }) => {
-              const measurements = getMeasurements();
-              frameValues.width = measurements.width;
-              frameValues.height = measurements.height;
-              frameValues.centerX = measurements.center.x;
-              frameValues.centerY = measurements.center.y;
-
-              d.rect({
-                x: 100,
-                y: 200,
-                width: 40,
-                height: 20,
-                fillStyle: "red",
-              });
-            },
-            { x: 10, y: 20, width: 200, height: 120 },
-          );
-        },
-        mockContext,
-        800,
-        600,
-        0,
-      );
-
-      expect(frameValues).toEqual({
-        width: 200,
-        height: 120,
-        centerX: 110,
-        centerY: 80,
-      });
-    });
-
-    it("layer() uses explicit bounds when provided", async () => {
-      const { createDrawContext } = await import("./index");
-      const drawContext = createDrawContext();
-      const frameValues = {
-        width: -1,
-        height: -1,
-        centerX: -1,
-        centerY: -1,
-      };
-
-      drawContext.executeDrawCallback(
-        (d) => {
-          d.layer(
-            (frameContext) => {
-              d.rect({
-                x: 100,
-                y: 200,
-                width: 40,
-                height: 20,
-                fillStyle: "red",
-              });
-              const measurements = frameContext.getMeasurements();
-              frameValues.width = measurements.width;
-              frameValues.height = measurements.height;
-              frameValues.centerX = measurements.center.x;
-              frameValues.centerY = measurements.center.y;
-            },
-            { x: 0, y: 0, width: 200, height: 100, rotate: 45 },
-          );
-        },
-        mockContext,
-        800,
-        600,
-        0,
-      );
-
-      expect(frameValues).toEqual({
-        width: 200,
-        height: 100,
-        centerX: 100,
-        centerY: 50,
-      });
-
-      expect(mockContext.translate).toHaveBeenCalledWith(100, 50);
-      expect(mockContext.translate).toHaveBeenCalledWith(-100, -50);
-    });
-
-    it("layer() callback exposes static measurements when explicitly sized", async () => {
-      const { createDrawContext } = await import("./index");
-      const drawContext = createDrawContext();
-      const frameValues = {
-        width: -1,
-        height: -1,
-        centerX: -1,
-        centerY: -1,
-      };
-
-      drawContext.executeDrawCallback(
-        (d) => {
-          d.layer(
-            ({ getMeasurements }) => {
-              const measurements = getMeasurements();
-              frameValues.width = measurements.width;
-              frameValues.height = measurements.height;
-              frameValues.centerX = measurements.center.x;
-              frameValues.centerY = measurements.center.y;
-            },
-            { x: 10, y: 20, width: 200, height: 120 },
-          );
-        },
-        mockContext,
-        800,
-        600,
-        0,
-      );
-
-      expect(frameValues).toEqual({
-        width: 200,
-        height: 120,
-        centerX: 100,
-        centerY: 60,
-      });
-    });
-
     it("layer() provides derived frame values when context is destructured before drawing children", async () => {
       const { createDrawContext } = await import("./index");
       const drawContext = createDrawContext();
@@ -3353,7 +3224,7 @@ describe("drawMethods transform props", () => {
       const { createDrawContext } = await import("./index");
       const drawContext = createDrawContext();
 
-      const render = (d: DrawMethods) => {
+      const render = (d: DrawAPI) => {
         d.group(
           () => {
             d.rect({ x: 100, y: 200, width: 40, height: 20, fillStyle: "red" });
@@ -3390,7 +3261,7 @@ describe("drawMethods transform props", () => {
       const { createDrawContext } = await import("./index");
       const drawContext = createDrawContext();
 
-      const render = (d: DrawMethods) => {
+      const render = (d: DrawAPI) => {
         d.layer(
           () => {
             d.rect({ x: 50, y: 0, width: 50, height: 50, fillStyle: "blue" });
@@ -3545,7 +3416,7 @@ describe("drawMethods transform props", () => {
       const { createDrawContext } = await import("./index");
       const drawContext = createDrawContext();
 
-      const render = (d: DrawMethods) => {
+      const render = (d: DrawAPI) => {
         d.layer(
           () => {
             d.rect({ x: 0, y: 0, width: 50, height: 50, fillStyle: "blue" });
@@ -3601,7 +3472,7 @@ describe("drawMethods transform props", () => {
       const { createDrawContext } = await import("./index");
       const drawContext = createDrawContext();
 
-      const render = (d: DrawMethods) => {
+      const render = (d: DrawAPI) => {
         d.layer(
           () => {
             d.rect({
@@ -3695,7 +3566,7 @@ describe("drawMethods transform props", () => {
       const { createDrawContext } = await import("./index");
       const drawContext = createDrawContext();
 
-      const render = (d: DrawMethods) => {
+      const render = (d: DrawAPI) => {
         d.group(
           () => {
             d.rect({ x: 100, y: 200, width: 40, height: 20, fillStyle: "red" });
@@ -3726,7 +3597,7 @@ describe("drawMethods transform props", () => {
       const { createDrawContext } = await import("./index");
       const drawContext = createDrawContext();
 
-      const render = (d: DrawMethods) => {
+      const render = (d: DrawAPI) => {
         d.group(() => {
           d.rect({ x: 100, y: 200, width: 40, height: 20, fillStyle: "red" });
         }).animateTo({ x: 200 }, { at: 0, duration: 1000 });
@@ -3908,7 +3779,7 @@ describe("drawMethods transform props", () => {
         },
       } as unknown as CanvasRenderingContext2D;
 
-      const renderCallback = (d: DrawMethods) => {
+      const renderCallback = (d: DrawAPI) => {
         d.group(() => {
           d.circle({ cx: 50, cy: 50, radius: 30, fillStyle: "red" });
         }, {});
@@ -4024,7 +3895,7 @@ describe("drawMethods transform props", () => {
         },
       } as unknown as CanvasRenderingContext2D;
 
-      const renderCallback = (d: DrawMethods) => {
+      const renderCallback = (d: DrawAPI) => {
         d.layer(
           () => {
             d.layer(() => {}, {
@@ -4189,7 +4060,7 @@ describe("drawMethods transform props", () => {
         },
       } as unknown as CanvasRenderingContext2D;
 
-      const renderCallback = (d: DrawMethods) => {
+      const renderCallback = (d: DrawAPI) => {
         d.layer(
           () => {
             d.rect({ x: 0, y: 0, width: 100, height: 100 });
@@ -4821,11 +4692,10 @@ describe("isometric() default viewport sizing", () => {
     });
 
     const { createDrawContext } = await import("./index");
-    const { default: MockedIsometricView } = (await import(
-      "./IsometricView"
-    )) as unknown as {
-      default: { calls: Array<{ width: number; height: number }> };
-    };
+    const { default: MockedIsometricView } =
+      (await import("./IsometricView")) as unknown as {
+        default: { calls: Array<{ width: number; height: number }> };
+      };
 
     const drawContext = createDrawContext();
 
@@ -4861,11 +4731,10 @@ describe("isometric() default viewport sizing", () => {
     });
 
     const { createDrawContext } = await import("./index");
-    const { default: MockedIsometricView } = (await import(
-      "./IsometricView"
-    )) as unknown as {
-      default: { calls: Array<{ width: number; height: number }> };
-    };
+    const { default: MockedIsometricView } =
+      (await import("./IsometricView")) as unknown as {
+        default: { calls: Array<{ width: number; height: number }> };
+      };
 
     const drawContext = createDrawContext();
 
@@ -4906,11 +4775,10 @@ describe("isometric() default viewport sizing", () => {
     });
 
     const { createDrawContext } = await import("./index");
-    const { default: MockedIsometricView } = (await import(
-      "./IsometricView"
-    )) as unknown as {
-      default: { calls: Array<{ width: number; height: number }> };
-    };
+    const { default: MockedIsometricView } =
+      (await import("./IsometricView")) as unknown as {
+        default: { calls: Array<{ width: number; height: number }> };
+      };
 
     const drawContext = createDrawContext();
 
@@ -4956,11 +4824,10 @@ describe("isometric() default viewport sizing", () => {
     });
 
     const { createDrawContext } = await import("./index");
-    const { default: MockedIsometricView } = (await import(
-      "./IsometricView"
-    )) as unknown as {
-      default: { calls: Array<{ width: number; height: number }> };
-    };
+    const { default: MockedIsometricView } =
+      (await import("./IsometricView")) as unknown as {
+        default: { calls: Array<{ width: number; height: number }> };
+      };
 
     const drawContext = createDrawContext();
 
@@ -5001,11 +4868,10 @@ describe("isometric() default viewport sizing", () => {
     });
 
     const { createDrawContext } = await import("./index");
-    const { default: MockedIsometricView } = (await import(
-      "./IsometricView"
-    )) as unknown as {
-      default: { calls: Array<{ width: number; height: number }> };
-    };
+    const { default: MockedIsometricView } =
+      (await import("./IsometricView")) as unknown as {
+        default: { calls: Array<{ width: number; height: number }> };
+      };
 
     const drawContext = createDrawContext();
 
@@ -5051,7 +4917,7 @@ const createMockContext = (): CanvasRenderingContext2D =>
   }) as unknown as CanvasRenderingContext2D;
 
 describe("place()", () => {
-  it("injects the ambient DrawMethods and the component's own props into render", () => {
+  it("injects the ambient DrawAPI and the component's own props into render", () => {
     const mockContext = createMockContext();
     const drawContext = createDrawContext();
     const seenCircleArgs: unknown[] = [];

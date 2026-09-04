@@ -1,8 +1,6 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { createDrawContext } from "./index";
-import type { DrawMethods } from "./types";
+import { createDrawContext, DrawAPI } from "./index";
 
 // A single shared sink so we can tell which primitives actually issued a
 // draw call, regardless of *which* surface it landed on — the real target
@@ -94,7 +92,7 @@ describe("bitmap caching skips unchanged nested content", () => {
     const ANIMATING_RECT_WIDTH = 41;
     const STATIC_RECT_COUNT = 20;
 
-    const renderCallback = (d: DrawMethods, timeInMs: number) => {
+    const renderCallback = (d: DrawAPI, timeInMs: number) => {
       d.group(
         () => {
           for (let i = 0; i < STATIC_RECT_COUNT; i++) {
@@ -174,10 +172,17 @@ describe("bitmap caching skips unchanged nested content", () => {
     const context = createCacheableContext();
     const RECT_WIDTH = 50;
 
-    const renderCallback = (d: DrawMethods, x: number) => {
+    const renderCallback = (d: DrawAPI, x: number) => {
       d.group(
         () => {
-          d.rect({ x, y: 0, width: RECT_WIDTH, height: 10, fillStyle: "#333", strokeStyle: "transparent" });
+          d.rect({
+            x,
+            y: 0,
+            width: RECT_WIDTH,
+            height: 10,
+            fillStyle: "#333",
+            strokeStyle: "transparent",
+          });
         },
         { x: 0, y: 0, width: 300, height: 50 },
       );
