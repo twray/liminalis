@@ -75,32 +75,35 @@ class ReactiveLayerEnvelope {
     return this.#timeReleased !== null;
   }
 
-  attack(attackValue: number = 1): void {
+  attack(attackValue: number = 1): this {
     this.#attackValue = toNormalizedFloat(attackValue);
     this.#timeAttacked = new Date();
+
+    return this;
   }
 
-  sustain(durationInMs: number): void {
+  sustain(durationInMs: number): this {
     this.#sustainPeriod = durationInMs;
+
+    return this;
   }
 
-  release(releasePeriod: number = 1000): void {
+  release(releasePeriod: number = 1000): this {
     const attackedAtSchedulingTime = this.#timeAttacked;
 
     setTimeout(() => {
       if (
-        this.#timeAttacked?.getTime() !== attackedAtSchedulingTime?.getTime()
+        this.#timeAttacked?.getTime() !== attackedAtSchedulingTime?.getTime() ||
+        !this.isSustaining
       ) {
-        return; // superseded by a newer attack — this release no longer applies
-      }
-
-      if (!this.isSustaining) {
-        return; // already released/decayed via some other path
+        return;
       }
 
       this.#releasePeriod = releasePeriod;
       this.#timeReleased = new Date();
     }, this.#sustainPeriod);
+
+    return this;
   }
 }
 

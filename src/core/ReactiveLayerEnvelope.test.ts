@@ -218,4 +218,29 @@ describe("ReactiveLayerEnvelope", () => {
       expect(permanent.hasBeenReleased).toBe(temporary.hasBeenReleased);
     });
   });
+
+  describe("chaining", () => {
+    it("attack, sustain and release each return the same instance", () => {
+      const envelope = new ReactiveLayerEnvelope(true);
+
+      expect(envelope.attack(1)).toBe(envelope);
+      expect(envelope.sustain(200)).toBe(envelope);
+      expect(envelope.release(100)).toBe(envelope);
+    });
+
+    it("supports a full attack().sustain().release() chain with correct behavior", () => {
+      const envelope = new ReactiveLayerEnvelope(true);
+
+      const result = envelope.attack(1).sustain(200).release(100);
+
+      expect(result).toBe(envelope);
+      expect(envelope.status).toBe("sustained");
+
+      vi.advanceTimersByTime(200);
+      expect(envelope.status).toBe("releasing");
+
+      vi.advanceTimersByTime(100);
+      expect(envelope.status).toBe("idle");
+    });
+  });
 });
