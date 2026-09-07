@@ -4269,6 +4269,169 @@ describe("drawApi transform props", () => {
     });
   });
 
+  describe("sceneMeasurements", () => {
+    it("is available directly on the ambient DrawAPI at root, matching the canvas size", async () => {
+      const { createDrawContext } = await import("./index");
+      const drawContext = createDrawContext();
+      let seenSceneMeasurements: DrawAPI["sceneMeasurements"] | null = null;
+
+      drawContext.executeDrawCallback(
+        (d) => {
+          seenSceneMeasurements = d.sceneMeasurements;
+        },
+        mockContext,
+        800,
+        600,
+        0,
+      );
+
+      expect(seenSceneMeasurements).toEqual({
+        width: 800,
+        height: 600,
+        center: { x: 400, y: 300 },
+      });
+    });
+
+    // group()/layer()'s own raw callback receives only FrameContext
+    // (hasMeasurements/getMeasurements) -- it does NOT get sceneMeasurements
+    // merged into that parameter directly, unlike a place()'d
+    // LayerComponent's ambient props (see the test below). Primitives and
+    // sceneMeasurements alike are reached the same way inside a raw
+    // group()/layer() callback: via the outer, closed-over `d` (the ambient
+    // DrawAPI), not via anything spread into the callback's own argument.
+    // Worth knowing -- someone reading "available on all renderable
+    // surfaces" could reasonably expect
+    // `group(({ sceneMeasurements }) => ...)` destructuring to work
+    // uniformly, and it currently doesn't for the raw-callback form.
+    it("reports the full canvas size inside a group() via the closed-over ambient DrawAPI, not the group's own smaller explicit size", async () => {
+      const { createDrawContext } = await import("./index");
+      const drawContext = createDrawContext();
+      let seenSceneMeasurements: DrawAPI["sceneMeasurements"] | null = null;
+
+      drawContext.executeDrawCallback(
+        (d) => {
+          d.group(
+            () => {
+              seenSceneMeasurements = d.sceneMeasurements;
+            },
+            { x: 10, y: 20, width: 200, height: 120 },
+          );
+        },
+        mockContext,
+        800,
+        600,
+        0,
+      );
+
+      expect(seenSceneMeasurements).toEqual({
+        width: 800,
+        height: 600,
+        center: { x: 400, y: 300 },
+      });
+    });
+
+    it("reports the full canvas size inside a nested layer() two levels deep, via the closed-over ambient DrawAPI", async () => {
+      const { createDrawContext } = await import("./index");
+      const drawContext = createDrawContext();
+      let seenSceneMeasurements: DrawAPI["sceneMeasurements"] | null = null;
+
+      drawContext.executeDrawCallback(
+        (d) => {
+          d.layer(
+            () => {
+              d.layer(
+                () => {
+                  seenSceneMeasurements = d.sceneMeasurements;
+                },
+                { x: 5, y: 5, width: 20, height: 20 },
+              );
+            },
+            { x: 100, y: 100, width: 400, height: 300 },
+          );
+        },
+        mockContext,
+        800,
+        600,
+        0,
+      );
+
+      expect(seenSceneMeasurements).toEqual({
+        width: 800,
+        height: 600,
+        center: { x: 400, y: 300 },
+      });
+    });
+
+    it("is available via the ambient DrawAPI inside a layer() even during the implicit measurement pass, unlike hasMeasurements/getMeasurements", async () => {
+      const { createDrawContext } = await import("./index");
+      const drawContext = createDrawContext();
+      const observedPasses: Array<{
+        hasMeasurements: boolean;
+        sceneMeasurements: DrawAPI["sceneMeasurements"];
+      }> = [];
+
+      drawContext.executeDrawCallback(
+        (d) => {
+          // No explicit width/height -- triggers the implicit measurement
+          // pass, where this layer's own hasMeasurements is false.
+          d.layer(({ hasMeasurements }) => {
+            observedPasses.push({
+              hasMeasurements,
+              sceneMeasurements: d.sceneMeasurements,
+            });
+            d.rect({ x: 0, y: 0, width: 50, height: 50, fillStyle: "red" });
+          });
+        },
+        mockContext,
+        800,
+        600,
+        0,
+      );
+
+      expect(observedPasses.length).toBeGreaterThan(0);
+      // sceneMeasurements is identical and correct on every pass, including
+      // the one where hasMeasurements is false -- it never shares the
+      // container's own "might not know my size yet" uncertainty.
+      observedPasses.forEach(({ sceneMeasurements }) => {
+        expect(sceneMeasurements).toEqual({
+          width: 800,
+          height: 600,
+          center: { x: 400, y: 300 },
+        });
+      });
+      expect(observedPasses.some((p) => p.hasMeasurements === false)).toBe(
+        true,
+      );
+    });
+
+    it("flows through to a place()'d LayerComponent's ambient props", async () => {
+      const { createDrawContext } = await import("./index");
+      const { createLayer } = await import("../core");
+      const drawContext = createDrawContext();
+      let seenSceneMeasurements: DrawAPI["sceneMeasurements"] | null = null;
+
+      const logo = createLayer(({ sceneMeasurements }) => {
+        seenSceneMeasurements = sceneMeasurements;
+      });
+
+      drawContext.executeDrawCallback(
+        (d) => {
+          d.place(logo(), { x: 0, y: 0, width: 50, height: 50 });
+        },
+        mockContext,
+        800,
+        600,
+        0,
+      );
+
+      expect(seenSceneMeasurements).toEqual({
+        width: 800,
+        height: 600,
+        center: { x: 400, y: 300 },
+      });
+    });
+  });
+
   describe("framed clipping for closed path primitives", () => {
     it("supports circle as a clipping frame", async () => {
       const { createDrawContext } = await import("./index");

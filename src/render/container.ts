@@ -17,7 +17,6 @@ import type {
   LayerOptions,
   Measurements,
   RenderCollaborators,
-  StaticFrameCallback,
   TransformProps,
 } from "./types";
 
@@ -124,8 +123,6 @@ export interface ContainerPrimitiveCommonParams extends RenderCollaborators {
   withFrameBoundsMeasurementPass: <T>(callbackFn: () => T) => T;
   isMeasuringFrameBounds: () => boolean;
   activeMeasurementsManager: ActiveMeasurementsManager;
-  sceneWidth: number;
-  sceneHeight: number;
 }
 
 interface CreateContainerPrimitiveParams<
@@ -167,11 +164,9 @@ export const createContainerPrimitive = <
   buildShowBoundsRect,
   pathDescriptor,
   seedInitialProps,
-  sceneWidth,
-  sceneHeight,
 }: CreateContainerPrimitiveParams<TOptions, TState, TScopeProps>) => {
   return (
-    frameCallback: FrameCallback | StaticFrameCallback,
+    frameCallback: FrameCallback,
     options: TOptions = {} as TOptions,
   ): IAnimatableLike<TOptions> =>
     // Scopes this entire invocation — including the container's own
@@ -229,8 +224,6 @@ export const createContainerPrimitive = <
           width: frameBounds.width,
           height: frameBounds.height,
           center: frameCenter,
-          sceneWidth,
-          sceneHeight,
         };
       };
 

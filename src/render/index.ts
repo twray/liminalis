@@ -12,7 +12,7 @@ import { createIsometricPrimitive } from "./primitives/isometric";
 import { createClipScope, withClipScopedGroup } from "./clipping";
 
 import type { IAnimatableLike, PartialDrawStyles } from "../types";
-import type { ClipScope, DrawAPIBase } from "./types";
+import type { ClipScope, DrawAPI, Measurements } from "./types";
 
 import {
   DEFAULT_BLEND_MODE,
@@ -58,9 +58,7 @@ import type {
   Bounds,
   CircleProps,
   CoordinateContextProps,
-  DrawAPI,
   DrawContext,
-  DrawProperties,
   EllipseProps,
   FrameCallback,
   FrameContext,
@@ -210,8 +208,6 @@ export const createDrawContext = (): DrawContext => {
             () => ({
               width: frameBounds.width,
               height: frameBounds.height,
-              sceneWidth: width,
-              sceneHeight: height,
               center: lifecycleProps.useLocalCoordinateContext
                 ? { x: frameBounds.width / 2, y: frameBounds.height / 2 }
                 : {
@@ -270,13 +266,13 @@ export const createDrawContext = (): DrawContext => {
     // through FrameMeasurementPassManager, which exists specifically to
     // manage that ambiguity for containers and can no longer produce a
     // static shape at all.
-    const drawProperties: DrawProperties = {
-      measurements: {
-        width,
-        height,
-        center: { x: width / 2, y: height / 2 },
-      },
+    const measurements: Measurements = {
+      width,
+      height,
+      center: { x: width / 2, y: height / 2 },
     };
+
+    const sceneMeasurements = measurements;
 
     const renderCollaborators = {
       registry,
@@ -299,8 +295,6 @@ export const createDrawContext = (): DrawContext => {
           frameMeasurementPassManager,
         ),
       activeMeasurementsManager,
-      sceneWidth: width,
-      sceneHeight: height,
     };
 
     // Forward-declared so place() can close over the *complete* DrawApi
@@ -310,7 +304,8 @@ export const createDrawContext = (): DrawContext => {
     // inside the user's callback, which happens strictly after the
     // assignment below.
     let drawApi!: DrawAPI;
-    let drawApiBase!: DrawAPIBase;
+
+    const drawProperties = { sceneMeasurements };
 
     const drawPrimitives = {
       isometric: createIsometricPrimitive({
@@ -375,7 +370,7 @@ export const createDrawContext = (): DrawContext => {
       ),
       group: group(containerPrimitiveCommonParams),
       layer: layer(containerPrimitiveCommonParams),
-      place: place(containerPrimitiveCommonParams, () => drawApiBase),
+      place: place(containerPrimitiveCommonParams, () => drawApi),
       text: (
         textValue: string,
         props: TextProps = {},
@@ -429,21 +424,17 @@ export const createDrawContext = (): DrawContext => {
       defineTextProps: (props: TextProps) => props,
     };
 
-    drawApiBase = {
-      ...drawPrimitives,
-      ...drawPrimitivePropHelpers,
-    };
-
     drawApi = {
       ...drawProperties,
-      ...drawApiBase,
+      ...drawPrimitives,
+      ...drawPrimitivePropHelpers,
     };
 
     // Seeds the ambient-measurements stack with the canvas's own size for
     // the whole callback, so a top-level isometric() (or any primitive that
     // consults it) without an enclosing container still defaults correctly.
     activeMeasurementsManager.withMeasurements(
-      () => drawProperties.measurements,
+      () => measurements,
       () => callback(drawApi),
     );
 

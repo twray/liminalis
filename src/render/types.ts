@@ -103,20 +103,13 @@ export interface Measurements {
   center: Point2D;
 }
 
-export interface StaticMeasurementContext {
-  measurements: Measurements;
-}
-
 export interface DynamicMeasurementContext {
   hasMeasurements: boolean;
   getMeasurements: () => Measurements;
 }
 
 export type FrameContext = DynamicMeasurementContext;
-export type StaticFrameContext = StaticMeasurementContext;
-
 export type FrameCallback = (context: FrameContext) => void;
-export type StaticFrameCallback = (context: StaticFrameContext) => void;
 
 export interface CoordinateContextProps {
   useLocalCoordinateContext?: boolean;
@@ -279,7 +272,9 @@ export interface IsometricOptions
   tileWidth?: number;
 }
 
-export interface DrawProperties extends StaticMeasurementContext {}
+export interface DrawProperties {
+  sceneMeasurements: Measurements;
+}
 
 export interface DrawPrimitives {
   withStyles: (styles: PartialDrawStyles, callback: () => void) => void;
@@ -310,14 +305,14 @@ export interface DrawPrimitives {
   rect: (props: RectProps, frame?: FrameCallback) => IAnimatableLike<RectProps>;
   group: {
     (
-      frame: StaticFrameCallback,
+      frame: FrameCallback,
       props: GroupOptions & Dimensions2D,
     ): IAnimatableLike<GroupOptions>;
     (frame: FrameCallback, props?: GroupOptions): IAnimatableLike<GroupOptions>;
   };
   layer: {
     (
-      frame: StaticFrameCallback,
+      frame: FrameCallback,
       props: LayerOptions & Dimensions2D,
     ): IAnimatableLike<LayerOptions>;
     (frame: FrameCallback, props?: LayerOptions): IAnimatableLike<LayerOptions>;
@@ -349,12 +344,10 @@ export interface DrawPrimitivePropHelpers {
   defineTextProps: (props: TextProps) => TextProps;
 }
 
-export interface DrawAPIBase extends DrawPrimitives, DrawPrimitivePropHelpers {}
+export interface DrawAPI
+  extends DrawProperties, DrawPrimitives, DrawPrimitivePropHelpers {}
 
-export interface DrawAPI extends DrawAPIBase, StaticMeasurementContext {}
-
-export interface ContainerDrawAPI
-  extends DrawAPIBase, DynamicMeasurementContext {}
+export interface ContainerDrawAPI extends DrawAPI, DynamicMeasurementContext {}
 
 export interface IsometricMethods {
   tile: (props: IsometricTile) => void;

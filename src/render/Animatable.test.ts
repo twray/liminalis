@@ -655,7 +655,6 @@ describe("Event-Driven Animations", () => {
       // This tests the bug scenario where a persistent object's cache
       // doesn't invalidate when `at` values change on subsequent cycles.
       //
-      // The EXPECTED behavior based on drawMethods.ts:
       // - Each frame, updateInitialProps() is called with current user props
       // - Each frame, clearSegments() is called and segments are rebuilt
       // - Animation should start from initialProps, not from "where we left off"

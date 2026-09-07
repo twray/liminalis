@@ -12,7 +12,7 @@ export type ReactiveLayerFactory<TProps> = PropsFirstFactory<
 // createReactiveLayer bundles a typed reactive render function with its props
 // into a ReactiveLayerComponent that can be instantiated anywhere via
 // placeInScene(). The placeInScene() function provides the ambient
-// DrawMethods that are required to make the reactive layer render, while also
+// ContainerDrawAPI that are required to make the reactive layer render, while also
 // providing an identity so that the reactive layer can be efficiently be updated
 // and reacted with in-scene. Crucially, the placeInScene() function is available
 // only via the setup() function within a scene, as it requires the scene context

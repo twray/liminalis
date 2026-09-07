@@ -461,6 +461,27 @@ describe("VisualisationAnimationLoopHandler note dispatch", () => {
     });
   });
 
+  it("exposes sceneMeasurements in setup()", async () => {
+    const { default: VisualisationAnimationLoopHandler } =
+      await import("./VisualisationAnimationLoopHandler");
+
+    let seenSceneMeasurements: unknown = null;
+
+    new VisualisationAnimationLoopHandler()
+      .withSettings({ width: 1920, height: 1080 })
+      .setup(({ sceneMeasurements }) => {
+        seenSceneMeasurements = sceneMeasurements;
+      });
+
+    const expected = {
+      width: 1920,
+      height: 1080,
+      center: { x: 960, y: 540 },
+    };
+
+    expect(seenSceneMeasurements).toEqual(expected);
+  });
+
   it("defers renderer start by default until load() assets finish", async () => {
     const { default: VisualisationAnimationLoopHandler } =
       await import("./VisualisationAnimationLoopHandler");
@@ -1456,7 +1477,7 @@ describe("VisualisationAnimationLoopHandler note dispatch", () => {
       expect(ctx.attackValue).toBe(0);
       expect(ctx.timeAttacked).toBeNull();
       expect(ctx.timeReleased).toBeNull();
-      // Real ambient DrawMethods (from place()) are present, not stubbed.
+      // Real ambient DrawApi (from place()) are present, not stubbed.
       expect(typeof ctx.circle).toBe("function");
 
       // Positioned like layer()/place() — translated to the given x/y.
@@ -1511,7 +1532,7 @@ describe("VisualisationAnimationLoopHandler note dispatch", () => {
 
       // Scoped mock (per the ImageAssetCache/IsometricView pattern already
       // used elsewhere in this codebase): wraps the real createDrawContext()
-      // so the real drawMethods object it builds is still used everywhere
+      // so the real DrawApi object it builds is still used everywhere
       // except .place(), which is swapped for a spy. This isolates exactly
       // what placeInScene passes to place() without needing to run the real
       // container/bitmap-cache pipeline at all.
@@ -1531,11 +1552,11 @@ describe("VisualisationAnimationLoopHandler note dispatch", () => {
                 timeInMs: any,
               ) =>
                 real.executeDrawCallback(
-                  (drawMethods: any) => {
+                  (drawApi: any) => {
                     const placeSpy = vi.fn((_component: any, options: any) => {
                       capturedPlaceOptions.push(options);
                     });
-                    callback({ ...drawMethods, place: placeSpy });
+                    callback({ ...drawApi, place: placeSpy });
                   },
                   context,
                   width,
@@ -1575,6 +1596,41 @@ describe("VisualisationAnimationLoopHandler note dispatch", () => {
       expect(capturedPlaceOptions[0]).toMatchObject({ key: "note-42" });
 
       vi.doUnmock("../render");
+    });
+  });
+
+  describe("sceneMeasurements", () => {
+    it("is available on onRender's ambient props", async () => {
+      const { default: VisualisationAnimationLoopHandler } =
+        await import("./VisualisationAnimationLoopHandler");
+
+      let seenSceneMeasurements: unknown = null;
+
+      const handler = new VisualisationAnimationLoopHandler()
+        .withSettings({ computerKeyboardDebugEnabled: false })
+        .setup(({ onRender }) => {
+          onRender(({ sceneMeasurements }) => {
+            seenSceneMeasurements = sceneMeasurements;
+          });
+        });
+
+      handler.render();
+      await flushPromises();
+
+      expect(mockState.latestRenderCallback).not.toBeNull();
+      mockState.latestRenderCallback!({
+        context: createRichMockContext(),
+        width: 800,
+        height: 600,
+      });
+
+      const expected = {
+        width: 800,
+        height: 600,
+        center: { x: 400, y: 300 },
+      };
+
+      expect(seenSceneMeasurements).toEqual(expected);
     });
   });
 
@@ -1664,9 +1720,8 @@ describe("VisualisationAnimationLoopHandler note dispatch", () => {
     it("onNoteDown calling getFromScene(id).attack(value) is reflected in the reactive layer's own render props (status: 'sustained', attackValue) on the next placeInScene-driven frame", async () => {
       const { default: VisualisationAnimationLoopHandler } =
         await import("./VisualisationAnimationLoopHandler");
-      const { createReactiveLayer } = await import(
-        "./factories/createReactiveLayer"
-      );
+      const { createReactiveLayer } =
+        await import("./factories/createReactiveLayer");
 
       const seenProps: Array<{ status: string; attackValue: number }> = [];
       const badge = createReactiveLayer((ctx) => {
@@ -1713,9 +1768,8 @@ describe("VisualisationAnimationLoopHandler note dispatch", () => {
       try {
         const { default: VisualisationAnimationLoopHandler } =
           await import("./VisualisationAnimationLoopHandler");
-        const { createReactiveLayer } = await import(
-          "./factories/createReactiveLayer"
-        );
+        const { createReactiveLayer } =
+          await import("./factories/createReactiveLayer");
 
         const seenStatuses: string[] = [];
         const pulse = createReactiveLayer((ctx) => {

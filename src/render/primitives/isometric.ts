@@ -77,7 +77,7 @@ export const createIsometricPrimitive = ({
     // from its immediate context rather than the whole canvas.
     const ambientMeasurements =
       activeMeasurementsManager.getActiveMeasurements() ??
-      drawProperties.measurements;
+      drawProperties.sceneMeasurements;
 
     const viewportProps = {
       x: options.x ?? 0,

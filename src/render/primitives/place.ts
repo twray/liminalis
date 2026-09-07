@@ -2,7 +2,7 @@ import { createContainerPrimitive } from "../container";
 
 import type { ContainerPrimitiveCommonParams } from "../container";
 import type {
-  DrawAPIBase,
+  DrawAPI,
   DrawPrimitives,
   FrameContext,
   LayerComponent,
@@ -22,7 +22,7 @@ import {
 // written inline — including place() itself, for recursive composition.
 export const place = (
   params: ContainerPrimitiveCommonParams,
-  getAmbientDrawApi: () => DrawAPIBase,
+  getAmbientDrawApi: () => DrawAPI,
 ): DrawPrimitives["place"] => {
   const placeContainer = createContainerPrimitive({
     containerType: "layer",

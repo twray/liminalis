@@ -4,10 +4,10 @@ import {
   createDrawContext,
   DrawAPI,
   LayerOptions,
+  Measurements,
   PlaceOptions,
   PlaceOptionsNonPermanent,
   ReactiveLayerComponent,
-  StaticMeasurementContext,
 } from "../render";
 import type { AssetCacheEntry } from "./AsyncAssetCache";
 import AudioCapture, { type AudioCaptureSession } from "./AudioCapture";
@@ -89,8 +89,9 @@ interface SceneSettings {
   audioInputDeviceId?: string;
 }
 
-interface SetupFunctionProps<TState> extends StaticMeasurementContext {
+interface SetupFunctionProps<TState> {
   state: TState;
+  sceneMeasurements: Measurements;
   load: (
     callback: (loaders: SetupAssetLoaders) => void,
     options?: SetupAssetLoadOptions,
@@ -111,7 +112,7 @@ interface SetupAssetLoadOptions {
   deferRender?: boolean;
 }
 
-interface SceneRenderProps extends RenderProps {
+interface SceneRenderProps extends RenderProps, DrawAPI {
   beforeTime: (time: EventTime) => boolean;
   afterTime: (time: EventTime) => boolean;
   duringTimeInterval: (startTime: EventTime, endTime: EventTime) => boolean;
@@ -343,14 +344,12 @@ class VisualisationAnimationLoopHandler<TState> {
     const setupMeasurements = {
       width: canvasWidth,
       height: canvasHeight,
-      sceneWidth: canvasWidth,
-      sceneHeight: canvasHeight,
       center: { x: canvasWidth / 2, y: canvasHeight / 2 },
     };
 
     setupFunction({
       state: this.#sceneState,
-      measurements: setupMeasurements,
+      sceneMeasurements: setupMeasurements,
       load,
       onNoteDown,
       onNoteUp,
@@ -403,14 +402,6 @@ class VisualisationAnimationLoopHandler<TState> {
 
         // Compute runtime from a monotonic internal clock so timing is
         // independent from renderer playback settings.
-
-        const measurements = {
-          width,
-          height,
-          sceneWidth: width,
-          sceneHeight: height,
-          center: { x: width / 2, y: height / 2 },
-        };
         const timeInMs = this.#getInternalElapsedTimeInMs(nowInMs);
 
         // Set background color and clear the canvas for rendering
@@ -439,7 +430,6 @@ class VisualisationAnimationLoopHandler<TState> {
               frameRenderCallback({
                 ...drawApi,
                 context,
-                measurements,
                 time: timeInMs,
                 beforeTime,
                 afterTime,

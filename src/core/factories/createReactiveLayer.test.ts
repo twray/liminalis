@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { DrawMethods } from "../../render/types";
+import { ContainerDrawAPI, DrawAPI } from "../../render/types";
 import { ReactiveProps } from "../../types";
 import { createReactiveLayer } from "./createReactiveLayer";
 
@@ -33,7 +33,7 @@ describe("createReactiveLayer", () => {
     expect(renderer).not.toHaveBeenCalled();
   });
 
-  it("merges the ambient DrawMethods & ReactiveProps with the bound props when rendered", () => {
+  it("merges the ambient DrawAPI & ReactiveProps with the bound props when rendered", () => {
     const renderer = vi.fn();
     const logo = createReactiveLayer<{ fillStyle: string }>(renderer);
     const component = logo({ fillStyle: "red" });
@@ -47,7 +47,7 @@ describe("createReactiveLayer", () => {
       releasePeriod: 0,
       timeAttacked: null,
       timeReleased: null,
-    } as unknown as DrawMethods & ReactiveProps;
+    } as unknown as ContainerDrawAPI & ReactiveProps;
 
     component.render(ambient);
 
@@ -72,7 +72,7 @@ describe("createReactiveLayer", () => {
     );
     const component = logo({ fillStyle: "blue" });
 
-    component.render({ circle: ambientCircle } as unknown as DrawMethods &
+    component.render({ circle: ambientCircle } as unknown as ContainerDrawAPI &
       ReactiveProps);
 
     expect(ambientCircle).toHaveBeenCalledWith({
@@ -88,9 +88,9 @@ describe("createReactiveLayer", () => {
     const logo = createReactiveLayer<{ fillStyle: string }>(renderer);
     const component = logo({ fillStyle: "red" });
 
-    component.render({ status: "idle" } as unknown as DrawMethods &
+    component.render({ status: "idle" } as unknown as ContainerDrawAPI &
       ReactiveProps);
-    component.render({ status: "sustained" } as unknown as DrawMethods &
+    component.render({ status: "sustained" } as unknown as ContainerDrawAPI &
       ReactiveProps);
 
     expect(renderer).toHaveBeenCalledTimes(2);
@@ -110,7 +110,7 @@ describe("createReactiveLayer", () => {
     const logo = createReactiveLayer<{ fillStyle?: string }>(renderer);
     const component = logo();
 
-    component.render({} as DrawMethods & ReactiveProps);
+    component.render({} as ContainerDrawAPI & ReactiveProps);
 
     expect(renderer).toHaveBeenCalledWith({
       props: {},

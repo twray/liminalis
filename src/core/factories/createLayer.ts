@@ -11,7 +11,7 @@ export type LayerFactory<TProps> = PropsFirstFactory<
 // top-level onRender, inside a group()/layer(), or inside another component.
 // It needs no framework plumbing of its own: place() (built on the same
 // createContainerPrimitive engine as group()/layer()) is what supplies the
-// ambient DrawMethods at invocation time, since the component's render
+// ambient DrawAPI at invocation time, since the component's render
 // function is defined in its own module, before any frame/draw context
 // exists to close over.
 export const createLayer = <TProps = {}>(

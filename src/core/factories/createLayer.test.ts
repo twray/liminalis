@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type { DrawMethods } from "../../render/types";
+import type { ContainerDrawAPI, DrawAPI } from "../../render/types";
 
 import { createLayer } from "./createLayer";
 
@@ -32,13 +32,13 @@ describe("createLayer", () => {
     expect(renderer).not.toHaveBeenCalled();
   });
 
-  it("merges the ambient DrawMethods with the bound props when rendered", () => {
+  it("merges the ambient DrawApi with the bound props when rendered", () => {
     const renderer = vi.fn();
     const logo = createLayer<{ fillStyle: string }>(renderer);
     const component = logo({ fillStyle: "red" });
 
     const ambientCircle = vi.fn();
-    const ambient = { circle: ambientCircle } as unknown as DrawMethods;
+    const ambient = { circle: ambientCircle } as unknown as ContainerDrawAPI;
 
     component.render(ambient);
 
@@ -56,7 +56,7 @@ describe("createLayer", () => {
     });
     const component = logo({ fillStyle: "blue" });
 
-    component.render({ circle: ambientCircle } as unknown as DrawMethods);
+    component.render({ circle: ambientCircle } as unknown as ContainerDrawAPI);
 
     expect(ambientCircle).toHaveBeenCalledWith({
       cx: 0,
@@ -71,8 +71,8 @@ describe("createLayer", () => {
     const logo = createLayer<{ fillStyle: string }>(renderer);
     const component = logo({ fillStyle: "red" });
 
-    component.render({} as DrawMethods);
-    component.render({} as DrawMethods);
+    component.render({} as ContainerDrawAPI);
+    component.render({} as ContainerDrawAPI);
 
     expect(renderer).toHaveBeenCalledTimes(2);
   });
@@ -82,7 +82,7 @@ describe("createLayer", () => {
     const logo = createLayer<{ fillStyle?: string }>(renderer);
     const component = logo();
 
-    component.render({} as DrawMethods);
+    component.render({} as ContainerDrawAPI);
 
     expect(renderer).toHaveBeenCalledWith({
       props: {},
