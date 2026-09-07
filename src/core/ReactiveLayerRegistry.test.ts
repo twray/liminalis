@@ -52,47 +52,4 @@ describe("ReactiveLayerRegistry", () => {
       expect(registry.get("note1")).toBeUndefined();
     });
   });
-
-  describe("attack/sustain/release by id", () => {
-    it("auto-vivifies a permanent entry and delegates attack() to it", () => {
-      const registry = new ReactiveLayerRegistry();
-
-      registry.attack("note1", 0.75);
-      const state = registry.get("note1")!;
-
-      expect(state.isPermanent).toBe(true);
-      expect(state.attackValue).toBe(0.75);
-      expect(state.status).toBe("sustained");
-    });
-
-    it("sustain()/release() delegate to the same entry attack() created", () => {
-      const registry = new ReactiveLayerRegistry();
-
-      registry.attack("note1", 1);
-      registry.sustain("note1", 200);
-      registry.release("note1", 100);
-
-      vi.advanceTimersByTime(200);
-      expect(registry.get("note1")!.status).toBe("releasing");
-
-      vi.advanceTimersByTime(100);
-      expect(registry.get("note1")!.status).toBe("idle");
-    });
-
-    it("does nothing observable if the entry was deleted before a scheduled release fires", () => {
-      const registry = new ReactiveLayerRegistry();
-
-      registry.attack("note1", 1);
-      registry.sustain("note1", 200);
-      registry.release("note1", 100);
-
-      registry.delete("note1");
-
-      // The pending timer still fires against the now-orphaned envelope
-      // instance, but nothing reads it back through the registry, so this
-      // must not throw and the id must stay gone.
-      expect(() => vi.advanceTimersByTime(200)).not.toThrow();
-      expect(registry.get("note1")).toBeUndefined();
-    });
-  });
 });

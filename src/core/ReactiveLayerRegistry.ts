@@ -26,22 +26,6 @@ class ReactiveLayerRegistry {
   delete(id: string): void {
     this.#registry.delete(id);
   }
-
-  // Auto-vivifies with isPermanent: true if `id` has never been placed —
-  // lets a MIDI event that fires before the first placeInScene call for
-  // that id still be recorded correctly; placeInScene picks up the
-  // already-attacked state on its next call regardless of call order.
-  attack(id: string, attackValue: number): void {
-    this.getOrCreate(id, true).attack(attackValue);
-  }
-
-  sustain(id: string, durationInMs: number): void {
-    this.getOrCreate(id, true).sustain(durationInMs);
-  }
-
-  release(id: string, releasePeriod: number = 1000): void {
-    this.getOrCreate(id, true).release(releasePeriod);
-  }
 }
 
 export default ReactiveLayerRegistry;
