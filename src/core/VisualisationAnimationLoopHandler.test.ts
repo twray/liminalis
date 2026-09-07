@@ -1842,8 +1842,290 @@ describe("VisualisationAnimationLoopHandler note dispatch", () => {
       }
     });
 
-    it.todo(
-      "a reactive layer stops being rendered once fully decayed only when isPermanent is false (the Step 8 scene.add()-style path) -- a directly placeInScene'd (always-permanent) layer keeps rendering through and after decay",
-    );
+    it("a placeInScene'd entry with isTemporary: true stops rendering and is physically removed from the registry once fully decayed -- a later getFromScene(id) sees a fresh, never-attacked envelope, not the stale decayed one", async () => {
+      vi.useFakeTimers();
+
+      try {
+        const { default: VisualisationAnimationLoopHandler } =
+          await import("./VisualisationAnimationLoopHandler");
+        const { createReactiveLayer } =
+          await import("./factories/createReactiveLayer");
+
+        const seenStatuses: string[] = [];
+        const pulse = createReactiveLayer((ctx) => {
+          seenStatuses.push(ctx.status);
+          ctx.rect({ x: 0, y: 0, width: 5, height: 5, fillStyle: "green" });
+        });
+
+        const probedEnvelopes: Array<{
+          status: string;
+          attackValue: number;
+          timeAttacked: number | null;
+        }> = [];
+
+        const handler = new VisualisationAnimationLoopHandler()
+          .withSettings({ computerKeyboardDebugEnabled: false })
+          .setup(({ onNoteDown, onNoteUp, onRender }) => {
+            onNoteDown(({ note, attack, placeInScene, getFromScene }) => {
+              // A distinct "probe" note lets the test inspect pulse-1's
+              // envelope later without attacking it (attacking would
+              // revive a decayed entry, defeating the point of the probe).
+              if (note === "probe") {
+                const envelope = getFromScene("pulse-1");
+                probedEnvelopes.push({
+                  status: envelope.status,
+                  attackValue: envelope.attackValue,
+                  timeAttacked: envelope.timeAttacked,
+                });
+                return;
+              }
+
+              placeInScene(
+                pulse(),
+                { x: 0, y: 0, width: 10, height: 10, isTemporary: true },
+                note,
+              );
+              getFromScene(note).attack(attack);
+            });
+
+            onNoteUp(({ note, getFromScene }) => {
+              getFromScene(note).release(100);
+            });
+
+            // Empty, but required: #sceneEntries (what a
+            // WithSceneContext-scoped placeInScene registers into) is only
+            // drained inside the per-frame pass nested under a registered
+            // onRender callback -- see
+            // VisualisationAnimationLoopHandler.ts:432,447.
+            onRender(() => {});
+          });
+
+        handler.render();
+        await flushPromises();
+
+        const [noteOn] = mockState.midiListeners.noteon;
+        const [noteOff] = mockState.midiListeners.noteoff;
+        expect(noteOn).toBeDefined();
+        expect(noteOff).toBeDefined();
+
+        const renderFrame = () =>
+          mockState.latestRenderCallback!({
+            context: createRichMockContext(),
+            width: 800,
+            height: 600,
+          });
+
+        noteOn!({ note: { identifier: "pulse-1", number: 1, attack: 1 } });
+        renderFrame(); // registered + attacked -> sustained, rendered
+
+        noteOff!({ note: { identifier: "pulse-1", number: 1 } });
+        renderFrame(); // release(100) scheduled, 0ms delay not yet fired
+
+        vi.advanceTimersByTime(0); // release takes effect
+        renderFrame(); // releasing
+
+        vi.advanceTimersByTime(100); // releasePeriod elapses
+        // On this frame the envelope is already idle + hasBeenReleased by
+        // the time #placeReactiveLayer runs, so its own skip-check (the
+        // same check the removal logic re-reads immediately after) fires
+        // first -- the component is never invoked with status: "idle";
+        // it just silently stops being drawn from this frame on.
+        renderFrame();
+
+        expect(seenStatuses).toEqual(["sustained", "sustained", "releasing"]);
+
+        renderFrame(); // nothing left in #sceneEntries -- confirm it stays gone
+        expect(seenStatuses).toEqual(["sustained", "sustained", "releasing"]);
+
+        noteOn!({ note: { identifier: "probe", number: 99, attack: 1 } });
+
+        // A fresh envelope (never attacked) proves pulse-1 was deleted from
+        // ReactiveLayerRegistry, not merely skipped while still present --
+        // the stale entry would instead report status: "idle" with a
+        // non-null timeAttacked and attackValue: 1 carried over from before
+        // decay.
+        expect(probedEnvelopes).toEqual([
+          { status: "idle", attackValue: 0, timeAttacked: null },
+        ]);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("a temporary entry still decays and is removed even when getFromScene(id) auto-vivifies it (isPermanent: true, hardcoded) BEFORE placeInScene(..., { isTemporary: true }) ever runs for that id -- placeInScene wins regardless of which call touches the id first", async () => {
+      vi.useFakeTimers();
+
+      try {
+        const { default: VisualisationAnimationLoopHandler } =
+          await import("./VisualisationAnimationLoopHandler");
+        const { createReactiveLayer } =
+          await import("./factories/createReactiveLayer");
+
+        const seenStatuses: string[] = [];
+        const pulse = createReactiveLayer((ctx) => {
+          seenStatuses.push(ctx.status);
+          ctx.rect({ x: 0, y: 0, width: 5, height: 5, fillStyle: "green" });
+        });
+
+        const probedEnvelopes: Array<{
+          status: string;
+          attackValue: number;
+          timeAttacked: number | null;
+        }> = [];
+
+        const handler = new VisualisationAnimationLoopHandler()
+          .withSettings({ computerKeyboardDebugEnabled: false })
+          .setup(({ onNoteDown, onNoteUp, onRender }) => {
+            onNoteDown(({ note, attack, placeInScene, getFromScene }) => {
+              if (note === "probe") {
+                const envelope = getFromScene("pulse-1");
+                probedEnvelopes.push({
+                  status: envelope.status,
+                  attackValue: envelope.attackValue,
+                  timeAttacked: envelope.timeAttacked,
+                });
+                return;
+              }
+
+              // Reversed order from the removal test above: getFromScene
+              // touches (and auto-vivifies) the id FIRST, hardcoded
+              // isPermanent: true (ReactiveLayerRegistry.getOrCreate(id,
+              // true) at VisualisationAnimationLoopHandler.ts's
+              // #getFromScene). placeInScene's isTemporary-aware call runs
+              // SECOND, in the same tick. Before ReactiveLayerEnvelope's
+              // isPermanent became a plain mutable property (previously
+              // readonly, decided once at construction), this ordering
+              // would have locked the entry permanent forever -- the later,
+              // actually-informed placeInScene call would have had no way
+              // to correct it, and it would never have decayed.
+              getFromScene(note).attack(attack);
+              placeInScene(
+                pulse(),
+                { x: 0, y: 0, width: 10, height: 10, isTemporary: true },
+                note,
+              );
+            });
+
+            onNoteUp(({ note, getFromScene }) => {
+              getFromScene(note).release(100);
+            });
+
+            onRender(() => {});
+          });
+
+        handler.render();
+        await flushPromises();
+
+        const [noteOn] = mockState.midiListeners.noteon;
+        const [noteOff] = mockState.midiListeners.noteoff;
+
+        const renderFrame = () =>
+          mockState.latestRenderCallback!({
+            context: createRichMockContext(),
+            width: 800,
+            height: 600,
+          });
+
+        noteOn!({ note: { identifier: "pulse-1", number: 1, attack: 1 } });
+        renderFrame(); // sustained
+
+        noteOff!({ note: { identifier: "pulse-1", number: 1 } });
+        renderFrame(); // still sustained
+
+        vi.advanceTimersByTime(0);
+        renderFrame(); // releasing
+
+        vi.advanceTimersByTime(100);
+        renderFrame(); // decayed this frame -- skipped and removed, per the
+        // same same-frame skip-check timing as the removal test above.
+
+        expect(seenStatuses).toEqual(["sustained", "sustained", "releasing"]);
+
+        noteOn!({ note: { identifier: "probe", number: 99, attack: 1 } });
+
+        // If the race weren't fixed, this would instead see the original,
+        // still-permanent, never-removed envelope: status "idle" but with
+        // hasBeenReleased/timeAttacked carried over from before decay,
+        // since nothing would ever have deleted it.
+        expect(probedEnvelopes).toEqual([
+          { status: "idle", attackValue: 0, timeAttacked: null },
+        ]);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("a directly placeInScene'd layer (always permanent, no isTemporary) keeps rendering through and after full decay -- contrast case for the removal test above", async () => {
+      vi.useFakeTimers();
+
+      try {
+        const { default: VisualisationAnimationLoopHandler } =
+          await import("./VisualisationAnimationLoopHandler");
+        const { createReactiveLayer } =
+          await import("./factories/createReactiveLayer");
+
+        const seenStatuses: string[] = [];
+        const pulse = createReactiveLayer((ctx) => {
+          seenStatuses.push(ctx.status);
+          ctx.rect({ x: 0, y: 0, width: 5, height: 5, fillStyle: "green" });
+        });
+
+        const handler = new VisualisationAnimationLoopHandler()
+          .withSettings({ computerKeyboardDebugEnabled: false })
+          .setup(({ onNoteDown, onNoteUp, onRender }) => {
+            onNoteDown(({ note, attack, getFromScene }) => {
+              getFromScene(note).attack(attack);
+            });
+
+            onNoteUp(({ note, getFromScene }) => {
+              getFromScene(note).release(100);
+            });
+
+            onRender(({ placeInScene }) => {
+              placeInScene(
+                pulse(),
+                { x: 0, y: 0, width: 10, height: 10 },
+                "pulse-1",
+              );
+            });
+          });
+
+        handler.render();
+        await flushPromises();
+
+        const [noteOn] = mockState.midiListeners.noteon;
+        const [noteOff] = mockState.midiListeners.noteoff;
+
+        const renderFrame = () =>
+          mockState.latestRenderCallback!({
+            context: createRichMockContext(),
+            width: 800,
+            height: 600,
+          });
+
+        noteOn!({ note: { identifier: "pulse-1", number: 1, attack: 1 } });
+        renderFrame(); // sustained
+
+        noteOff!({ note: { identifier: "pulse-1", number: 1 } });
+        renderFrame(); // still sustained, release not yet in effect
+
+        vi.advanceTimersByTime(0);
+        renderFrame(); // releasing
+
+        vi.advanceTimersByTime(100);
+        renderFrame(); // idle -- but still rendered, unlike the temporary case
+        renderFrame(); // idle again -- keeps rendering indefinitely
+
+        expect(seenStatuses).toEqual([
+          "sustained",
+          "sustained",
+          "releasing",
+          "idle",
+          "idle",
+        ]);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
   });
 });

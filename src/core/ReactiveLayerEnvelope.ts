@@ -17,7 +17,7 @@ class ReactiveLayerEnvelope {
   // ReactiveLayerRegistry.getOrCreate — so "first render" is correct
   // regardless of which of those happens to create this envelope first.
   #timeFirstRender: Date = new Date();
-  readonly isPermanent: boolean;
+  isPermanent: boolean;
 
   constructor(isPermanent: boolean) {
     this.isPermanent = isPermanent;

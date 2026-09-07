@@ -364,10 +364,15 @@ class VisualisationAnimationLoopHandler<TState> {
   #placeReactiveLayer(
     drawAPI: DrawAPI,
     component: ReactiveLayerComponent<any>,
-    options: PlaceOptions,
+    options: PlaceOptionsNonPermanent,
     id: string,
   ) {
-    const state = this.#reactiveLayerRegistry.getOrCreate(id, true);
+    const state = this.#reactiveLayerRegistry.getOrCreate(
+      id,
+      !options.isTemporary,
+    );
+
+    state.isPermanent = !options.isTemporary;
 
     if (
       !state.isPermanent &&
@@ -436,7 +441,12 @@ class VisualisationAnimationLoopHandler<TState> {
                 duringTimeInterval,
                 activeNotes: activeNotesForFrame,
                 placeInScene: (component, options, id) =>
-                  this.#placeReactiveLayer(drawApi, component, options, id),
+                  this.#placeReactiveLayer(
+                    drawApi,
+                    component,
+                    { ...options, isTemporary: false },
+                    id,
+                  ),
               });
 
               this.#sceneEntries.forEach(({ component, options }, id) => {
