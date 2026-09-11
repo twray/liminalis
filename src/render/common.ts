@@ -103,6 +103,23 @@ export const transformPoint = (
   return { x: transformedX, y: transformedY };
 };
 
+const deriveBoundsFromPoints = (points: Point2D[]): Bounds => {
+  const allXPoints = points.map((point) => point.x);
+  const allYPoints = points.map((point) => point.y);
+
+  const minX = Math.min(...allXPoints);
+  const minY = Math.min(...allYPoints);
+  const maxX = Math.max(...allXPoints);
+  const maxY = Math.max(...allYPoints);
+
+  return {
+    x: minX,
+    y: minY,
+    width: maxX - minX,
+    height: maxY - minY,
+  };
+};
+
 export const computeTransformedRectangularAABB = (
   bounds: Bounds,
   props: TransformProps,
@@ -119,24 +136,24 @@ export const computeTransformedRectangularAABB = (
     { x: bounds.x, y: bounds.y + bounds.height },
   ];
 
-  const transformedCorners = corners.map((point) =>
-    transformPoint(point, transformState),
+  return deriveBoundsFromPoints(
+    corners.map((point) => transformPoint(point, transformState)),
   );
+};
 
-  const allXPoints = transformedCorners.map((point) => point.x);
-  const allYPoints = transformedCorners.map((point) => point.y);
+export const computeTransformedMultipointAABB = (
+  points: Point2D[],
+  props: TransformProps,
+) => {
+  const unTransformedBounds = deriveBoundsFromPoints(points);
+  const transformState = resolveTransformState(props, unTransformedBounds);
+  const { hasRotate, hasScale } = transformState;
 
-  const minX = Math.min(...allXPoints);
-  const minY = Math.min(...allYPoints);
-  const maxX = Math.max(...allXPoints);
-  const maxY = Math.max(...allYPoints);
+  if (!hasRotate && !hasScale) return unTransformedBounds;
 
-  return {
-    x: minX,
-    y: minY,
-    width: maxX - minX,
-    height: maxY - minY,
-  };
+  return deriveBoundsFromPoints(
+    points.map((point) => transformPoint(point, transformState)),
+  );
 };
 
 export const renderWithTransform = (

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { degreesToRadians } from "../util";
 import {
   centerOf,
+  computeTransformedMultipointAABB,
   computeTransformedRectangularAABB,
   createBoundsCollector,
   createNoopAnimatable,
@@ -298,6 +299,224 @@ describe("computeTransformedRectangularAABB", () => {
     expect(transformedBounds.y).toBeCloseTo(43.93, 2);
     expect(transformedBounds.width).toBeCloseTo(282.84, 2);
     expect(transformedBounds.height).toBeCloseTo(212.13, 2);
+  });
+});
+
+describe("computeTransformedMultipointAABB", () => {
+  const linePoints = [
+    { x: 0, y: 0 },
+    { x: 100, y: 100 },
+  ];
+
+  // Deliberately not all vertices sit on the local bbox's own corners (only
+  // (0,80) and (100,80) do; (50,0) is the midpoint of the bbox's top edge)
+  // so a rotation genuinely distinguishes "transform the real vertices"
+  // from "transform the bbox proxy's 4 corners" -- unlike the diagonal line
+  // fixture above, this triangle isn't degenerate at 45 degrees.
+  const openPolygonPoints = [
+    { x: 50, y: 0 },
+    { x: 0, y: 80 },
+    { x: 100, y: 80 },
+  ];
+
+  // Same triangle with an explicit closing vertex duplicating the first
+  // point, mirroring how polygon()/closePath: true produce their point set.
+  const closedPolygonPoints = [
+    { x: 50, y: 0 },
+    { x: 0, y: 80 },
+    { x: 100, y: 80 },
+    { x: 50, y: 0 },
+  ];
+
+  it("returns the bounds unchanged when there is no rotation or scale", () => {
+    const transformedBounds = computeTransformedMultipointAABB(linePoints, {});
+
+    expect(transformedBounds.x).toEqual(0);
+    expect(transformedBounds.y).toEqual(0);
+    expect(transformedBounds.width).toEqual(100);
+    expect(transformedBounds.height).toEqual(100);
+  });
+
+  it("returns the bounds unchanged when rotation and scale are at default values", () => {
+    const transformedBounds = computeTransformedMultipointAABB(linePoints, {
+      rotate: 0,
+      scale: 1,
+    });
+
+    expect(transformedBounds.x).toEqual(0);
+    expect(transformedBounds.y).toEqual(0);
+    expect(transformedBounds.width).toEqual(100);
+    expect(transformedBounds.height).toEqual(100);
+  });
+
+  it("computes the diagonal AABB of a line rotated 45 degrees around its centre when rotation origin is not specified", () => {
+    const transformedBounds = computeTransformedMultipointAABB(linePoints, {
+      rotate: 45,
+      scale: 1,
+    });
+
+    expect(transformedBounds.x).toBeCloseTo(50.0, 2);
+    expect(transformedBounds.y).toBeCloseTo(-20.71, 2);
+    expect(transformedBounds.width).toBeCloseTo(0.0, 2);
+    expect(transformedBounds.height).toBeCloseTo(141.42, 2);
+  });
+
+  it("grows the box uniformly around a line's center for a pure scale", () => {
+    const transformedBounds = computeTransformedMultipointAABB(linePoints, {
+      scale: 2,
+    });
+
+    expect(transformedBounds.x).toBe(-50);
+    expect(transformedBounds.y).toBe(-50);
+    expect(transformedBounds.width).toBe(200);
+    expect(transformedBounds.height).toBe(200);
+  });
+
+  it("shifts the box's position when rotating a line on a explicit non-center origin", () => {
+    const transformedBounds = computeTransformedMultipointAABB(linePoints, {
+      rotate: 45,
+      rotateOrigin: { x: 0, y: 0 },
+    });
+
+    expect(transformedBounds.x).toBe(0);
+    expect(transformedBounds.y).toBe(0);
+    expect(transformedBounds.width).toBeCloseTo(0.0, 2);
+    expect(transformedBounds.height).toBeCloseTo(141.42, 2);
+  });
+
+  it("correctly computes bounding box of a line when both rotation and scale are present", () => {
+    const transformedBounds = computeTransformedMultipointAABB(linePoints, {
+      rotate: 45,
+      scaleX: 2,
+      scaleY: 1.5,
+    });
+
+    expect(transformedBounds.x).toBeCloseTo(50.0, 2);
+    expect(transformedBounds.y).toBeCloseTo(-56.07, 2);
+    expect(transformedBounds.width).toBeCloseTo(0.0, 2);
+    expect(transformedBounds.height).toBeCloseTo(212.13, 2);
+  });
+
+  it("computes the diagonal AABB of an open polygon rotated 45 degrees around its centre when rotation origin is not specified", () => {
+    const transformedBounds = computeTransformedMultipointAABB(
+      openPolygonPoints,
+      {
+        rotate: 45,
+        scale: 1,
+      },
+    );
+
+    expect(transformedBounds.x).toBeCloseTo(-13.64, 2);
+    expect(transformedBounds.y).toBeCloseTo(11.72, 2);
+    expect(transformedBounds.width).toBeCloseTo(91.92, 2);
+    expect(transformedBounds.height).toBeCloseTo(91.92, 2);
+  });
+
+  it("grows the box uniformly around an open polygon's center for a pure scale", () => {
+    const transformedBounds = computeTransformedMultipointAABB(
+      openPolygonPoints,
+      {
+        scale: 2,
+      },
+    );
+
+    expect(transformedBounds.x).toBe(-50);
+    expect(transformedBounds.y).toBe(-40);
+    expect(transformedBounds.width).toBe(200);
+    expect(transformedBounds.height).toBe(160);
+  });
+
+  it("shifts the box's position when rotating an open polygon on a explicit non-center origin", () => {
+    const transformedBounds = computeTransformedMultipointAABB(
+      openPolygonPoints,
+      {
+        rotate: 45,
+        rotateOrigin: { x: 0, y: 0 },
+      },
+    );
+
+    expect(transformedBounds.x).toBeCloseTo(-56.57, 2);
+    expect(transformedBounds.y).toBeCloseTo(35.36, 2);
+    expect(transformedBounds.width).toBeCloseTo(91.92, 2);
+    expect(transformedBounds.height).toBeCloseTo(91.92, 2);
+  });
+
+  it("correctly computes bounding box an open polygon when both rotation and scale are present", () => {
+    const transformedBounds = computeTransformedMultipointAABB(
+      openPolygonPoints,
+      {
+        rotate: 45,
+        scaleX: 2,
+        scaleY: 1.5,
+      },
+    );
+
+    expect(transformedBounds.x).toBeCloseTo(-77.28, 2);
+    expect(transformedBounds.y).toBeCloseTo(-2.43, 2);
+    expect(transformedBounds.width).toBeCloseTo(183.85, 2);
+    expect(transformedBounds.height).toBeCloseTo(137.89, 2);
+  });
+
+  it("computes the diagonal AABB of an closed polygon rotated 45 degrees around its centre when rotation origin is not specified", () => {
+    const transformedBounds = computeTransformedMultipointAABB(
+      closedPolygonPoints,
+      {
+        rotate: 45,
+        scale: 1,
+      },
+    );
+
+    // Identical to the open-polygon case above: the duplicated closing
+    // vertex can never move the min/max, so it can't change the AABB.
+    expect(transformedBounds.x).toBeCloseTo(-13.64, 2);
+    expect(transformedBounds.y).toBeCloseTo(11.72, 2);
+    expect(transformedBounds.width).toBeCloseTo(91.92, 2);
+    expect(transformedBounds.height).toBeCloseTo(91.92, 2);
+  });
+
+  it("grows the box uniformly around an closed polygon's center for a pure scale", () => {
+    const transformedBounds = computeTransformedMultipointAABB(
+      closedPolygonPoints,
+      {
+        scale: 2,
+      },
+    );
+
+    expect(transformedBounds.x).toBe(-50);
+    expect(transformedBounds.y).toBe(-40);
+    expect(transformedBounds.width).toBe(200);
+    expect(transformedBounds.height).toBe(160);
+  });
+
+  it("shifts the box's position when rotating an closed polygon on a explicit non-center origin", () => {
+    const transformedBounds = computeTransformedMultipointAABB(
+      closedPolygonPoints,
+      {
+        rotate: 45,
+        rotateOrigin: { x: 0, y: 0 },
+      },
+    );
+
+    expect(transformedBounds.x).toBeCloseTo(-56.57, 2);
+    expect(transformedBounds.y).toBeCloseTo(35.36, 2);
+    expect(transformedBounds.width).toBeCloseTo(91.92, 2);
+    expect(transformedBounds.height).toBeCloseTo(91.92, 2);
+  });
+
+  it("correctly computes bounding box an closed polygon when both rotation and scale are present", () => {
+    const transformedBounds = computeTransformedMultipointAABB(
+      closedPolygonPoints,
+      {
+        rotate: 45,
+        scaleX: 2,
+        scaleY: 1.5,
+      },
+    );
+
+    expect(transformedBounds.x).toBeCloseTo(-77.28, 2);
+    expect(transformedBounds.y).toBeCloseTo(-2.43, 2);
+    expect(transformedBounds.width).toBeCloseTo(183.85, 2);
+    expect(transformedBounds.height).toBeCloseTo(137.89, 2);
   });
 });
 
