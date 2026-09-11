@@ -52,6 +52,16 @@ export interface TransformProps {
   scaleOrigin?: TransformOrigin;
 }
 
+export interface TransformState {
+  hasRotate: boolean;
+  hasScale: boolean;
+  scaleX: number;
+  scaleY: number;
+  scaleOrigin: Point2D;
+  rotateOrigin: Point2D;
+  rotateRadians: number;
+}
+
 export interface ContextGlobalProps extends WithOpacity, WithBlend {}
 
 // A CompositeInfo-bearing ClipScope corresponds 1:1 to a DrawGroupNode

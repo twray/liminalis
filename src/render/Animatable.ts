@@ -80,6 +80,10 @@ class Animatable<TProps extends object> implements IAnimatableLike<TProps> {
     this.#propsSnapshot = null;
   }
 
+  hasSegmentTargeting(key: keyof TProps): boolean {
+    return this.#segments.some((segment) => key in segment.targetProps);
+  }
+
   animateTo(
     targetProps: PartialNumericProps<TProps>,
     options: AnimationSegmentOptions = {},

@@ -19,6 +19,7 @@ import {
   DEFAULT_STROKE_STYLE,
   DEFAULT_STROKE_WIDTH,
   centerOf,
+  computeTransformedRectangularAABB,
   createNoopAnimatable,
 } from "./common";
 
@@ -109,7 +110,7 @@ export const createDrawContext = (): DrawContext => {
     // - hooks: optional functions to provide e.g. extra signature and bounds information
     //
     // The queued closure also snapshots active clip scopes so nested clipping remains stable.
-    const queueAnimatable = <T extends PartialDrawStyles>(
+    const queueAnimatable = <T extends PartialDrawStyles & TransformProps>(
       primitiveType: string,
       props: T,
       renderFn: (context: CanvasRenderingContext2D, props: T) => void,
@@ -128,30 +129,42 @@ export const createDrawContext = (): DrawContext => {
         boundsCollectionManager.getActiveCollector();
       const shouldCollectBounds = boundsCollectionManager.shouldCollectBounds();
 
+      const bounds = getBounds?.(mergedProps) ?? null;
+
       if (shouldCollectBounds) {
-        activeBoundsCollector?.includeBounds(getBounds?.(mergedProps) ?? null);
+        activeBoundsCollector?.includeBounds(
+          bounds
+            ? computeTransformedRectangularAABB(bounds, mergedProps)
+            : null,
+        );
       }
 
       if (frameMeasurementPassManager.isMeasuringFrameBounds()) {
         return createNoopAnimatable(mergedProps);
       }
 
-      return registry.queue(mergedProps, (p) => {
+      return registry.queue(mergedProps, (props) => {
         if (shouldCollectBounds) {
-          activeBoundsCollector?.includeBounds(getBounds?.(p) ?? null);
+          // Current bounds collected per-frame of animation
+          const currentBounds = getBounds?.(props) ?? null;
+          activeBoundsCollector?.includeBounds(
+            currentBounds
+              ? computeTransformedRectangularAABB(currentBounds, props)
+              : null,
+          );
         }
 
-        const extraSignatureFromProps = getExtraSignature?.(p);
+        const extraSignatureFromProps = getExtraSignature?.(props);
 
         const signature = DrawGroupManager.createPrimitiveSignature(
           primitiveType,
-          p,
+          props,
           extraSignatureFromProps,
         );
 
         targetGroupHandle.pushPrimitiveOperation({
           signature,
-          render: (targetContext) => renderFn(targetContext, p),
+          render: (targetContext) => renderFn(targetContext, props),
         });
       });
     };
@@ -223,7 +236,12 @@ export const createDrawContext = (): DrawContext => {
         const activeBoundsCollector =
           boundsCollectionManager.getActiveCollector();
 
-        activeBoundsCollector?.includeBounds(getFrameBounds(currentClipProps));
+        activeBoundsCollector?.includeBounds(
+          computeTransformedRectangularAABB(
+            getFrameBounds(currentClipProps),
+            currentClipProps,
+          ),
+        );
 
         if (frameMeasurementPassManager.isMeasuringFrameBounds()) {
           if (frameCallback) {
@@ -238,7 +256,10 @@ export const createDrawContext = (): DrawContext => {
         const clipAnimatable = registry.queue(mergedProps, (animatedProps) => {
           currentClipProps = normalizeProps(animatedProps);
           activeBoundsCollector?.includeBounds(
-            getFrameBounds(currentClipProps),
+            computeTransformedRectangularAABB(
+              getFrameBounds(currentClipProps),
+              currentClipProps,
+            ),
           );
         });
 

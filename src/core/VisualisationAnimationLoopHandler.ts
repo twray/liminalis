@@ -410,7 +410,6 @@ class VisualisationAnimationLoopHandler<TState> {
         const timeInMs = this.#getInternalElapsedTimeInMs(nowInMs);
 
         // Set background color and clear the canvas for rendering
-
         context.fillStyle = "white";
         context.fillRect(0, 0, width, height);
 

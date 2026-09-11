@@ -3520,6 +3520,174 @@ describe("drawApi transform props", () => {
       expect(mockContext.rect).toHaveBeenCalledWith(0, 0, 450, 200);
     });
 
+    it("does not apply a spurious groupOffsetX/Y translate when an auto-sized group's only child animates rotate", async () => {
+      const { createDrawContext } = await import("./index");
+      const drawContext = createDrawContext();
+
+      const render = (d: DrawAPI) => {
+        d.group(
+          () => {
+            d.rect({
+              x: 860,
+              y: 440,
+              width: 200,
+              height: 200,
+              fillStyle: "#333",
+              rotate: 0,
+            }).animateTo({ rotate: 360 }, { at: 0, duration: 10000 });
+          },
+          { showBounds: true },
+        );
+      };
+
+      // Frame 0 establishes the animatable at its declared (unrotated) props.
+      drawContext.executeDrawCallback(
+        (d) => render(d),
+        mockContext,
+        1920,
+        1080,
+        0,
+      );
+
+      vi.mocked(mockContext.translate).mockClear();
+
+      // 1250ms into a 0->360 sweep over 10000ms = 45 degrees -- the exact
+      // point where the traced bug (spec/group-auto-position-timing-plan.md)
+      // produces a spurious groupOffsetX/Y translate.
+      drawContext.executeDrawCallback(
+        (d) => render(d),
+        mockContext,
+        1920,
+        1080,
+        1250,
+      );
+
+      // The child legitimately rotates 45 degrees about its own center
+      // (960, 540) -- that translate/-translate pair is expected. Any other
+      // translate call is the bug: a non-zero groupOffsetX/Y applied to the
+      // group's own compositing, which re-shifts content back toward the
+      // stale, pre-animation position instead of the live rotated AABB.
+      const spuriousTranslateCalls = vi
+        .mocked(mockContext.translate)
+        .mock.calls.filter(
+          (call) =>
+            !(call[0] === 960 && call[1] === 540) &&
+            !(call[0] === -960 && call[1] === -540),
+        );
+
+      expect(spuriousTranslateCalls).toEqual([]);
+    });
+
+    it("animating the group's own rotate does not freeze position auto-tracking of an animated child", async () => {
+      const { createDrawContext } = await import("./index");
+      const drawContext = createDrawContext();
+
+      const render = (d: DrawAPI) => {
+        d.group(
+          () => {
+            d.rect({
+              x: 860,
+              y: 440,
+              width: 200,
+              height: 200,
+              fillStyle: "#333",
+              rotate: 0,
+            }).animateTo({ rotate: 360 }, { at: 0, duration: 10000 });
+          },
+          { showBounds: true },
+        ).animateTo({ rotate: 90 }, { at: 0, duration: 10000 });
+      };
+
+      drawContext.executeDrawCallback(
+        (d) => render(d),
+        mockContext,
+        1920,
+        1080,
+        0,
+      );
+
+      vi.mocked(mockContext.translate).mockClear();
+
+      // 1250ms in: child at 45 degrees, group at 11.25 degrees. A square
+      // rotated about its own center always has an AABB centered on that
+      // same point, so the group's auto-fit frame (which tightly wraps this
+      // one child) shares the child's (960, 540) center regardless of either
+      // rotation angle -- both the child's own rotate-about-center wrapper
+      // AND the group's own rotate-about-its-frame-center wrapper use this
+      // same pivot, just with different rotate() angles. A blanket
+      // "does this animatable have any segment at all" check would
+      // incorrectly treat the group's unrelated rotate segment as reason to
+      // freeze x/y at a stale seeded value instead of live-tracking
+      // derivedBounds -- see the hasSegmentTargeting design in
+      // spec/group-auto-position-timing-plan.md. Any translate NOT part of
+      // one of these two legitimate rotate-about-(960,540) wrappers is that
+      // bug resurfacing.
+      drawContext.executeDrawCallback(
+        (d) => render(d),
+        mockContext,
+        1920,
+        1080,
+        1250,
+      );
+
+      const spuriousTranslateCalls = vi
+        .mocked(mockContext.translate)
+        .mock.calls.filter(
+          (call) =>
+            !(call[0] === 960 && call[1] === 540) &&
+            !(call[0] === -960 && call[1] === -540),
+        );
+
+      expect(spuriousTranslateCalls).toEqual([]);
+
+      // Both rotations should still be present and distinct.
+      expect(mockContext.rotate).toHaveBeenCalledWith((45 * Math.PI) / 180);
+      expect(mockContext.rotate).toHaveBeenCalledWith((11.25 * Math.PI) / 180);
+    });
+
+    it("animating both the group's own x and rotate together resolves each independently", async () => {
+      const { createDrawContext } = await import("./index");
+      const drawContext = createDrawContext();
+
+      const render = (d: DrawAPI) => {
+        d.group(
+          () => {
+            d.rect({ x: 100, y: 200, width: 40, height: 20, fillStyle: "red" });
+          },
+          { showBounds: true },
+        ).animateTo({ x: 200, rotate: 90 }, { at: 0, duration: 1000 });
+      };
+
+      drawContext.executeDrawCallback(
+        (d) => render(d),
+        mockContext,
+        800,
+        600,
+        0,
+      );
+
+      vi.mocked(mockContext.translate).mockClear();
+      vi.mocked(mockContext.rotate).mockClear();
+
+      drawContext.executeDrawCallback(
+        (d) => render(d),
+        mockContext,
+        800,
+        600,
+        1000,
+      );
+
+      // x is explicitly animated (a real segment targets it), so it should
+      // resolve to the live animated value (200) rather than the static
+      // content position (100) -- the groupOffsetX shift needed to move
+      // ambient content from where it's authored (100) to the animated
+      // frame position (200) is +100, unaffected by rotate being animated
+      // in the same call.
+      expect(mockContext.translate).toHaveBeenCalledWith(100, 0);
+      // rotate resolves independently, fully animated to its own target.
+      expect(mockContext.rotate).toHaveBeenCalledWith((90 * Math.PI) / 180);
+    });
+
     it("layer() rotate basis uses explicit x/y and origin-aware local frame size", async () => {
       const { createDrawContext } = await import("./index");
       const drawContext = createDrawContext();

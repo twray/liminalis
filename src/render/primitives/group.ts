@@ -1,6 +1,7 @@
 import { createContainerPrimitive } from "../container";
 import { rectPathDescriptor } from "./rect";
 
+import { IAnimatableLike } from "../../types";
 import type { ContainerPrimitiveCommonParams } from "../container";
 import type { Bounds, DrawPrimitives, GroupOptions } from "../types";
 
@@ -8,8 +9,10 @@ export const groupPathDescriptor = rectPathDescriptor;
 
 interface ResolveGroupBoundsStateParams {
   currentGroupProps: GroupOptions;
+  mergedGroupProps: GroupOptions;
   derivedGroupBounds: Bounds;
   collectedBounds: Bounds | null;
+  animatable: IAnimatableLike<GroupOptions>;
 }
 
 interface GroupBoundsState {
@@ -20,14 +23,24 @@ interface GroupBoundsState {
 
 export const resolveGroupBoundsState = ({
   currentGroupProps,
+  mergedGroupProps,
   derivedGroupBounds,
   collectedBounds,
+  animatable,
 }: ResolveGroupBoundsStateParams): GroupBoundsState => {
   const resolvedDerivedBounds = collectedBounds ?? derivedGroupBounds;
 
   const frameBounds = {
-    x: currentGroupProps.x ?? resolvedDerivedBounds.x,
-    y: currentGroupProps.y ?? resolvedDerivedBounds.y,
+    x:
+      mergedGroupProps.x ??
+      (animatable.hasSegmentTargeting("x") && currentGroupProps.x !== undefined
+        ? currentGroupProps.x
+        : resolvedDerivedBounds.x),
+    y:
+      mergedGroupProps.y ??
+      (animatable.hasSegmentTargeting("y") && currentGroupProps.y !== undefined
+        ? currentGroupProps.y
+        : resolvedDerivedBounds.y),
     width: currentGroupProps.width ?? resolvedDerivedBounds.width,
     height: currentGroupProps.height ?? resolvedDerivedBounds.height,
   };
@@ -49,11 +62,19 @@ export const group = (
     containerType: "group",
     frameSignatureType: "group:frame",
     ...params,
-    resolveState: ({ currentProps, derivedBounds, collectedBounds }) =>
+    resolveState: ({
+      currentProps,
+      mergedProps,
+      derivedBounds,
+      collectedBounds,
+      animatable,
+    }) =>
       resolveGroupBoundsState({
         currentGroupProps: currentProps,
+        mergedGroupProps: mergedProps,
         derivedGroupBounds: derivedBounds,
         collectedBounds,
+        animatable,
       }),
     buildScopeProps: ({ currentProps, state }) => ({
       ...currentProps,

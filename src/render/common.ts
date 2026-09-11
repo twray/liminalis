@@ -12,6 +12,7 @@ import type {
   ContextGlobalProps,
   TransformOrigin,
   TransformProps,
+  TransformState,
 } from "./types";
 
 export const DEFAULT_BACKGROUND_COLOR = "#fff";
@@ -32,13 +33,11 @@ export const resolveTransformOrigin = (
   return { x: bounds.x + origin.x, y: bounds.y + origin.y };
 };
 
-export const renderWithTransform = (
-  context: CanvasRenderingContext2D,
+export const resolveTransformState = (
   props: TransformProps,
   bounds: Bounds,
-  renderShape: () => void,
-): void => {
-  const { rotate, rotateOrigin, scale, scaleX, scaleY, scaleOrigin } = props;
+): TransformState => {
+  const { rotate, scale, scaleOrigin, rotateOrigin, scaleX, scaleY } = props;
 
   const hasRotate = rotate !== undefined && rotate !== 0;
   const effectiveScaleX = scaleX ?? scale ?? 1;
@@ -46,6 +45,110 @@ export const renderWithTransform = (
   const isInvertibleScale = effectiveScaleX !== 0 && effectiveScaleY !== 0;
   const hasScale =
     isInvertibleScale && (effectiveScaleX !== 1 || effectiveScaleY !== 1);
+
+  const resolvedScaleOrigin = resolveTransformOrigin(scaleOrigin, bounds);
+  const resolvedRotateOrigin = resolveTransformOrigin(rotateOrigin, bounds);
+  const rotateRadians = degreesToRadians(rotate ?? 0);
+
+  return {
+    hasRotate,
+    hasScale,
+    scaleX: effectiveScaleX,
+    scaleY: effectiveScaleY,
+    scaleOrigin: resolvedScaleOrigin,
+    rotateOrigin: resolvedRotateOrigin,
+    rotateRadians,
+  };
+};
+
+export const transformPoint = (
+  point: Point2D,
+  state: TransformState,
+): Point2D => {
+  const { x, y } = point;
+  const {
+    hasRotate,
+    hasScale,
+    rotateOrigin,
+    scaleOrigin,
+    rotateRadians,
+    scaleX,
+    scaleY,
+  } = state;
+
+  let transformedX = x;
+  let transformedY = y;
+
+  // Rotate point within a co-ordinate space
+  if (hasRotate) {
+    const deltaX = x - rotateOrigin.x;
+    const deltaY = y - rotateOrigin.y;
+
+    transformedX =
+      rotateOrigin.x +
+      deltaX * Math.cos(rotateRadians) -
+      deltaY * Math.sin(rotateRadians);
+    transformedY =
+      rotateOrigin.y +
+      deltaX * Math.sin(rotateRadians) +
+      deltaY * Math.cos(rotateRadians);
+  }
+
+  // Scale that point if needed
+  if (hasScale) {
+    transformedX = scaleOrigin.x + (transformedX - scaleOrigin.x) * scaleX;
+    transformedY = scaleOrigin.y + (transformedY - scaleOrigin.y) * scaleY;
+  }
+
+  return { x: transformedX, y: transformedY };
+};
+
+export const computeTransformedRectangularAABB = (
+  bounds: Bounds,
+  props: TransformProps,
+): Bounds => {
+  const transformState = resolveTransformState(props, bounds);
+  const { hasRotate, hasScale } = transformState;
+
+  if (!hasRotate && !hasScale) return bounds;
+
+  const corners: Point2D[] = [
+    { x: bounds.x, y: bounds.y },
+    { x: bounds.x + bounds.width, y: bounds.y },
+    { x: bounds.x + bounds.width, y: bounds.y + bounds.height },
+    { x: bounds.x, y: bounds.y + bounds.height },
+  ];
+
+  const transformedCorners = corners.map((point) =>
+    transformPoint(point, transformState),
+  );
+
+  const allXPoints = transformedCorners.map((point) => point.x);
+  const allYPoints = transformedCorners.map((point) => point.y);
+
+  const minX = Math.min(...allXPoints);
+  const minY = Math.min(...allYPoints);
+  const maxX = Math.max(...allXPoints);
+  const maxY = Math.max(...allYPoints);
+
+  return {
+    x: minX,
+    y: minY,
+    width: maxX - minX,
+    height: maxY - minY,
+  };
+};
+
+export const renderWithTransform = (
+  context: CanvasRenderingContext2D,
+  props: TransformProps,
+  bounds: Bounds,
+  renderShape: () => void,
+): void => {
+  const { rotate } = props;
+
+  const { hasRotate, hasScale, scaleX, scaleY, scaleOrigin, rotateOrigin } =
+    resolveTransformState(props, bounds);
 
   if (!hasRotate && !hasScale) {
     renderShape();
@@ -55,15 +158,17 @@ export const renderWithTransform = (
   context.save();
 
   if (hasScale) {
-    const origin = resolveTransformOrigin(scaleOrigin, bounds);
+    const origin = scaleOrigin;
+
     context.translate(origin.x, origin.y);
-    context.scale(effectiveScaleX, effectiveScaleY);
+    context.scale(scaleX, scaleY);
     context.translate(-origin.x, -origin.y);
   }
 
   if (hasRotate) {
-    const origin = resolveTransformOrigin(rotateOrigin, bounds);
-    const radians = degreesToRadians(rotate);
+    const origin = rotateOrigin;
+    const radians = degreesToRadians(rotate!);
+
     context.translate(origin.x, origin.y);
     context.rotate(radians);
     context.translate(-origin.x, -origin.y);
@@ -150,6 +255,7 @@ export const createNoopAnimatable = <TProps extends object>(
     captureCurrentProps: (_timeInMs: number) => undefined,
     clearSegments: () => undefined,
     clearSnapshot: () => undefined,
+    hasSegmentTargeting: (_key: keyof TProps) => false,
     animateTo: (_targetProps, _options): IAnimatableLike<TProps> =>
       noopAnimatable,
     withOptions: (_options): IAnimatableLike<TProps> => noopAnimatable,

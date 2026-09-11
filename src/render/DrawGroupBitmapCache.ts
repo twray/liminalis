@@ -154,7 +154,8 @@ class DrawGroupBitmapCache {
     // operate on regardless of whether the generic bitmap-caching duck-type
     // check passes — masking the shared target context directly would erase
     // whatever unrelated content already sits on it.
-    const requiresLocalSurface = canUseBitmapCaching || !!scope?.postProcessLocalSurface;
+    const requiresLocalSurface =
+      canUseBitmapCaching || !!scope?.postProcessLocalSurface;
 
     if (!requiresLocalSurface) {
       draw(targetContext);
@@ -164,7 +165,13 @@ class DrawGroupBitmapCache {
     const cachedEntry = this.#cachedGroups.get(groupId);
 
     if (cachedEntry && cachedEntry.signature === signature) {
-      targetContext.drawImage(cachedEntry.surface, drawImageX, drawImageY, width, height);
+      targetContext.drawImage(
+        cachedEntry.surface,
+        drawImageX,
+        drawImageY,
+        width,
+        height,
+      );
       return;
     }
 

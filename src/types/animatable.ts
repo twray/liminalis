@@ -64,13 +64,14 @@ export interface AnimationSegment<TProps> {
 /**
  * Interface of an animatable-like object
  */
-export interface IAnimatableLike<TProps extends object> {
+export interface IAnimatableLike<TProps> {
   readonly currentProps: Readonly<TProps>;
   setCurrentFrameTime(timeInMs: number): void;
   updateInitialProps(props: TProps): void;
   captureCurrentProps(timeInMs: number): void;
   clearSegments(): void;
   clearSnapshot(): void;
+  hasSegmentTargeting(key: keyof TProps): boolean;
   animateTo(
     targetProps: PartialNumericProps<TProps>,
     options?: AnimationSegmentOptions,

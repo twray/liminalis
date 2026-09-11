@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 
+import { degreesToRadians } from "../util";
 import {
   centerOf,
+  computeTransformedRectangularAABB,
   createBoundsCollector,
   createNoopAnimatable,
   DEFAULT_BLEND_MODE,
@@ -10,6 +12,7 @@ import {
   resolveTransformOrigin,
   setContextGlobals,
   toIsometricStyles,
+  transformPoint,
 } from "./common";
 
 const createMockContext = () => {
@@ -105,12 +108,7 @@ describe("renderWithTransform", () => {
     const { context, callOrder } = createMockContext();
     const renderShape = () => callOrder.push("render");
 
-    renderWithTransform(
-      context,
-      { scale: 2, rotate: 90 },
-      bounds,
-      renderShape,
-    );
+    renderWithTransform(context, { scale: 2, rotate: 90 }, bounds, renderShape);
 
     expect(callOrder).toEqual([
       "save",
@@ -141,6 +139,165 @@ describe("renderWithTransform", () => {
     renderWithTransform(context, { scaleX: 0, scaleY: 2 }, bounds, renderShape);
 
     expect(callOrder).toEqual(["render"]);
+  });
+});
+
+describe("transformPoint", () => {
+  const emptyTransformState = {
+    hasRotate: false,
+    hasScale: false,
+    scaleX: 1,
+    scaleY: 1,
+    scaleOrigin: { x: 0, y: 0 },
+    rotateOrigin: { x: 0, y: 0 },
+    rotateRadians: 0,
+  };
+
+  it("returns the point unchanged when there is no rotation or scale", () => {
+    const point = { x: 100, y: 100 };
+    const transformedPoint = transformPoint(point, emptyTransformState);
+
+    expect(transformedPoint).toEqual({ x: 100, y: 100 });
+  });
+
+  it("rotates a point around the resolved rotate origin", () => {
+    const transformStateWithRotation = {
+      ...emptyTransformState,
+      hasRotate: true,
+      rotateRadians: degreesToRadians(45),
+      rotateOrigin: { x: 150, y: 150 },
+    };
+
+    const point = { x: 100, y: 100 };
+    const transformedPoint = transformPoint(point, transformStateWithRotation);
+
+    expect(transformedPoint.x).toBeCloseTo(150, 2);
+    expect(transformedPoint.y).toBeCloseTo(79.29, 2);
+  });
+
+  it("scales a point around the resolved scale origin", () => {
+    const transformStateWithScale = {
+      ...emptyTransformState,
+      hasScale: true,
+      scaleX: 1.5,
+      scaleY: 1.5,
+      scaleOrigin: { x: 150, y: 150 },
+    };
+
+    const point = { x: 100, y: 100 };
+    const transformedPoint = transformPoint(point, transformStateWithScale);
+
+    expect(transformedPoint).toEqual({ x: 75, y: 75 });
+  });
+
+  it("applies rotate before scale when both are present", () => {
+    const transformStateWithScaleAndRotation = {
+      hasRotate: true,
+      hasScale: true,
+      scaleX: 2,
+      scaleY: 1.5,
+      scaleOrigin: { x: 150, y: 150 },
+      rotateOrigin: { x: 150, y: 150 },
+      rotateRadians: degreesToRadians(45),
+    };
+
+    const point = { x: 100, y: 100 };
+    const transformedPoint = transformPoint(
+      point,
+      transformStateWithScaleAndRotation,
+    );
+
+    expect(transformedPoint.x).toBeCloseTo(150, 2);
+    expect(transformedPoint.y).toBeCloseTo(43.93, 2);
+  });
+});
+
+describe("computeTransformedRectangularAABB", () => {
+  const squareBounds = { x: 100, y: 100, width: 100, height: 100 };
+  const rectangularBounds = { x: 100, y: 100, width: 200, height: 100 };
+
+  it("returns the bounds unchanged when there is no rotation or scale", () => {
+    const transformedBounds = computeTransformedRectangularAABB(
+      squareBounds,
+      {},
+    );
+
+    expect(transformedBounds).toEqual(squareBounds);
+  });
+
+  it("returns the bounds unchanged when rotation and scale are at default values", () => {
+    const transformedBounds = computeTransformedRectangularAABB(squareBounds, {
+      rotate: 0,
+      scale: 1,
+    });
+
+    expect(transformedBounds).toEqual(squareBounds);
+  });
+
+  it("computes the diagonal AABB of a square rotated 45 degrees around its centre when rotation origin is not specified", () => {
+    const transformedBounds = computeTransformedRectangularAABB(squareBounds, {
+      rotate: 45,
+      scale: 1,
+    });
+
+    expect(transformedBounds.x).toBeCloseTo(79.29, 2);
+    expect(transformedBounds.y).toBeCloseTo(79.29, 2);
+    expect(transformedBounds.width).toBeCloseTo(141.42, 2);
+    expect(transformedBounds.height).toBeCloseTo(141.42, 2);
+  });
+
+  it("grows the box uniformly around its center for a pure scale", () => {
+    const transformedBounds = computeTransformedRectangularAABB(squareBounds, {
+      scale: 2,
+    });
+
+    expect(transformedBounds).toEqual({
+      x: 50,
+      y: 50,
+      width: 200,
+      height: 200,
+    });
+  });
+
+  it("swaps width and height for a 90 degree rotation of a non-square rect", () => {
+    const transformedBounds = computeTransformedRectangularAABB(
+      rectangularBounds,
+      {
+        rotate: 90,
+      },
+    );
+
+    expect(transformedBounds).toEqual({
+      x: 150,
+      y: 50,
+      width: 100,
+      height: 200,
+    });
+  });
+
+  it("shifts the box's position when rotating about an explicit non-center origin", () => {
+    const transformedBounds = computeTransformedRectangularAABB(squareBounds, {
+      rotate: 45,
+      rotateOrigin: { x: 0, y: 0 },
+    });
+
+    expect(transformedBounds.x).toBeCloseTo(29.29, 2);
+    expect(transformedBounds.y).toBeCloseTo(100.0, 2);
+    expect(transformedBounds.width).toBeCloseTo(141.42, 2);
+    expect(transformedBounds.height).toBeCloseTo(141.42, 2);
+  });
+
+  it("correctly computes bounding box when both rotation and scale are present", () => {
+    const transformedBounds = computeTransformedRectangularAABB(squareBounds, {
+      rotate: 45,
+      scaleX: 2,
+      scaleY: 1.5,
+    });
+
+    expect(transformedBounds.x).toBeCloseTo(8.58, 2);
+    expect(transformedBounds.y).toBeCloseTo(43.93, 2);
+    expect(transformedBounds.width).toBeCloseTo(282.84, 2);
+    expect(transformedBounds.height).toBeCloseTo(212.13, 2);
   });
 });
 

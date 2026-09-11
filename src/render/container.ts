@@ -4,7 +4,11 @@ import type ActiveMeasurementsManager from "./ActiveMeasurementsManager";
 import BoundsCollectionManager from "./BoundsCollectionManager";
 import DrawGroupManager from "./DrawGroupManager";
 import { createGroupScope, withClipScopedGroup } from "./clipping";
-import { createBoundsCollector, createNoopAnimatable } from "./common";
+import {
+  computeTransformedRectangularAABB,
+  createBoundsCollector,
+  createNoopAnimatable,
+} from "./common";
 
 import type {
   Bounds,
@@ -89,8 +93,10 @@ interface ContainerBoundsState {
 
 interface ResolveContainerStateParams<TOptions> {
   currentProps: TOptions;
+  mergedProps: TOptions;
   derivedBounds: Bounds;
   collectedBounds: Bounds | null;
+  animatable: IAnimatableLike<TOptions>;
 }
 
 interface BuildContainerScopePropsParams<TOptions, TState> {
@@ -190,11 +196,20 @@ export const createContainerPrimitive = <
       const activeBoundsCollector =
         boundsCollectionManager.getActiveCollector();
 
+      const containerAnimatable = isMeasuringFrameBounds()
+        ? createNoopAnimatable(mergedProps)
+        : registry.queue(mergedProps, (animatedProps) => {
+            currentProps = animatedProps;
+            activeBoundsCollector?.includeBounds(resolveReportedBounds());
+          });
+
       const resolveCurrentState = (): TState => {
         const state = resolveState({
           currentProps,
+          mergedProps,
           derivedBounds,
           collectedBounds: contentBoundsCollector.getBounds(),
+          animatable: containerAnimatable,
         });
 
         derivedBounds = state.derivedBounds;
@@ -202,11 +217,11 @@ export const createContainerPrimitive = <
         return state;
       };
 
-      const resolveFrameBounds = (): Bounds => {
-        const { frameBounds } = resolveCurrentState();
+      const resolveFrameBounds = (): Bounds =>
+        resolveCurrentState().frameBounds;
 
-        return frameBounds;
-      };
+      const resolveReportedBounds = (): Bounds =>
+        computeTransformedRectangularAABB(resolveFrameBounds(), currentProps);
 
       const toScopeProps = () => {
         const state = resolveCurrentState();
@@ -264,9 +279,9 @@ export const createContainerPrimitive = <
       // callback for real) would duplicate both.
       if (isMeasuringFrameBounds()) {
         runOwnImplicitMeasurementPass();
-        activeBoundsCollector?.includeBounds(resolveFrameBounds());
+        activeBoundsCollector?.includeBounds(resolveReportedBounds());
 
-        return createNoopAnimatable(mergedProps);
+        return containerAnimatable;
       }
 
       runOwnImplicitMeasurementPass();
@@ -286,14 +301,6 @@ export const createContainerPrimitive = <
           },
         });
       };
-
-      const containerAnimatable = registry.queue(
-        mergedProps,
-        (animatedProps) => {
-          currentProps = animatedProps;
-          activeBoundsCollector?.includeBounds(resolveFrameBounds());
-        },
-      );
 
       const clipScope = createGroupScope(toScopeProps, pathDescriptor);
 
@@ -335,7 +342,7 @@ export const createContainerPrimitive = <
 
           renderShowBounds();
 
-          activeBoundsCollector?.includeBounds(resolveFrameBounds());
+          activeBoundsCollector?.includeBounds(resolveReportedBounds());
         },
       });
 

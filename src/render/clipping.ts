@@ -1,88 +1,77 @@
-import { degreesToRadians, stableSerialize } from "../util";
-import { resolveTransformOrigin } from "./common";
+import { stableSerialize } from "../util";
 import DrawGroupManager from "./DrawGroupManager";
 
-import type { Point2D } from "../types";
+import { resolveTransformState } from "./common";
 import type {
   Bounds,
   ClipScope,
   ClosedPathDescriptor,
   CoordinateContextProps,
   TransformProps,
+  TransformState,
 } from "./types";
 
 const applyForwardTransform = (
   context: CanvasRenderingContext2D,
   props: TransformProps,
   bounds: Bounds,
-): {
-  hasScale: boolean;
-  hasRotate: boolean;
-  effectiveScaleX: number;
-  effectiveScaleY: number;
-  scaleOrigin: Point2D;
-  rotateOrigin: Point2D;
-  radians: number;
-} => {
-  const { rotate, rotateOrigin, scale, scaleX, scaleY, scaleOrigin } = props;
-
-  const hasRotate = rotate !== undefined && rotate !== 0;
-  const effectiveScaleX = scaleX ?? scale ?? 1;
-  const effectiveScaleY = scaleY ?? scale ?? 1;
-  const isInvertibleScale = effectiveScaleX !== 0 && effectiveScaleY !== 0;
-  const hasScale =
-    isInvertibleScale && (effectiveScaleX !== 1 || effectiveScaleY !== 1);
-
-  const resolvedScaleOrigin = resolveTransformOrigin(scaleOrigin, bounds);
-  const resolvedRotateOrigin = resolveTransformOrigin(rotateOrigin, bounds);
-  const radians = degreesToRadians(rotate ?? 0);
+): TransformState => {
+  const {
+    hasRotate,
+    hasScale,
+    scaleX: effectiveScaleX,
+    scaleY: effectiveScaleY,
+    scaleOrigin,
+    rotateOrigin,
+    rotateRadians,
+  } = resolveTransformState(props, bounds);
 
   if (hasScale) {
-    context.translate(resolvedScaleOrigin.x, resolvedScaleOrigin.y);
+    context.translate(scaleOrigin.x, scaleOrigin.y);
     context.scale(effectiveScaleX, effectiveScaleY);
-    context.translate(-resolvedScaleOrigin.x, -resolvedScaleOrigin.y);
+    context.translate(-scaleOrigin.x, -scaleOrigin.y);
   }
 
   if (hasRotate) {
-    context.translate(resolvedRotateOrigin.x, resolvedRotateOrigin.y);
-    context.rotate(radians);
-    context.translate(-resolvedRotateOrigin.x, -resolvedRotateOrigin.y);
+    context.translate(rotateOrigin.x, rotateOrigin.y);
+    context.rotate(rotateRadians);
+    context.translate(-rotateOrigin.x, -rotateOrigin.y);
   }
 
   return {
     hasScale,
     hasRotate,
-    effectiveScaleX,
-    effectiveScaleY,
-    scaleOrigin: resolvedScaleOrigin,
-    rotateOrigin: resolvedRotateOrigin,
-    radians,
+    scaleX: effectiveScaleX,
+    scaleY: effectiveScaleY,
+    scaleOrigin,
+    rotateOrigin,
+    rotateRadians,
   };
 };
 
 const undoForwardTransform = (
   context: CanvasRenderingContext2D,
-  transformState: ReturnType<typeof applyForwardTransform>,
+  transformState: TransformState,
 ): void => {
   const {
     hasRotate,
     hasScale,
-    radians,
     rotateOrigin,
+    rotateRadians,
     scaleOrigin,
-    effectiveScaleX,
-    effectiveScaleY,
+    scaleX,
+    scaleY,
   } = transformState;
 
   if (hasRotate) {
     context.translate(rotateOrigin.x, rotateOrigin.y);
-    context.rotate(-radians);
+    context.rotate(-rotateRadians);
     context.translate(-rotateOrigin.x, -rotateOrigin.y);
   }
 
   if (hasScale) {
     context.translate(scaleOrigin.x, scaleOrigin.y);
-    context.scale(1 / effectiveScaleX, 1 / effectiveScaleY);
+    context.scale(1 / scaleX, 1 / scaleY);
     context.translate(-scaleOrigin.x, -scaleOrigin.y);
   }
 };
