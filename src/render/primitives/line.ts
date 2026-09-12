@@ -1,4 +1,5 @@
 import {
+  computeTransformedMultipointAABB,
   DEFAULT_BLEND_MODE,
   DEFAULT_STROKE_STYLE,
   DEFAULT_STROKE_WIDTH,
@@ -59,3 +60,6 @@ export const line = (
     context.restore();
   });
 };
+
+export const getLineTransformedAABB = (props: LineProps) =>
+  computeTransformedMultipointAABB([props.start, props.end], props);

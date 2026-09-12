@@ -1,5 +1,6 @@
 import type { Point2D } from "../../types";
 import {
+  computeTransformedMultipointAABB,
   DEFAULT_BLEND_MODE,
   DEFAULT_STROKE_ALIGNMENT,
   DEFAULT_STROKE_STYLE,
@@ -160,3 +161,6 @@ export const polygonPathDescriptor = (
     },
   };
 };
+
+export const getPolygonTransformedAABB = (props: PolygonProps) =>
+  computeTransformedMultipointAABB(props.points, props);
