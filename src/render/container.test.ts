@@ -193,7 +193,7 @@ describe("createContainerPrimitive", () => {
     createContainerPrimitive<
       GroupOptions,
       TestState,
-      GroupOptions & { groupOffsetX: number; groupOffsetY: number }
+      GroupOptions & Bounds & { groupOffsetX: number; groupOffsetY: number }
     >({
       containerType: "group",
       frameSignatureType: "group:frame",
@@ -331,7 +331,7 @@ describe("createContainerPrimitive", () => {
   });
 
   it("pushes a show-bounds draw operation when showBounds is set", () => {
-    const { commonParams, context } = createCollaborators();
+    const { commonParams } = createCollaborators();
     const drawGroupManager = commonParams.drawGroupManager;
     const pushSpy = vi.spyOn(drawGroupManager, "pushPrimitiveOperation");
     const group = makeGroupPrimitive(commonParams);
@@ -372,7 +372,7 @@ describe("createContainerPrimitive", () => {
     const group = createContainerPrimitive<
       GroupOptions,
       TestState,
-      GroupOptions & { groupOffsetX: number; groupOffsetY: number }
+      GroupOptions & Bounds & { groupOffsetX: number; groupOffsetY: number }
     >({
       containerType: "group",
       frameSignatureType: "group:frame",

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type { ContainerDrawAPI, DrawAPI } from "../../render/types";
+import type { ContainerDrawAPI } from "../../render/types";
 
 import { createLayer } from "./createLayer";
 

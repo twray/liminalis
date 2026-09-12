@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { ContainerDrawAPI, DrawAPI } from "../../render/types";
-import { ReactiveProps } from "../../types";
+import type { ContainerDrawAPI } from "../../render/types";
+import type { ReactiveProps } from "../../types";
 import { createReactiveLayer } from "./createReactiveLayer";
 
 describe("createReactiveLayer", () => {

@@ -319,7 +319,7 @@ describe("AudioCapture", () => {
       sampleRate: 48_000,
     });
 
-    const audioContextInstance = session?.audioContext as InstanceType<
+    const audioContextInstance = session?.audioContext as unknown as InstanceType<
       typeof MockAudioContext
     >;
 

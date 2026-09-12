@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import DrawGroupManager from "./DrawGroupManager";
-import type { ClipScope } from "./types";
+import type { Bounds, ClipScope } from "./types";
 
 const createPassthroughCache = () => ({
   renderGroup: vi.fn(
@@ -9,7 +9,12 @@ const createPassthroughCache = () => ({
       targetContext,
       draw,
     }: {
+      groupId: string;
+      signature: string;
       targetContext: CanvasRenderingContext2D;
+      bounds: Bounds;
+      useLocalCoordinateContext: boolean;
+      scope: ClipScope | null;
       draw: (context: CanvasRenderingContext2D) => void;
     }) => draw(targetContext),
   ),
@@ -349,9 +354,10 @@ describe("DrawGroupManager", () => {
         (call) => call[0].groupId === "group-1",
       )?.[0];
 
-      expect(nestedCall.bounds).toEqual({ x: 5, y: 10, width: 20, height: 30 });
-      expect(nestedCall.useLocalCoordinateContext).toBe(true);
-      expect(nestedCall.scope).toBe(scope);
+      expect(nestedCall).toBeDefined();
+      expect(nestedCall!.bounds).toEqual({ x: 5, y: 10, width: 20, height: 30 });
+      expect(nestedCall!.useLocalCoordinateContext).toBe(true);
+      expect(nestedCall!.scope).toBe(scope);
       expect(scope.apply).toHaveBeenCalledTimes(1);
     });
 

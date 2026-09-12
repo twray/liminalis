@@ -16,7 +16,7 @@ const MP4_MIME_TYPES = [
 interface MockMediaRecorderInstance {
   state: "inactive" | "recording";
   stream: MediaStream;
-  options?: MediaRecorderOptions;
+  options?: MediaRecorderOptions | undefined;
   ondataavailable: ((event: BlobEvent) => void) | null;
   onerror: (() => void) | null;
   onstop: (() => void) | null;
@@ -41,7 +41,7 @@ const setupMediaRecorderMock = () => {
 
     state: "inactive" | "recording" = "inactive";
     stream: MediaStream;
-    options?: MediaRecorderOptions;
+    options?: MediaRecorderOptions | undefined;
     ondataavailable: ((event: BlobEvent) => void) | null = null;
     onerror: (() => void) | null = null;
     onstop: (() => void) | null = null;

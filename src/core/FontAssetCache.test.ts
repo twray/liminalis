@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 interface FakeFontFaceCtor {
   family: string;
   source: string;
-  descriptors?: FontFaceDescriptors;
+  descriptors?: FontFaceDescriptors | undefined;
 }
 
 type FontBehavior = "success" | "error";
@@ -21,7 +21,7 @@ class FakeFontFace {
 
   family: string;
   source: string;
-  descriptors?: FontFaceDescriptors;
+  descriptors?: FontFaceDescriptors | undefined;
 
   constructor(
     family: string,

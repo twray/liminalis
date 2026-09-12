@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
-import type { ClosedPathDescriptor, TransformProps } from "./types";
+import type {
+  ClosedPathDescriptor,
+  CoordinateContextProps,
+  TransformProps,
+} from "./types";
 
 import { stableSerialize } from "../util";
 import DrawGroupManager from "./DrawGroupManager";
@@ -50,7 +54,7 @@ describe("createClipScope", () => {
       const props = { x: 1 };
       const descriptor = validDescriptor();
       const scope = createClipScope(
-        () => props,
+        () => props as unknown as TransformProps & CoordinateContextProps,
         () => descriptor,
       );
 
@@ -264,7 +268,9 @@ describe("createGroupScope", () => {
       const { context, callOrder } = createMockContext();
       const descriptor = validDescriptor();
       const scope = createGroupScope(
-        () => ({ groupOffsetX: 5, groupOffsetY: 7 }),
+        () =>
+          ({ groupOffsetX: 5, groupOffsetY: 7 }) as unknown as TransformProps &
+            CoordinateContextProps,
         () => descriptor,
       );
 
