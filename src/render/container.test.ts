@@ -18,6 +18,7 @@ import {
   pushContainerShowBoundsOperation,
   withImplicitMeasurementPass,
 } from "./container";
+import { EMPTY_BOUNDS } from "./common";
 
 describe("hasExplicitDimensions", () => {
   it("returns true when both width and height are numbers", () => {
@@ -91,7 +92,7 @@ describe("pushContainerShowBoundsOperation", () => {
       containerType: "group",
       showBounds: undefined,
       drawGroupManager,
-      getRenderRect: () => ({ x: 0, y: 0, width: 0, height: 0 }),
+      getRenderRect: () => (EMPTY_BOUNDS),
     });
 
     expect(pushSpy).not.toHaveBeenCalled();

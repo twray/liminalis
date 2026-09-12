@@ -22,6 +22,8 @@ export const DEFAULT_STROKE_WIDTH = 1;
 export const DEFAULT_STROKE_ALIGNMENT = "center";
 export const DEFAULT_BLEND_MODE: GlobalCompositeOperation = "source-over";
 
+export const EMPTY_BOUNDS = { x: 0, y: 0, width: 0, height: 0 };
+
 export const resolveTransformOrigin = (
   origin: TransformOrigin | undefined,
   bounds: Bounds,

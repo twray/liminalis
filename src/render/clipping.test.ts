@@ -8,6 +8,7 @@ import type {
 import { stableSerialize } from "../util";
 import DrawGroupManager from "./DrawGroupManager";
 import { createClipScope, createGroupScope, withClipScopedGroup } from "./clipping";
+import { EMPTY_BOUNDS } from "./common";
 
 const createMockContext = () => {
   const callOrder: string[] = [];
@@ -43,7 +44,7 @@ const validDescriptor = (
 });
 
 const invalidDescriptor: ClosedPathDescriptor = {
-  bounds: { x: 0, y: 0, width: 0, height: 0 },
+  bounds: EMPTY_BOUNDS,
   isValid: false,
   tracePath: vi.fn(),
 };

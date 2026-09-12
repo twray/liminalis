@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
+import { EMPTY_BOUNDS } from "./common";
 import DrawGroupManager from "./DrawGroupManager";
 import type { Bounds, ClipScope } from "./types";
 
@@ -355,7 +356,12 @@ describe("DrawGroupManager", () => {
       )?.[0];
 
       expect(nestedCall).toBeDefined();
-      expect(nestedCall!.bounds).toEqual({ x: 5, y: 10, width: 20, height: 30 });
+      expect(nestedCall!.bounds).toEqual({
+        x: 5,
+        y: 10,
+        width: 20,
+        height: 30,
+      });
       expect(nestedCall!.useLocalCoordinateContext).toBe(true);
       expect(nestedCall!.scope).toBe(scope);
       expect(scope.apply).toHaveBeenCalledTimes(1);
@@ -368,7 +374,7 @@ describe("DrawGroupManager", () => {
       const scope: ClipScope = {
         apply: vi.fn(),
         getCompositeInfo: () => ({
-          bounds: { x: 0, y: 0, width: 0, height: 0 },
+          bounds: EMPTY_BOUNDS,
           isValid: false,
           useLocalCoordinateContext: false,
         }),
@@ -432,7 +438,9 @@ describe("DrawGroupManager", () => {
       const cache = createPassthroughCache();
       const nestedRender = vi.fn();
       const rootRender = vi.fn();
-      let nestedHandle: ReturnType<DrawGroupManager["captureCurrentGroupHandle"]>;
+      let nestedHandle: ReturnType<
+        DrawGroupManager["captureCurrentGroupHandle"]
+      >;
 
       manager.withNestedGroup(
         { scope: noScope, getInvalidationSignature: () => "nested" },

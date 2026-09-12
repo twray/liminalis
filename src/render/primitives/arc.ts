@@ -8,6 +8,7 @@ import {
   DEFAULT_STROKE_ALIGNMENT,
   DEFAULT_STROKE_STYLE,
   DEFAULT_STROKE_WIDTH,
+  EMPTY_BOUNDS,
   renderWithTransform,
   setContextGlobals,
 } from "../common";
@@ -208,7 +209,7 @@ export const arcPathDescriptor = (props: ArcProps): ClosedPathDescriptor => {
 
   if (!computedValues) {
     return {
-      bounds: { x: 0, y: 0, width: 0, height: 0 },
+      bounds: EMPTY_BOUNDS,
       isValid: false,
       tracePath: () => {
         // no-op for invalid clip descriptors
