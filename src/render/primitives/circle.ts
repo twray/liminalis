@@ -1,6 +1,6 @@
 import { clampNonNegativeValue } from "../../util";
 import type { CircleProps, ClosedPathDescriptor } from "../types";
-import { arc } from "./arc";
+import { arc, getArcTransformedAABB } from "./arc";
 
 const tracePath = (
   context: CanvasRenderingContext2D,
@@ -39,3 +39,6 @@ export const circlePathDescriptor = (
     },
   };
 };
+
+export const getCircleTransformedAABB = (props: CircleProps) =>
+  getArcTransformedAABB({ ...props, start: 0, end: 360 });

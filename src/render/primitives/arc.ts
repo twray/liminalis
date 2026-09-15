@@ -4,6 +4,7 @@ import {
   degreesToRadians,
 } from "../../util";
 import {
+  computeTransformedEllipticalAABB,
   DEFAULT_BLEND_MODE,
   DEFAULT_STROKE_ALIGNMENT,
   DEFAULT_STROKE_STYLE,
@@ -12,15 +13,18 @@ import {
   renderWithTransform,
   setContextGlobals,
 } from "../common";
-import type { ArcProps, Bounds, ClosedPathDescriptor } from "../types";
+import type {
+  ArcProps,
+  Bounds,
+  ClosedPathDescriptor,
+  EllipticalRadius,
+} from "../types";
 
 type CircularArcProps = ArcProps & { radius: number };
 type EllipticalArcProps = ArcProps & { radiusX: number; radiusY: number };
 
-interface ArcComputedValues {
+interface ArcComputedValues extends EllipticalRadius {
   bounds: Bounds;
-  radiusX: number;
-  radiusY: number;
   isCircle: boolean;
 }
 
@@ -110,15 +114,13 @@ const tracePath = (
   }
 };
 
-const getArcAnglesInRadians = (
-  props: ArcProps,
-): { start: number; end: number } => {
+const getArcAnglesInRadians = (props: ArcProps) => {
   const clampedStart = clampWithinRange(props.start, 0, 360);
   const clampedEnd = clampWithinRange(props.end, 0, 360);
 
   return {
-    start: degreesToRadians(clampedStart - 90),
-    end: degreesToRadians(clampedEnd - 90),
+    startInRadians: degreesToRadians(clampedStart - 90),
+    endInRadians: degreesToRadians(clampedEnd - 90),
   };
 };
 
@@ -147,7 +149,7 @@ export const arc = (
   const { radiusX, radiusY, bounds } = computedValues;
 
   const angles = getArcAnglesInRadians(props);
-  const { start: strokeStart, end: strokeEnd } = angles;
+  const { startInRadians: strokeStart, endInRadians: strokeEnd } = angles;
 
   renderWithTransform(context, props, bounds, () => {
     context.save();
@@ -231,10 +233,34 @@ export const arcPathDescriptor = (props: ArcProps): ClosedPathDescriptor => {
         cy,
         radiusX,
         radiusY,
-        angles.start,
-        angles.end,
+        angles.startInRadians,
+        angles.endInRadians,
         true,
       );
     },
   };
+};
+
+export const getArcTransformedAABB = (props: ArcProps) => {
+  const computedArcValues = getComputedValuesFromProps(props);
+
+  if (!computedArcValues) return EMPTY_BOUNDS;
+
+  const { radiusX, radiusY } = computedArcValues;
+  const { cx, cy } = props;
+  // Same start/end used for actual rendering (tracePath), so the AABB's
+  // sweep window can never drift out of sync with what's drawn.
+  const { startInRadians, endInRadians } = getArcAnglesInRadians(props);
+
+  return computeTransformedEllipticalAABB(
+    {
+      cx,
+      cy,
+      radiusX,
+      radiusY,
+      startInRadians,
+      endInRadians,
+    },
+    props,
+  );
 };

@@ -36,8 +36,12 @@ import {
   createTextMaskScope,
   ellipse,
   ellipsePathDescriptor,
+  getArcTransformedAABB,
+  getCircleTransformedAABB,
+  getEllipseTransformedAABB,
   getImageBounds,
-  getLineBounds,
+  getLineTransformedAABB,
+  getPolygonTransformedAABB,
   getTextBounds,
   group,
   image,
@@ -72,6 +76,12 @@ import type {
   TextProps,
   TransformProps,
 } from "./types";
+
+interface QueueAnimatableHooks<TProps> {
+  getExtraSignature?: (props: TProps) => string;
+  getBounds?: (props: TProps) => Bounds | null;
+  getTransformedAABB?: (props: TProps) => Bounds;
+}
 
 export const createDrawContext = (): DrawContext => {
   const registry = new AnimatableRegistry();
@@ -110,16 +120,17 @@ export const createDrawContext = (): DrawContext => {
     // - hooks: optional functions to provide e.g. extra signature and bounds information
     //
     // The queued closure also snapshots active clip scopes so nested clipping remains stable.
-    const queueAnimatable = <T extends PartialDrawStyles & TransformProps>(
+    const queueAnimatable = <TProps extends PartialDrawStyles & TransformProps>(
       primitiveType: string,
-      props: T,
-      renderFn: (context: CanvasRenderingContext2D, props: T) => void,
-      hooks?: {
-        getExtraSignature?: (props: T) => string;
-        getBounds?: (props: T) => Bounds | null;
-      },
-    ): IAnimatableLike<T> => {
-      const { getExtraSignature, getBounds } = hooks ?? {};
+      props: TProps,
+      renderFn: (context: CanvasRenderingContext2D, props: TProps) => void,
+      hooks?: QueueAnimatableHooks<TProps>,
+    ): IAnimatableLike<TProps> => {
+      const {
+        getExtraSignature,
+        getBounds,
+        getTransformedAABB: getTransformedBounds,
+      } = hooks ?? {};
 
       renderWarningManager.warnIfOverlayPrimitiveInsideIsometric();
 
@@ -129,13 +140,22 @@ export const createDrawContext = (): DrawContext => {
         boundsCollectionManager.getActiveCollector();
       const shouldCollectBounds = boundsCollectionManager.shouldCollectBounds();
 
-      const bounds = getBounds?.(mergedProps) ?? null;
+      const resolveTransformedBounds = (
+        currentProps: TProps,
+      ): Bounds | null => {
+        if (getTransformedBounds) {
+          return getTransformedBounds(currentProps);
+        }
+
+        const bounds = getBounds?.(currentProps) ?? null;
+        return bounds
+          ? computeTransformedRectangularAABB(bounds, currentProps)
+          : null;
+      };
 
       if (shouldCollectBounds) {
         activeBoundsCollector?.includeBounds(
-          bounds
-            ? computeTransformedRectangularAABB(bounds, mergedProps)
-            : null,
+          resolveTransformedBounds(mergedProps),
         );
       }
 
@@ -146,12 +166,7 @@ export const createDrawContext = (): DrawContext => {
       return registry.queue(mergedProps, (props) => {
         if (shouldCollectBounds) {
           // Current bounds collected per-frame of animation
-          const currentBounds = getBounds?.(props) ?? null;
-          activeBoundsCollector?.includeBounds(
-            currentBounds
-              ? computeTransformedRectangularAABB(currentBounds, props)
-              : null,
-          );
+          activeBoundsCollector?.includeBounds(resolveTransformedBounds(props));
         }
 
         const extraSignatureFromProps = getExtraSignature?.(props);
@@ -178,6 +193,8 @@ export const createDrawContext = (): DrawContext => {
     // - createScope: the clip scope required to render items within the frame bounds
     // - normalizeProps: maps public props to lifecycle props before frame context
     //   and clip scope are derived
+    // - getTransformedAABB: a primitives own transformed AABB function for
+    //
     //
     // Without a frame callback, this behaves like queueAnimatable with lifecycle
     // normalization. With a frame callback, it computes frame context, queues
@@ -189,10 +206,21 @@ export const createDrawContext = (): DrawContext => {
     >(
       primitiveType: string,
       renderFn: (context: CanvasRenderingContext2D, props: TProps) => void,
+      propsFn: (props: TProps) => TProps,
       getFrameBounds: (props: TProps) => Bounds,
       createScope: (getProps: () => TProps) => ClipScope,
-      normalizeProps: (props: TProps) => TProps,
+      hooks?: QueueAnimatableHooks<TProps>,
     ): ((props: TProps, frame?: FrameCallback) => IAnimatableLike<TProps>) => {
+      const { getTransformedAABB } = hooks ?? {};
+
+      const resolveTransformedAABB = (currentProps: TProps): Bounds =>
+        getTransformedAABB
+          ? getTransformedAABB(currentProps)
+          : computeTransformedRectangularAABB(
+              getFrameBounds(currentProps),
+              currentProps,
+            );
+
       return (
         props: TProps,
         frameCallback?: FrameCallback,
@@ -204,16 +232,21 @@ export const createDrawContext = (): DrawContext => {
             primitiveType,
             props,
             (currentContext, drawProps) =>
-              renderFn(currentContext, normalizeProps(drawProps)),
+              renderFn(currentContext, propsFn(drawProps)),
             {
-              getBounds: (drawProps) =>
-                getFrameBounds(normalizeProps(drawProps)),
+              getBounds: (drawProps) => getFrameBounds(propsFn(drawProps)),
+              ...(getTransformedAABB
+                ? {
+                    getTransformedAABB: (drawProps: TProps) =>
+                      getTransformedAABB(propsFn(drawProps)),
+                  }
+                : {}),
             },
           );
         }
 
         const mergedProps = appliedStylesManager.mergeStyles(props);
-        const lifecycleProps = normalizeProps(mergedProps);
+        const lifecycleProps = propsFn(mergedProps);
         const frameBounds = getFrameBounds(lifecycleProps);
 
         const frameContext =
@@ -237,10 +270,7 @@ export const createDrawContext = (): DrawContext => {
           boundsCollectionManager.getActiveCollector();
 
         activeBoundsCollector?.includeBounds(
-          computeTransformedRectangularAABB(
-            getFrameBounds(currentClipProps),
-            currentClipProps,
-          ),
+          resolveTransformedAABB(currentClipProps),
         );
 
         if (frameMeasurementPassManager.isMeasuringFrameBounds()) {
@@ -254,12 +284,9 @@ export const createDrawContext = (): DrawContext => {
         }
 
         const clipAnimatable = registry.queue(mergedProps, (animatedProps) => {
-          currentClipProps = normalizeProps(animatedProps);
+          currentClipProps = propsFn(animatedProps);
           activeBoundsCollector?.includeBounds(
-            computeTransformedRectangularAABB(
-              getFrameBounds(currentClipProps),
-              currentClipProps,
-            ),
+            resolveTransformedAABB(currentClipProps),
           );
         });
 
@@ -345,49 +372,53 @@ export const createDrawContext = (): DrawContext => {
           "line",
           props,
           (currentContext, p) => line(currentContext, p),
-          { getBounds: getLineBounds },
+          { getTransformedAABB: getLineTransformedAABB },
         ),
       polygon: queueAnimatableWithFrame(
         "polygon",
         (currentContext, p: PolygonProps) => polygon(currentContext, p),
+        (p: PolygonProps) => p,
         (p: PolygonProps) => polygonPathDescriptor(p).bounds,
         (getProps) => createClipScope(getProps, polygonPathDescriptor),
-        (p: PolygonProps) => p,
+        { getTransformedAABB: getPolygonTransformedAABB },
       ),
       bezier: queueAnimatableWithFrame(
         "bezier",
         (currentContext, p: BezierProps) => bezier(currentContext, p),
+        (p: BezierProps) => p,
         (p: BezierProps) => bezierPathDescriptor(p).bounds,
         (getProps) => createClipScope(getProps, bezierPathDescriptor),
-        (p: BezierProps) => p,
       ),
       circle: queueAnimatableWithFrame(
         "circle",
         (currentContext, p: CircleProps) => circle(currentContext, p),
+        (p: CircleProps) => p,
         (p: CircleProps) => circlePathDescriptor(p).bounds,
         (getProps) => createClipScope(getProps, circlePathDescriptor),
-        (p: CircleProps) => p,
+        { getTransformedAABB: getCircleTransformedAABB },
       ),
       ellipse: queueAnimatableWithFrame(
         "ellipse",
         (currentContext, p: EllipseProps) => ellipse(currentContext, p),
+        (p: EllipseProps) => p,
         (p: EllipseProps) => ellipsePathDescriptor(p).bounds,
         (getProps) => createClipScope(getProps, ellipsePathDescriptor),
-        (p: EllipseProps) => p,
+        { getTransformedAABB: getEllipseTransformedAABB },
       ),
       arc: queueAnimatableWithFrame(
         "arc",
         (currentContext, p: ArcProps) => arc(currentContext, p),
+        (p: ArcProps) => p,
         (p: ArcProps) => arcPathDescriptor(p).bounds,
         (getProps) => createClipScope(getProps, arcPathDescriptor),
-        (p: ArcProps) => p,
+        { getTransformedAABB: getArcTransformedAABB },
       ),
       rect: queueAnimatableWithFrame(
         "rect",
         (currentContext, p: RectProps) => rect(currentContext, p),
+        (p: RectProps) => p,
         (p: RectProps) => rectPathDescriptor(p).bounds,
         (getProps) => createClipScope(getProps, rectPathDescriptor),
-        (p: RectProps) => p,
       ),
       group: group(containerPrimitiveCommonParams),
       layer: layer(containerPrimitiveCommonParams),
@@ -400,13 +431,13 @@ export const createDrawContext = (): DrawContext => {
         queueAnimatableWithFrame(
           "text",
           (currentContext, p: TextProps) => text(currentContext, textValue, p),
+          (p: TextProps) => ({ ...p, font: resolveTextProps(p).font }),
           (p: TextProps) => getTextBounds(context, textValue, p),
           (getProps) =>
             createTextMaskScope({
               textValue,
               getProps,
             }),
-          (p: TextProps) => ({ ...p, font: resolveTextProps(p).font }),
         )(props, frameCallback),
       getTextBounds: (textValue: string, props: TextProps = {}) => {
         const mergedProps = appliedStylesManager.mergeStyles(props);

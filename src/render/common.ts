@@ -9,7 +9,10 @@ import { degreesToRadians } from "../util";
 import type {
   Bounds,
   BoundsCollector,
+  CenteredPosition,
   ContextGlobalProps,
+  EllipticalAttributes,
+  EllipticalRadius,
   TransformOrigin,
   TransformProps,
   TransformState,
@@ -156,6 +159,106 @@ export const computeTransformedMultipointAABB = (
   return deriveBoundsFromPoints(
     points.map((point) => transformPoint(point, transformState)),
   );
+};
+
+const getLinearPartOfEllipticalTransform = (
+  centeredPosition: CenteredPosition,
+  transformState: TransformState,
+) => {
+  const { cx: x, cy: y } = centeredPosition;
+
+  const center = transformPoint({ x, y }, transformState);
+  const probeX = transformPoint({ x: x + 1, y }, transformState);
+  const probeY = transformPoint({ x, y: y + 1 }, transformState);
+
+  const columnX = { x: probeX.x - center.x, y: probeX.y - center.y };
+  const columnY = { x: probeY.x - center.x, y: probeY.y - center.y };
+
+  return { columnX, columnY };
+};
+
+const getEllipticalMatrix = (
+  columnX: Point2D,
+  columnY: Point2D,
+  radius: EllipticalRadius,
+) => {
+  const { radiusX, radiusY } = radius;
+
+  return {
+    columnX: { x: columnX.x * radiusX, y: columnX.y * radiusX },
+    columnY: { x: columnY.x * radiusY, y: columnY.y * radiusY },
+  };
+};
+
+const normalizeIntoWindow = (angle: number, windowStart: number) => {
+  const offset = angle - windowStart;
+  const wrapped = offset - Math.floor(offset / (Math.PI * 2)) * (2 * Math.PI);
+
+  return windowStart + wrapped;
+};
+
+const isWithinSweep = (
+  angle: number,
+  startInRadians: number,
+  endInRadians: number,
+) => {
+  const effectiveEnd =
+    endInRadians < startInRadians ? endInRadians + Math.PI * 2 : endInRadians;
+  const noramlizedAngle = normalizeIntoWindow(angle, startInRadians);
+
+  return noramlizedAngle <= effectiveEnd;
+};
+
+export const computeTransformedEllipticalAABB = (
+  ellipticalAttributes: EllipticalAttributes,
+  props: TransformProps,
+) => {
+  const { cx, cy, radiusX, radiusY, startInRadians, endInRadians } =
+    ellipticalAttributes;
+
+  const unTransformedBounds = {
+    x: cx - radiusX,
+    y: cy - radiusY,
+    width: radiusX * 2,
+    height: radiusY * 2,
+  };
+
+  const transformState = resolveTransformState(props, unTransformedBounds);
+  const { hasRotate, hasScale } = transformState;
+
+  if (!hasRotate && !hasScale) return unTransformedBounds;
+
+  const { columnX, columnY } = getLinearPartOfEllipticalTransform(
+    { cx, cy },
+    transformState,
+  );
+
+  const matrix = getEllipticalMatrix(columnX, columnY, {
+    radiusX,
+    radiusY,
+  });
+
+  const thetaX = Math.atan2(matrix.columnY.x, matrix.columnX.x);
+  const thetaY = Math.atan2(matrix.columnY.y, matrix.columnX.y);
+
+  const candidateAngles = [
+    ...[startInRadians, endInRadians],
+    ...[thetaX, thetaX + Math.PI, thetaY, thetaY + Math.PI].filter((angle) =>
+      isWithinSweep(angle, startInRadians, endInRadians),
+    ),
+  ];
+
+  const candidatePoints = candidateAngles.map((point) =>
+    transformPoint(
+      {
+        x: cx + radiusX * Math.cos(point),
+        y: cy + radiusY * Math.sin(point),
+      },
+      transformState,
+    ),
+  );
+
+  return deriveBoundsFromPoints(candidatePoints);
 };
 
 export const renderWithTransform = (

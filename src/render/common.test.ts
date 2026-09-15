@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { degreesToRadians } from "../util";
 import {
   centerOf,
+  computeTransformedEllipticalAABB,
   computeTransformedMultipointAABB,
   computeTransformedRectangularAABB,
   createBoundsCollector,
@@ -517,6 +518,237 @@ describe("computeTransformedMultipointAABB", () => {
     expect(transformedBounds.y).toBeCloseTo(-2.43, 2);
     expect(transformedBounds.width).toBeCloseTo(183.85, 2);
     expect(transformedBounds.height).toBeCloseTo(137.89, 2);
+  });
+});
+
+describe("computeTransformedEllipticalAABB", () => {
+  // A full-sweep circle: start/end span a complete 2*PI turn, so every
+  // critical angle survives the wraparound filter unconditionally (see the
+  // plan's row-norm sanity check).
+  const fullSweep = { startInRadians: 0, endInRadians: 2 * Math.PI };
+
+  it("returns the untransformed ellipse bounds when there is no rotation or scale", () => {
+    const transformedBounds = computeTransformedEllipticalAABB(
+      {
+        cx: 150,
+        cy: 150,
+        radiusX: 50,
+        radiusY: 50,
+        startInRadians: fullSweep.startInRadians,
+        endInRadians: fullSweep.endInRadians,
+      },
+      {},
+    );
+
+    expect(transformedBounds).toEqual({
+      x: 100,
+      y: 100,
+      width: 100,
+      height: 100,
+    });
+  });
+
+  it("returns the untransformed ellipse bounds when rotation and scale are at default values", () => {
+    const transformedBounds = computeTransformedEllipticalAABB(
+      {
+        cx: 150,
+        cy: 150,
+        radiusX: 50,
+        radiusY: 50,
+        startInRadians: fullSweep.startInRadians,
+        endInRadians: fullSweep.endInRadians,
+      },
+      { rotate: 0, scale: 1 },
+    );
+
+    expect(transformedBounds).toEqual({
+      x: 100,
+      y: 100,
+      width: 100,
+      height: 100,
+    });
+  });
+
+  // Deliberately a partial (60 degree) wedge, not a full sweep, to prove the
+  // no-op guard reports the *full* ellipse's bbox pre-transform -- same as
+  // today's behavior -- rather than tightening to the swept region. Sweep
+  // tightening should only ever kick in once a transform is actually applied
+  // (see the "tighter than naive proxy" case below).
+  it("returns the full ellipse's untransformed bounds for a partial sweep when there is no rotation or scale", () => {
+    const transformedBounds = computeTransformedEllipticalAABB(
+      {
+        cx: 150,
+        cy: 150,
+        radiusX: 50,
+        radiusY: 50,
+        startInRadians: fullSweep.startInRadians,
+        endInRadians: Math.PI / 3,
+      },
+      {},
+    );
+
+    expect(transformedBounds).toEqual({
+      x: 100,
+      y: 100,
+      width: 100,
+      height: 100,
+    });
+  });
+
+  it("is rotation-invariant for a full circle rotated about its own center", () => {
+    const transformedBounds = computeTransformedEllipticalAABB(
+      {
+        cx: 150,
+        cy: 150,
+        radiusX: 50,
+        radiusY: 50,
+        startInRadians: fullSweep.startInRadians,
+        endInRadians: fullSweep.endInRadians,
+      },
+      { rotate: 45 },
+    );
+
+    expect(transformedBounds.x).toBeCloseTo(100, 2);
+    expect(transformedBounds.y).toBeCloseTo(100, 2);
+    expect(transformedBounds.width).toBeCloseTo(100, 2);
+    expect(transformedBounds.height).toBeCloseTo(100, 2);
+  });
+
+  it("shifts the box's position but preserves its size for a circle rotated about a non-center origin", () => {
+    const transformedBounds = computeTransformedEllipticalAABB(
+      {
+        cx: 150,
+        cy: 150,
+        radiusX: 50,
+        radiusY: 50,
+        startInRadians: fullSweep.startInRadians,
+        endInRadians: fullSweep.endInRadians,
+      },
+      { rotate: 45, rotateOrigin: { x: 0, y: 0 } },
+    );
+
+    expect(transformedBounds.x).toBeCloseTo(50.0, 2);
+    expect(transformedBounds.y).toBeCloseTo(120.71, 2);
+    expect(transformedBounds.width).toBeCloseTo(100, 2);
+    expect(transformedBounds.height).toBeCloseTo(100, 2);
+  });
+
+  it("produces an axis-aligned ellipse bounding box for a circle scaled non-uniformly", () => {
+    const transformedBounds = computeTransformedEllipticalAABB(
+      {
+        cx: 100,
+        cy: 100,
+        radiusX: 40,
+        radiusY: 40,
+        startInRadians: fullSweep.startInRadians,
+        endInRadians: fullSweep.endInRadians,
+      },
+      { scaleX: 2, scaleY: 1 },
+    );
+
+    expect(transformedBounds.x).toBeCloseTo(20, 2);
+    expect(transformedBounds.y).toBeCloseTo(60, 2);
+    expect(transformedBounds.width).toBeCloseTo(160, 2);
+    expect(transformedBounds.height).toBeCloseTo(80, 2);
+  });
+
+  it("computes the bounding box of a true ellipse rotated 45 degrees around its centre using the row-norm formula", () => {
+    const transformedBounds = computeTransformedEllipticalAABB(
+      {
+        cx: 100,
+        cy: 100,
+        radiusX: 40,
+        radiusY: 20,
+        startInRadians: fullSweep.startInRadians,
+        endInRadians: fullSweep.endInRadians,
+      },
+      { rotate: 45 },
+    );
+
+    expect(transformedBounds.x).toBeCloseTo(68.38, 2);
+    expect(transformedBounds.y).toBeCloseTo(68.38, 2);
+    expect(transformedBounds.width).toBeCloseTo(63.25, 2);
+    expect(transformedBounds.height).toBeCloseTo(63.25, 2);
+  });
+
+  it("correctly computes the bounding box of a true ellipse when both rotation and non-uniform scale are present", () => {
+    const transformedBounds = computeTransformedEllipticalAABB(
+      {
+        cx: 100,
+        cy: 100,
+        radiusX: 40,
+        radiusY: 20,
+        startInRadians: fullSweep.startInRadians,
+        endInRadians: fullSweep.endInRadians,
+      },
+      { rotate: 45, scaleX: 2, scaleY: 1.5 },
+    );
+
+    expect(transformedBounds.x).toBeCloseTo(36.75, 2);
+    expect(transformedBounds.y).toBeCloseTo(52.57, 2);
+    expect(transformedBounds.width).toBeCloseTo(126.49, 2);
+    expect(transformedBounds.height).toBeCloseTo(94.87, 2);
+  });
+
+  // The most direct proof of the fix this function exists for: a 60 degree
+  // wedge of a circle, rotated 45 degrees, should hug just the swept portion
+  // of the transformed circle -- strictly smaller than the box you'd get by
+  // rotating the *full* circle's bbox proxy (computeTransformedRectangularAABB,
+  // the pre-existing behavior every primitive used before this function
+  // existed).
+  it("computes a tighter bounding box for a rotated partial arc than naively rotating the full-ellipse proxy bounds", () => {
+    const transformedBounds = computeTransformedEllipticalAABB(
+      {
+        cx: 100,
+        cy: 100,
+        radiusX: 50,
+        radiusY: 50,
+        startInRadians: fullSweep.startInRadians,
+        endInRadians: Math.PI / 3,
+      },
+      { rotate: 45 },
+    );
+
+    expect(transformedBounds.x).toBeCloseTo(87.06, 2);
+    expect(transformedBounds.y).toBeCloseTo(135.36, 2);
+    expect(transformedBounds.width).toBeCloseTo(48.3, 2);
+    expect(transformedBounds.height).toBeCloseTo(14.64, 2);
+
+    const naiveProxyBounds = computeTransformedRectangularAABB(
+      { x: 50, y: 50, width: 100, height: 100 },
+      { rotate: 45 },
+    );
+
+    expect(transformedBounds.width).toBeLessThan(naiveProxyBounds.width);
+    expect(transformedBounds.height).toBeLessThan(naiveProxyBounds.height);
+  });
+
+  // Non-uniform scale only (no rotate) puts the true critical angles at
+  // exactly 0/90/180/270 degrees, making it easy to hand-verify which ones
+  // must be excluded by the wraparound filter. The sweep runs 225 -> 45,
+  // i.e. wrapping through 270/315/0 degrees (405 once unwrapped), so 270
+  // degrees must survive while 90 and 180 must not -- and both excluded
+  // angles would otherwise strictly widen the box (180 degrees maps to an
+  // x more negative than the true minimum; 90 degrees maps to a y greater
+  // than the true maximum), so this test fails loudly if the filter is
+  // wrong in either direction.
+  it("correctly excludes out-of-range critical angles for a sweep that wraps across the 0/2*PI boundary", () => {
+    const transformedBounds = computeTransformedEllipticalAABB(
+      {
+        cx: 0,
+        cy: 0,
+        radiusX: 10,
+        radiusY: 10,
+        startInRadians: degreesToRadians(225),
+        endInRadians: degreesToRadians(45),
+      },
+      { scaleX: 2, scaleY: 1 },
+    );
+
+    expect(transformedBounds.x).toBeCloseTo(-14.14, 2);
+    expect(transformedBounds.y).toBeCloseTo(-10, 2);
+    expect(transformedBounds.width).toBeCloseTo(34.14, 2);
+    expect(transformedBounds.height).toBeCloseTo(17.07, 2);
   });
 });
 

@@ -191,41 +191,57 @@ export interface BezierProps
   strokeAlignment?: StrokeAlignment;
 }
 
-interface EllipticGeometryProps
-  extends FillStyles, StrokeStyles, WithOpacity, WithBlend, TransformProps {
+export interface CenteredPosition {
   cx: number;
   cy: number;
 }
 
-interface CircularRadius {
+interface EllipticGeometryProps
+  extends
+    FillStyles,
+    StrokeStyles,
+    WithOpacity,
+    WithBlend,
+    TransformProps,
+    CenteredPosition {}
+
+export interface EllipticalAttributes
+  extends CenteredPosition, EllipticalRadius {
+    startInRadians: number;
+    endInRadians: number;
+  }
+
+export interface CircularRadius {
   radius: number;
 }
 
-interface EllipticalRadius {
+export interface EllipticalRadius {
   radiusX: number;
   radiusY: number;
+}
+
+export interface EllipticalAngleStartAndEnd {
+  start: number;
+  end: number;
 }
 
 type ArcRadius = XOR<CircularRadius, EllipticalRadius>;
 
-export type ArcProps = EllipticGeometryProps &
-  ArcRadius & {
-    start: number;
-    end: number;
-    closePath?: boolean;
-    strokeAlignment?: StrokeAlignment;
-  } & CoordinateContextProps;
+export type ArcProps = {
+  closePath?: boolean;
+  strokeAlignment?: StrokeAlignment;
+} & EllipticGeometryProps &
+  EllipticalAngleStartAndEnd &
+  ArcRadius &
+  CoordinateContextProps;
 
 export interface CircleProps
-  extends EllipticGeometryProps, CoordinateContextProps {
-  radius: number;
+  extends EllipticGeometryProps, CoordinateContextProps, CircularRadius {
   strokeAlignment?: StrokeAlignment;
 }
 
 export interface EllipseProps
-  extends EllipticGeometryProps, CoordinateContextProps {
-  radiusX: number;
-  radiusY: number;
+  extends EllipticGeometryProps, CoordinateContextProps, EllipticalRadius {
   strokeAlignment?: StrokeAlignment;
 }
 
