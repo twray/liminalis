@@ -37,6 +37,7 @@ import {
   ellipse,
   ellipsePathDescriptor,
   getArcTransformedAABB,
+  getBezierTransformedAABB,
   getCircleTransformedAABB,
   getEllipseTransformedAABB,
   getImageBounds,
@@ -193,8 +194,6 @@ export const createDrawContext = (): DrawContext => {
     // - createScope: the clip scope required to render items within the frame bounds
     // - normalizeProps: maps public props to lifecycle props before frame context
     //   and clip scope are derived
-    // - getTransformedAABB: a primitives own transformed AABB function for
-    //
     //
     // Without a frame callback, this behaves like queueAnimatable with lifecycle
     // normalization. With a frame callback, it computes frame context, queues
@@ -388,6 +387,7 @@ export const createDrawContext = (): DrawContext => {
         (p: BezierProps) => p,
         (p: BezierProps) => bezierPathDescriptor(p).bounds,
         (getProps) => createClipScope(getProps, bezierPathDescriptor),
+        { getTransformedAABB: getBezierTransformedAABB },
       ),
       circle: queueAnimatableWithFrame(
         "circle",

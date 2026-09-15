@@ -154,25 +154,21 @@ export interface PolygonProps
   strokeAlignment?: StrokeAlignment;
 }
 
-export interface BezierStartSegment {
+interface BezierSegmentBase {
   point: Point2D;
-  control?: never;
 }
 
-export interface QuadraticBezierSegment {
+export interface BezierStartSegment extends BezierSegmentBase {}
+
+export interface QuadraticBezierSegment extends BezierSegmentBase {
   control: Point2D;
-  point: Point2D;
 }
 
-export interface CubicBezierSegment {
-  control: Point2D[];
-  point: Point2D;
+export interface CubicBezierSegment extends BezierSegmentBase {
+  control: [Point2D, Point2D];
 }
 
-export type BezierCurveSegment = XOR<
-  QuadraticBezierSegment,
-  CubicBezierSegment
->;
+export type BezierCurveSegment = QuadraticBezierSegment | CubicBezierSegment;
 
 export type BezierSegment = BezierStartSegment | BezierCurveSegment;
 
@@ -207,9 +203,9 @@ interface EllipticGeometryProps
 
 export interface EllipticalAttributes
   extends CenteredPosition, EllipticalRadius {
-    startInRadians: number;
-    endInRadians: number;
-  }
+  startInRadians: number;
+  endInRadians: number;
+}
 
 export interface CircularRadius {
   radius: number;

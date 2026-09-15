@@ -6,15 +6,20 @@ import {
   DEFAULT_STROKE_STYLE,
   DEFAULT_STROKE_WIDTH,
   EMPTY_BOUNDS,
+  deriveBoundsFromPoints,
   renderWithTransform,
+  resolveTransformState,
   setContextGlobals,
+  transformPoint,
 } from "../common";
 import type {
   BezierCurveSegment,
   BezierProps,
   BezierStartSegment,
+  Bounds,
   ClosedPathDescriptor,
   CubicBezierSegment,
+  QuadraticBezierSegment,
 } from "../types";
 
 interface BezierComputedValues {
@@ -69,9 +74,180 @@ const isBezierCurveSegment = (value: unknown): value is BezierCurveSegment => {
   return isPoint2D(value.control);
 };
 
+const isQuadraticBezierSegment = (
+  segment: BezierCurveSegment,
+): segment is QuadraticBezierSegment => isPoint2D(segment.control);
+
 const isCubicBezierSegment = (
   segment: BezierCurveSegment,
-): segment is CubicBezierSegment => Array.isArray(segment.control);
+): segment is CubicBezierSegment =>
+  Array.isArray(segment.control) &&
+  segment.control.length === 2 &&
+  segment.control.every((control) => isPoint2D(control));
+
+const quadraticBezierFunction = (
+  t: number,
+  p0: number,
+  p1: number,
+  p2: number,
+) => Math.pow(1 - t, 2) * p0 + 2 * (1 - t) * t * p1 + Math.pow(t, 2) * p2;
+
+const cubicBezierFunction = (
+  t: number,
+  p0: number,
+  p1: number,
+  p2: number,
+  p3: number,
+) =>
+  Math.pow(1 - t, 3) * p0 +
+  3 * Math.pow(1 - t, 2) * t * p1 +
+  3 * (1 - t) * Math.pow(t, 2) * p2 +
+  Math.pow(t, 3) * p3;
+
+const evaluateBezierPoint = (
+  startPoint: Point2D,
+  segment: BezierCurveSegment,
+  t: number,
+): Point2D => {
+  if (isQuadraticBezierSegment(segment)) {
+    return {
+      x: quadraticBezierFunction(
+        t,
+        startPoint.x,
+        segment.control.x,
+        segment.point.x,
+      ),
+      y: quadraticBezierFunction(
+        t,
+        startPoint.y,
+        segment.control.y,
+        segment.point.y,
+      ),
+    };
+  }
+
+  if (isCubicBezierSegment(segment)) {
+    return {
+      x: cubicBezierFunction(
+        t,
+        startPoint.x,
+        segment.control[0].x,
+        segment.control[1].x,
+        segment.point.x,
+      ),
+      y: cubicBezierFunction(
+        t,
+        startPoint.y,
+        segment.control[0].y,
+        segment.control[1].y,
+        segment.point.y,
+      ),
+    };
+  }
+
+  throw new Error("Invalid bezier curve segment provided");
+};
+
+const getQuadraticCriticalT = (
+  p0: number,
+  p1: number,
+  p2: number,
+): number | null => {
+  const denominator = p0 - 2 * p1 + p2;
+  return denominator !== 0 ? (p0 - p1) / denominator : null;
+};
+
+const getCubicCriticalTs = (
+  p0: number,
+  p1: number,
+  p2: number,
+  p3: number,
+): number[] => {
+  const d0 = p1 - p0;
+  const d1 = p2 - p1;
+  const d2 = p3 - p2;
+
+  const a = d0 - 2 * d1 + d2;
+  const b = 2 * (d1 - d0);
+  const c = d0;
+
+  if (a === 0) {
+    return b !== 0 ? [-c / b] : [];
+  }
+
+  const discriminant = b * b - 4 * a * c;
+  if (discriminant < 0) return [];
+
+  const sqrtDiscriminant = Math.sqrt(discriminant);
+  return [(-b + sqrtDiscriminant) / (2 * a), (-b - sqrtDiscriminant) / (2 * a)];
+};
+
+const getSegmentCriticalTs = (
+  startPoint: Point2D,
+  segment: BezierCurveSegment,
+): number[] => {
+  const onlyValidRoots = (t: number | null): t is number =>
+    t !== null && t > 0 && t < 1;
+
+  if (isCubicBezierSegment(segment)) {
+    const [control1, control2] = segment.control;
+
+    return [
+      ...getCubicCriticalTs(
+        startPoint.x,
+        control1.x,
+        control2.x,
+        segment.point.x,
+      ),
+      ...getCubicCriticalTs(
+        startPoint.y,
+        control1.y,
+        control2.y,
+        segment.point.y,
+      ),
+    ].filter((t) => t > 0 && t < 1);
+  }
+
+  return [
+    getQuadraticCriticalT(startPoint.x, segment.control.x, segment.point.x),
+    getQuadraticCriticalT(startPoint.y, segment.control.y, segment.point.y),
+  ].filter(onlyValidRoots);
+};
+
+export const getTightSegmentBounds = (
+  startPoint: Point2D,
+  segment: BezierCurveSegment,
+): Bounds => {
+  const candidateTs = [0, 1, ...getSegmentCriticalTs(startPoint, segment)];
+
+  return deriveBoundsFromPoints(
+    candidateTs.map((t) => evaluateBezierPoint(startPoint, segment, t)),
+  );
+};
+
+export const getTightBezierBounds = (
+  startPoint: Point2D,
+  curveSegments: BezierCurveSegment[],
+): Bounds => {
+  let segmentStart = startPoint;
+  const segmentBoundsCorners: Point2D[] = [];
+
+  for (const segment of curveSegments) {
+    const segmentBounds = getTightSegmentBounds(segmentStart, segment);
+
+    segmentBoundsCorners.push(
+      { x: segmentBounds.x, y: segmentBounds.y },
+      {
+        x: segmentBounds.x + segmentBounds.width,
+        y: segmentBounds.y + segmentBounds.height,
+      },
+    );
+
+    segmentStart = segment.point;
+  }
+
+  return deriveBoundsFromPoints(segmentBoundsCorners);
+};
 
 const getComputedValuesFromProps = (
   props: BezierProps,
@@ -99,31 +275,11 @@ const getComputedValuesFromProps = (
     startPoint.x === pathEnd.x && startPoint.y === pathEnd.y;
   const shouldClosePath = closePath || pathAlreadyClosed;
 
-  const points: Point2D[] = [startPoint];
-
-  for (const segment of validatedCurveSegments) {
-    if (!isCubicBezierSegment(segment)) {
-      points.push(segment.control, segment.point);
-    } else {
-      points.push(...segment.control, segment.point);
-    }
-  }
-
-  const minX = Math.min(...points.map(({ x }) => x));
-  const minY = Math.min(...points.map(({ y }) => y));
-  const maxX = Math.max(...points.map(({ x }) => x));
-  const maxY = Math.max(...points.map(({ y }) => y));
-
   return {
     startPoint,
     curveSegments: validatedCurveSegments,
     shouldClosePath,
-    bounds: {
-      x: minX,
-      y: minY,
-      width: maxX - minX,
-      height: maxY - minY,
-    },
+    bounds: getTightBezierBounds(startPoint, validatedCurveSegments),
   };
 };
 
@@ -268,4 +424,37 @@ export const bezierPathDescriptor = (
       tracePath(context, startPoint, curveSegments, true);
     },
   };
+};
+
+export const getBezierTransformedAABB = (props: BezierProps): Bounds => {
+  const computedValues = getComputedValuesFromProps(props);
+
+  if (!computedValues) return EMPTY_BOUNDS;
+
+  const { startPoint, curveSegments } = computedValues;
+  const tightBounds = getTightBezierBounds(startPoint, curveSegments);
+
+  const transformState = resolveTransformState(props, tightBounds);
+  const { hasRotate, hasScale } = transformState;
+
+  if (!hasRotate && !hasScale) return tightBounds;
+
+  const transformedStartPoint = transformPoint(startPoint, transformState);
+  const transformedSegments: BezierCurveSegment[] = curveSegments.map(
+    (segment) =>
+      isCubicBezierSegment(segment)
+        ? {
+            control: [
+              transformPoint(segment.control[0], transformState),
+              transformPoint(segment.control[1], transformState),
+            ] as [Point2D, Point2D],
+            point: transformPoint(segment.point, transformState),
+          }
+        : {
+            control: transformPoint(segment.control, transformState),
+            point: transformPoint(segment.point, transformState),
+          },
+  );
+
+  return getTightBezierBounds(transformedStartPoint, transformedSegments);
 };

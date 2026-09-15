@@ -108,7 +108,7 @@ export const transformPoint = (
   return { x: transformedX, y: transformedY };
 };
 
-const deriveBoundsFromPoints = (points: Point2D[]): Bounds => {
+export const deriveBoundsFromPoints = (points: Point2D[]): Bounds => {
   const allXPoints = points.map((point) => point.x);
   const allYPoints = points.map((point) => point.y);
 
