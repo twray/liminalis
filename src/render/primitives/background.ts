@@ -1,5 +1,6 @@
 import { DEFAULT_BACKGROUND_COLOR } from "../common";
 import type { BackgroundProps } from "../types";
+import { devicePixelRatio } from "../../util";
 
 export const background = (
   context: CanvasRenderingContext2D,
@@ -12,8 +13,8 @@ export const background = (
   context.fillRect(
     0,
     0,
-    context.canvas.width * window.devicePixelRatio,
-    context.canvas.height * window.devicePixelRatio,
+    context.canvas.width * devicePixelRatio,
+    context.canvas.height * devicePixelRatio,
   );
   context.restore();
 };

@@ -6,21 +6,7 @@ import {
   renderWithTransform,
   setContextGlobals,
 } from "../common";
-import type { Bounds, LineProps } from "../types";
-
-export const getLineBounds = (props: LineProps): Bounds => {
-  const minX = Math.min(props.start.x, props.end.x);
-  const minY = Math.min(props.start.y, props.end.y);
-  const maxX = Math.max(props.start.x, props.end.x);
-  const maxY = Math.max(props.start.y, props.end.y);
-
-  return {
-    x: minX,
-    y: minY,
-    width: Math.max(1, maxX - minX),
-    height: Math.max(1, maxY - minY),
-  };
-};
+import type { LineProps } from "../types";
 
 export const line = (
   context: CanvasRenderingContext2D,

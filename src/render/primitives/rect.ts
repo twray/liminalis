@@ -17,8 +17,8 @@ const resolveRoundRectCornerRadius = (
     ? [
         cornerRadius.topLeft,
         cornerRadius.topRight,
-        cornerRadius.bottomLeft,
         cornerRadius.bottomRight,
+        cornerRadius.bottomLeft,
       ]
     : cornerRadius;
 
