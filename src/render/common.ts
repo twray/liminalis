@@ -23,6 +23,9 @@ export const DEFAULT_FILL_STYLE = "transparent";
 export const DEFAULT_STROKE_STYLE = "#333";
 export const DEFAULT_STROKE_WIDTH = 1;
 export const DEFAULT_STROKE_ALIGNMENT = "center";
+export const DEFAULT_STROKE_LINE_CAP = "butt";
+export const DEFAULT_STROKE_LINE_JOIN = "miter";
+export const DEFAULT_STROKE_MITER_LIMIT = 10;
 export const DEFAULT_BLEND_MODE: GlobalCompositeOperation = "source-over";
 
 export const EMPTY_BOUNDS = { x: 0, y: 0, width: 0, height: 0 };

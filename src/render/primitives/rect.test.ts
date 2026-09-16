@@ -460,6 +460,55 @@ describe("rect rendering", () => {
     expect(mockContext.fill).not.toHaveBeenCalled();
     expect(mockContext.stroke).toHaveBeenCalled();
   });
+
+  // Stroke-width-aware-bounds-plan.md 4.1.1: lineJoin/miterLimit are
+  // accepted via JoinableStrokeStyles but not yet read by rect()'s render
+  // function (RectProps doesn't extend CappableStrokeStyles -- a rect is
+  // always closed, never has free ends -- so no lineCap tests here)
+  // -- expected to fail until that's wired up.
+  it("applies the given lineJoin and miterLimit to the stroke", async () => {
+    const { createDrawContext } = await import("../index");
+    const drawContext = createDrawContext();
+
+    drawContext.executeDrawCallback(
+      (d) => {
+        d.rect({
+          x: 0,
+          y: 0,
+          width: 100,
+          height: 50,
+          strokeStyle: "#333",
+          lineJoin: "round",
+          miterLimit: 4,
+        });
+      },
+      mockContext,
+      800,
+      600,
+      0,
+    );
+
+    expect(mockContext.lineJoin).toBe("round");
+    expect(mockContext.miterLimit).toBe(4);
+  });
+
+  it("defaults lineJoin and miterLimit to canvas's own native defaults when omitted", async () => {
+    const { createDrawContext } = await import("../index");
+    const drawContext = createDrawContext();
+
+    drawContext.executeDrawCallback(
+      (d) => {
+        d.rect({ x: 0, y: 0, width: 100, height: 50, strokeStyle: "#333" });
+      },
+      mockContext,
+      800,
+      600,
+      0,
+    );
+
+    expect(mockContext.lineJoin).toBe("miter");
+    expect(mockContext.miterLimit).toBe(10);
+  });
 });
 describe("framed clipping for rect", () => {
   it("returns an Animatable when using the frame callback", async () => {

@@ -1,10 +1,12 @@
 import type {
+  CappableStrokeStyles,
   Corners,
   Dimensions2D,
   FillStyles,
   IAnimatableLike,
   IsometricCuboid,
   IsometricTile,
+  JoinableStrokeStyles,
   PartialDrawStyles,
   Point2D,
   Positioned2D,
@@ -96,8 +98,7 @@ export interface ClipScope {
   // content was just drawn in.
   postProcessLocalSurface?: (
     surfaceContext:
-      | CanvasRenderingContext2D
-      | OffscreenCanvasRenderingContext2D,
+      CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
     bounds: Bounds,
   ) => void;
 }
@@ -137,7 +138,12 @@ export interface ContainerProps {
 }
 
 export interface LineProps
-  extends StrokeStyles, WithOpacity, WithBlend, TransformProps {
+  extends
+    StrokeStyles,
+    CappableStrokeStyles,
+    WithOpacity,
+    WithBlend,
+    TransformProps {
   start: Point2D;
   end: Point2D;
 }
@@ -145,6 +151,8 @@ export interface LineProps
 export interface PolygonProps
   extends
     StrokeStyles,
+    JoinableStrokeStyles,
+    CappableStrokeStyles,
     WithOpacity,
     WithBlend,
     TransformProps,
@@ -178,6 +186,8 @@ export interface BezierProps
   extends
     FillStyles,
     StrokeStyles,
+    CappableStrokeStyles,
+    JoinableStrokeStyles,
     WithOpacity,
     WithBlend,
     TransformProps,
@@ -227,6 +237,8 @@ export type ArcProps = {
   closePath?: boolean;
   strokeAlignment?: StrokeAlignment;
 } & EllipticGeometryProps &
+  CappableStrokeStyles &
+  JoinableStrokeStyles &
   EllipticalAngleStartAndEnd &
   ArcRadius &
   CoordinateContextProps;
@@ -247,6 +259,7 @@ export interface RectProps
     Dimensions2D,
     FillStyles,
     StrokeStyles,
+    JoinableStrokeStyles,
     WithOpacity,
     WithBlend,
     TransformProps,

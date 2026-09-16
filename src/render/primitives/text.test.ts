@@ -284,6 +284,13 @@ describe("text rendering", () => {
 
     expect(mockContext.fillText).toHaveBeenCalledWith("", 10, 20);
   });
+
+  // TextProps doesn't extend JoinableStrokeStyles or CappableStrokeStyles --
+  // deliberate: canvas's strokeText() does technically respect lineJoin/
+  // miterLimit/lineCap for glyph corners, but per-glyph join/cap control
+  // isn't a meaningful, user-facing configuration point the way it is for a
+  // hand-authored polygon/bezier/arc path. See
+  // stroke-width-aware-bounds-plan.md 4.1.1.
 });
 
 describe("framed clipping for text", () => {

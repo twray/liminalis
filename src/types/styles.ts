@@ -9,6 +9,15 @@ export interface StrokeStyles {
   strokeWidth?: number;
 }
 
+export interface JoinableStrokeStyles {
+  lineJoin?: "round" | "bevel" | "miter";
+  miterLimit?: number;
+}
+
+export interface CappableStrokeStyles {
+  lineCap?: "butt" | "round" | "square";
+}
+
 export type StrokeAlignment = "center" | "inside" | "outside";
 
 export interface TextStyles {

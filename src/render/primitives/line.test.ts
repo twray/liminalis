@@ -232,6 +232,54 @@ describe("line rendering", () => {
 
     expect(mockContext.rotate).not.toHaveBeenCalled();
   });
+
+  // LineProps doesn't extend JoinableStrokeStyles -- a single segment has
+  // no corners at all, so lineJoin/miterLimit genuinely don't apply here
+  // (unlike polygon/bezier, which always have at least one join). It does
+  // extend CappableStrokeStyles, though: a line always has two free ends.
+  // See stroke-width-aware-bounds-plan.md 4.1.1.
+  it("applies the given lineCap to the stroke", async () => {
+    const { createDrawContext } = await import("../index");
+    const drawContext = createDrawContext();
+
+    drawContext.executeDrawCallback(
+      (d) => {
+        d.line({
+          start: { x: 0, y: 0 },
+          end: { x: 100, y: 100 },
+          strokeStyle: "#333",
+          lineCap: "round",
+        });
+      },
+      mockContext,
+      800,
+      600,
+      0,
+    );
+
+    expect(mockContext.lineCap).toBe("round");
+  });
+
+  it("defaults lineCap to canvas's own native default when omitted", async () => {
+    const { createDrawContext } = await import("../index");
+    const drawContext = createDrawContext();
+
+    drawContext.executeDrawCallback(
+      (d) => {
+        d.line({
+          start: { x: 0, y: 0 },
+          end: { x: 100, y: 100 },
+          strokeStyle: "#333",
+        });
+      },
+      mockContext,
+      800,
+      600,
+      0,
+    );
+
+    expect(mockContext.lineCap).toBe("butt");
+  });
 });
 
 describe("axis-aligned bounds calculation for line", () => {

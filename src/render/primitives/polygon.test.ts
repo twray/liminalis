@@ -282,6 +282,115 @@ describe("polygon rendering", () => {
     expect(lineToCalls[1][0]).toBeCloseTo(130);
     expect(lineToCalls[1][1]).toBeCloseTo(150);
   });
+
+  // Stroke-width-aware-bounds-plan.md 4.1.1: lineJoin/miterLimit are
+  // accepted via JoinableStrokeStyles but not yet read by polygon()'s
+  // render function -- expected to fail until that's wired up. Joins
+  // happen at every vertex regardless of closePath, so an open polygon is
+  // enough to exercise this.
+  it("applies the given lineJoin and miterLimit to the stroke", async () => {
+    const { createDrawContext } = await import("../index");
+    const drawContext = createDrawContext();
+
+    drawContext.executeDrawCallback(
+      (d) => {
+        d.polygon({
+          points: [
+            { x: 100, y: 100 },
+            { x: 140, y: 100 },
+            { x: 120, y: 140 },
+          ],
+          strokeStyle: "#333",
+          lineJoin: "round",
+          miterLimit: 4,
+        });
+      },
+      mockContext,
+      800,
+      600,
+      0,
+    );
+
+    expect(mockContext.lineJoin).toBe("round");
+    expect(mockContext.miterLimit).toBe(4);
+  });
+
+  it("defaults lineJoin and miterLimit to canvas's own native defaults when omitted", async () => {
+    const { createDrawContext } = await import("../index");
+    const drawContext = createDrawContext();
+
+    drawContext.executeDrawCallback(
+      (d) => {
+        d.polygon({
+          points: [
+            { x: 100, y: 100 },
+            { x: 140, y: 100 },
+            { x: 120, y: 140 },
+          ],
+          strokeStyle: "#333",
+        });
+      },
+      mockContext,
+      800,
+      600,
+      0,
+    );
+
+    expect(mockContext.lineJoin).toBe("miter");
+    expect(mockContext.miterLimit).toBe(10);
+  });
+
+  // PolygonProps also extends CappableStrokeStyles: an *open* polygon
+  // (closePath: false, the default) has two free ends the lineCap applies
+  // to -- a closed polygon has none (every vertex is a join).
+  it("applies the given lineCap to the stroke of an open polygon", async () => {
+    const { createDrawContext } = await import("../index");
+    const drawContext = createDrawContext();
+
+    drawContext.executeDrawCallback(
+      (d) => {
+        d.polygon({
+          points: [
+            { x: 100, y: 100 },
+            { x: 140, y: 100 },
+            { x: 120, y: 140 },
+          ],
+          strokeStyle: "#333",
+          lineCap: "round",
+        });
+      },
+      mockContext,
+      800,
+      600,
+      0,
+    );
+
+    expect(mockContext.lineCap).toBe("round");
+  });
+
+  it("defaults lineCap to canvas's own native default when omitted", async () => {
+    const { createDrawContext } = await import("../index");
+    const drawContext = createDrawContext();
+
+    drawContext.executeDrawCallback(
+      (d) => {
+        d.polygon({
+          points: [
+            { x: 100, y: 100 },
+            { x: 140, y: 100 },
+            { x: 120, y: 140 },
+          ],
+          strokeStyle: "#333",
+        });
+      },
+      mockContext,
+      800,
+      600,
+      0,
+    );
+
+    expect(mockContext.lineCap).toBe("butt");
+  });
 });
 
 describe("framed clipping for polygon", () => {

@@ -7,6 +7,9 @@ import {
   computeTransformedEllipticalAABB,
   DEFAULT_BLEND_MODE,
   DEFAULT_STROKE_ALIGNMENT,
+  DEFAULT_STROKE_LINE_CAP,
+  DEFAULT_STROKE_LINE_JOIN,
+  DEFAULT_STROKE_MITER_LIMIT,
   DEFAULT_STROKE_STYLE,
   DEFAULT_STROKE_WIDTH,
   EMPTY_BOUNDS,
@@ -136,6 +139,9 @@ export const arc = (
     strokeStyle = DEFAULT_STROKE_STYLE,
     strokeWidth = DEFAULT_STROKE_WIDTH,
     strokeAlignment = DEFAULT_STROKE_ALIGNMENT,
+    lineJoin = DEFAULT_STROKE_LINE_JOIN,
+    miterLimit = DEFAULT_STROKE_MITER_LIMIT,
+    lineCap = DEFAULT_STROKE_LINE_CAP,
     opacity = 1,
     blend = DEFAULT_BLEND_MODE,
   } = props;
@@ -175,6 +181,10 @@ export const arc = (
     if (strokeStyle !== "transparent" && strokeWidth > 0) {
       context.strokeStyle = strokeStyle;
       context.lineWidth = strokeWidth;
+      context.lineJoin = lineJoin;
+      context.miterLimit = miterLimit;
+      context.lineCap = lineCap;
+
       const halfStrokeWidth = strokeWidth / 2;
 
       let strokeRadiusX = radiusX;

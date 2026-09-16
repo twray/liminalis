@@ -458,6 +458,109 @@ describe("bezier rendering", () => {
 
     expect(mockContext.globalCompositeOperation).toBe("multiply");
   });
+
+  // Stroke-width-aware-bounds-plan.md 4.1.1: lineJoin/miterLimit are
+  // accepted via JoinableStrokeStyles but not yet read by bezier()'s
+  // render function -- expected to fail until that's wired up.
+  it("applies the given lineJoin and miterLimit to the stroke", async () => {
+    const { createDrawContext } = await import("../index");
+    const drawContext = createDrawContext();
+
+    drawContext.executeDrawCallback(
+      (d) => {
+        d.bezier({
+          segments: [
+            { point: { x: 0, y: 0 } },
+            { control: { x: 50, y: 100 }, point: { x: 100, y: 0 } },
+          ],
+          strokeStyle: "#333",
+          lineJoin: "round",
+          miterLimit: 4,
+        });
+      },
+      mockContext,
+      800,
+      600,
+      0,
+    );
+
+    expect(mockContext.lineJoin).toBe("round");
+    expect(mockContext.miterLimit).toBe(4);
+  });
+
+  it("defaults lineJoin and miterLimit to canvas's own native defaults when omitted", async () => {
+    const { createDrawContext } = await import("../index");
+    const drawContext = createDrawContext();
+
+    drawContext.executeDrawCallback(
+      (d) => {
+        d.bezier({
+          segments: [
+            { point: { x: 0, y: 0 } },
+            { control: { x: 50, y: 100 }, point: { x: 100, y: 0 } },
+          ],
+          strokeStyle: "#333",
+        });
+      },
+      mockContext,
+      800,
+      600,
+      0,
+    );
+
+    expect(mockContext.lineJoin).toBe("miter");
+    expect(mockContext.miterLimit).toBe(10);
+  });
+
+  // BezierProps also extends CappableStrokeStyles: an *open* curve
+  // (closePath: false, the default) has two free ends the lineCap applies
+  // to -- a closed one has none (every segment boundary is a join).
+  it("applies the given lineCap to the stroke of an open bezier", async () => {
+    const { createDrawContext } = await import("../index");
+    const drawContext = createDrawContext();
+
+    drawContext.executeDrawCallback(
+      (d) => {
+        d.bezier({
+          segments: [
+            { point: { x: 0, y: 0 } },
+            { control: { x: 50, y: 100 }, point: { x: 100, y: 0 } },
+          ],
+          strokeStyle: "#333",
+          lineCap: "round",
+        });
+      },
+      mockContext,
+      800,
+      600,
+      0,
+    );
+
+    expect(mockContext.lineCap).toBe("round");
+  });
+
+  it("defaults lineCap to canvas's own native default when omitted", async () => {
+    const { createDrawContext } = await import("../index");
+    const drawContext = createDrawContext();
+
+    drawContext.executeDrawCallback(
+      (d) => {
+        d.bezier({
+          segments: [
+            { point: { x: 0, y: 0 } },
+            { control: { x: 50, y: 100 }, point: { x: 100, y: 0 } },
+          ],
+          strokeStyle: "#333",
+        });
+      },
+      mockContext,
+      800,
+      600,
+      0,
+    );
+
+    expect(mockContext.lineCap).toBe("butt");
+  });
 });
 
 describe("framed clipping for bezier", () => {

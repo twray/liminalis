@@ -296,6 +296,118 @@ describe("arc rendering", () => {
       toArcRadians(180),
     );
   });
+
+  // Stroke-width-aware-bounds-plan.md 4.1.1: lineJoin/miterLimit are
+  // accepted via ArcProps (added alongside CappableStrokeStyles, since a
+  // *closed* arc's chord-to-curve seam is a real corner) but not yet read
+  // by arc()'s render function -- expected to fail until that's wired up.
+  // closePath: true is deliberate here -- an open arc has no corners at
+  // all, so this needs the closed case to be a meaningful test.
+  it("applies the given lineJoin and miterLimit to the stroke of a closed arc", async () => {
+    const { createDrawContext } = await import("../index");
+    const drawContext = createDrawContext();
+
+    drawContext.executeDrawCallback(
+      (d) => {
+        d.arc({
+          cx: 100,
+          cy: 100,
+          radius: 50,
+          start: 0,
+          end: 180,
+          closePath: true,
+          strokeStyle: "#333",
+          lineJoin: "round",
+          miterLimit: 4,
+        });
+      },
+      mockContext,
+      800,
+      600,
+      0,
+    );
+
+    expect(mockContext.lineJoin).toBe("round");
+    expect(mockContext.miterLimit).toBe(4);
+  });
+
+  it("defaults lineJoin and miterLimit to canvas's own native defaults when omitted", async () => {
+    const { createDrawContext } = await import("../index");
+    const drawContext = createDrawContext();
+
+    drawContext.executeDrawCallback(
+      (d) => {
+        d.arc({
+          cx: 100,
+          cy: 100,
+          radius: 50,
+          start: 0,
+          end: 180,
+          closePath: true,
+          strokeStyle: "#333",
+        });
+      },
+      mockContext,
+      800,
+      600,
+      0,
+    );
+
+    expect(mockContext.lineJoin).toBe("miter");
+    expect(mockContext.miterLimit).toBe(10);
+  });
+
+  // CappableStrokeStyles: an *open* arc has two free ends (the swept
+  // curve's start and end points) that lineCap applies to -- the mirror
+  // case of the closed-arc lineJoin tests above.
+  it("applies the given lineCap to the stroke of an open arc", async () => {
+    const { createDrawContext } = await import("../index");
+    const drawContext = createDrawContext();
+
+    drawContext.executeDrawCallback(
+      (d) => {
+        d.arc({
+          cx: 100,
+          cy: 100,
+          radius: 50,
+          start: 0,
+          end: 180,
+          strokeStyle: "#333",
+          lineCap: "round",
+        });
+      },
+      mockContext,
+      800,
+      600,
+      0,
+    );
+
+    expect(mockContext.lineCap).toBe("round");
+  });
+
+  it("defaults lineCap to canvas's own native default when omitted", async () => {
+    const { createDrawContext } = await import("../index");
+    const drawContext = createDrawContext();
+
+    drawContext.executeDrawCallback(
+      (d) => {
+        d.arc({
+          cx: 100,
+          cy: 100,
+          radius: 50,
+          start: 0,
+          end: 180,
+          strokeStyle: "#333",
+        });
+      },
+      mockContext,
+      800,
+      600,
+      0,
+    );
+
+    expect(mockContext.lineCap).toBe("butt");
+  });
 });
 
 describe("framed clipping for arc", () => {

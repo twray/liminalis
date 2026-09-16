@@ -285,6 +285,11 @@ describe("ellipse rendering", () => {
 
     expect(mockContext.globalCompositeOperation).toBe("multiply");
   });
+
+  // lineJoin/miterLimit/lineCap intentionally don't apply here: ellipse has
+  // no corners (JoinableStrokeStyles) and no open ends (CappableStrokeStyles)
+  // -- EllipseProps doesn't extend either, so there's nothing to test. See
+  // stroke-width-aware-bounds-plan.md 4.1.1.
 });
 
 describe("framed clipping for ellipse", () => {
