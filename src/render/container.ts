@@ -62,7 +62,7 @@ export const pushContainerShowBoundsOperation = ({
     return;
   }
 
-  drawGroupManager.pushPrimitiveOperation({
+  drawGroupManager.pushOverlayOperation({
     signature: DrawGroupManager.createPrimitiveSignature(
       `${containerType}:show-bounds`,
       {

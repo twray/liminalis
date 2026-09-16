@@ -19,6 +19,7 @@ interface DrawGroupNode {
   scope: ClipScope | null;
   getInvalidationSignature: () => string;
   operations: DrawGroupOperation[];
+  overlayOperations: DrawGroupOperation[];
 }
 
 interface RenderGroupsParams {
@@ -105,6 +106,17 @@ class DrawGroupManager {
     });
   }
 
+  pushOverlayOperation(params: {
+    signature: string;
+    render: (context: CanvasRenderingContext2D) => void;
+  }): void {
+    this.#getCurrentGroup().overlayOperations.push({
+      type: "primitive",
+      signature: params.signature,
+      render: params.render,
+    });
+  }
+
   captureCurrentGroupHandle(): DrawGroupHandle {
     const group = this.#getCurrentGroup();
 
@@ -137,7 +149,10 @@ class DrawGroupManager {
         return cachedSignature;
       }
 
-      const operationSignatures = group.operations.map((operation) => {
+      const operationSignatures = [
+        ...group.operations,
+        ...group.overlayOperations,
+      ].map((operation) => {
         if (operation.type === "primitive") {
           return `primitive:${operation.signature ?? ""}`;
         }
@@ -160,7 +175,7 @@ class DrawGroupManager {
       group: DrawGroupNode,
       context: CanvasRenderingContext2D,
     ): void => {
-      group.operations.forEach((operation) => {
+      [...group.operations, ...group.overlayOperations].forEach((operation) => {
         if (operation.type === "primitive") {
           operation.render?.(context);
           return;
@@ -188,7 +203,10 @@ class DrawGroupManager {
           useLocalCoordinateContext: false,
           scope: null,
           draw: (surfaceContext) =>
-            runOperationsDirectly(group, surfaceContext as CanvasRenderingContext2D),
+            runOperationsDirectly(
+              group,
+              surfaceContext as CanvasRenderingContext2D,
+            ),
         });
         return;
       }
@@ -223,7 +241,10 @@ class DrawGroupManager {
           useLocalCoordinateContext,
           scope: group.scope,
           draw: (surfaceContext) =>
-            runOperationsDirectly(group, surfaceContext as CanvasRenderingContext2D),
+            runOperationsDirectly(
+              group,
+              surfaceContext as CanvasRenderingContext2D,
+            ),
         });
       } finally {
         parentContext.restore();
@@ -242,6 +263,7 @@ class DrawGroupManager {
       scope,
       getInvalidationSignature,
       operations: [],
+      overlayOperations: [],
     };
   }
 

@@ -92,13 +92,13 @@ describe("pushContainerShowBoundsOperation", () => {
       containerType: "group",
       showBounds: undefined,
       drawGroupManager,
-      getRenderRect: () => (EMPTY_BOUNDS),
+      getRenderRect: () => EMPTY_BOUNDS,
     });
 
     expect(pushSpy).not.toHaveBeenCalled();
   });
 
-  it("draws a translucent red rect over the bounds when showBounds is true", () => {
+  it("draws a translucent red rect over the bounds when showBounds is true, always after the group's own content regardless of push order", () => {
     const { context, calls } = createMockContext();
     const drawGroupManager = new DrawGroupManager();
     const bounds: Bounds = { x: 5, y: 10, width: 100, height: 50 };
@@ -110,6 +110,20 @@ describe("pushContainerShowBoundsOperation", () => {
       getRenderRect: () => bounds,
     });
 
+    // Stands in for a real shape primitive's render pass (e.g. rect()) --
+    // its own beginPath/rect/fillStyle/fill sequence, drawn into the same
+    // context -- the assertion below reads as "an actual shape renders before
+    // the bounds overlay".
+    drawGroupManager.pushPrimitiveOperation({
+      signature: "content",
+      render: (targetContext) => {
+        targetContext.beginPath();
+        targetContext.rect(0, 0, 20, 20);
+        targetContext.fillStyle = "#333";
+        targetContext.fill();
+      },
+    });
+
     drawGroupManager.renderToContext({
       cache: { renderGroup: ({ draw }: any) => draw(context) } as any,
       targetContext: context,
@@ -117,7 +131,14 @@ describe("pushContainerShowBoundsOperation", () => {
       height: 600,
     });
 
+    // Despite being pushed first, the bounds box renders last -- proving
+    // the show-bounds overlay is always drawn on top of the group's own
+    // content, independent of push order.
     expect(calls).toEqual([
+      "beginPath",
+      "rect:0,0,20,20",
+      "fillStyle:#333",
+      "fill",
       "save",
       "beginPath",
       "rect:5,10,100,50",
@@ -169,7 +190,11 @@ describe("createContainerPrimitive", () => {
       drawGroupManager,
       boundsCollectionManager,
       activeMeasurementsManager,
-      createMeasurementContext: (getMeasurements, hasMeasurements, warnOnUnavailableRead) =>
+      createMeasurementContext: (
+        getMeasurements,
+        hasMeasurements,
+        warnOnUnavailableRead,
+      ) =>
         frameMeasurementPassManager.createMeasurementContext(
           getMeasurements,
           hasMeasurements as any,
@@ -264,7 +289,8 @@ describe("createContainerPrimitive", () => {
     group(() => {
       const childBounds: Bounds = { x: 10, y: 20, width: 30, height: 40 };
       boundsCollectionManager.getActiveCollector()?.includeBounds(childBounds);
-      sawOwnCollectorDuringFrame = boundsCollectionManager.getActiveCollector() !== undefined;
+      sawOwnCollectorDuringFrame =
+        boundsCollectionManager.getActiveCollector() !== undefined;
     });
 
     expect(sawOwnCollectorDuringFrame).toBe(true);
@@ -334,12 +360,14 @@ describe("createContainerPrimitive", () => {
   it("pushes a show-bounds draw operation when showBounds is set", () => {
     const { commonParams } = createCollaborators();
     const drawGroupManager = commonParams.drawGroupManager;
-    const pushSpy = vi.spyOn(drawGroupManager, "pushPrimitiveOperation");
+    // Show-bounds is pushed as an overlay operation (always rendered after
+    // the group's own content), not a regular primitive operation -- see
+    // pushContainerShowBoundsOperation.
+    const pushSpy = vi.spyOn(drawGroupManager, "pushOverlayOperation");
     const group = makeGroupPrimitive(commonParams);
 
     group(() => {}, { x: 0, y: 0, width: 10, height: 10, showBounds: true });
 
-    // One call for the clip-scoped frame group's primitive, one for show-bounds.
     const showBoundsCall = pushSpy.mock.calls.find((call) =>
       call[0].signature.includes("group:show-bounds"),
     );
@@ -364,11 +392,13 @@ describe("createContainerPrimitive", () => {
 
   it("runs seedInitialProps and lets it override the props used for the render pass", () => {
     const { commonParams } = createCollaborators();
-    const seedInitialProps = vi.fn(({ setCurrentProps, currentProps, animatable }) => {
-      const seeded = { ...currentProps, x: 999 };
-      setCurrentProps(seeded);
-      animatable.updateInitialProps(seeded);
-    });
+    const seedInitialProps = vi.fn(
+      ({ setCurrentProps, currentProps, animatable }) => {
+        const seeded = { ...currentProps, x: 999 };
+        setCurrentProps(seeded);
+        animatable.updateInitialProps(seeded);
+      },
+    );
 
     const group = createContainerPrimitive<
       GroupOptions,
