@@ -4,12 +4,13 @@ import type {
   PartialDrawStyles,
   PartialIsometricStyles,
   Point2D,
+  StrokeAlignment,
+  StrokeStyles,
 } from "../types";
 import { degreesToRadians } from "../util";
 import type {
   Bounds,
   BoundsCollector,
-  CenteredPosition,
   ContextGlobalProps,
   EllipticalAttributes,
   EllipticalRadius,
@@ -128,6 +129,112 @@ export const deriveBoundsFromPoints = (points: Point2D[]): Bounds => {
   };
 };
 
+export const getLinearPartOfTransform = (
+  point: Point2D,
+  transformState: TransformState,
+) => {
+  const { x, y } = point;
+
+  const center = transformPoint({ x, y }, transformState);
+  const probeX = transformPoint({ x: x + 1, y }, transformState);
+  const probeY = transformPoint({ x, y: y + 1 }, transformState);
+
+  const columnX = { x: probeX.x - center.x, y: probeX.y - center.y };
+  const columnY = { x: probeY.x - center.x, y: probeY.y - center.y };
+
+  return { columnX, columnY };
+};
+
+export const getRowNorms = (columnX: Point2D, columnY: Point2D) => ({
+  rowNormX: Math.hypot(columnX.x, columnY.x),
+  rowNormY: Math.hypot(columnX.y, columnY.y),
+});
+
+export const normalize = (v: Point2D): Point2D => {
+  const length = Math.hypot(v.x, v.y);
+  return length === 0 ? { x: 0, y: 0 } : { x: v.x / length, y: v.y / length };
+};
+
+// Angle between two direction vectors in [0, PI] -- atan2(cross, dot) is
+// more numerically stable near 0/PI than acos(dot/(|u||v|)), and (unlike
+// outward-normal-style perpendicular sums) is scale-invariant on its own:
+// cross and dot both scale by |u|*|v|, so their ratio -- and therefore this
+// angle -- is unaffected by the input vectors' magnitudes.
+export const angleBetweenVectors = (u: Point2D, v: Point2D): number => {
+  const cross = u.x * v.y - u.y * v.x;
+  const dot = u.x * v.x + u.y * v.y;
+  return Math.abs(Math.atan2(cross, dot));
+};
+
+export const hasVisibleStroke = ({ strokeStyle, strokeWidth }: StrokeStyles) =>
+  strokeStyle !== "transparent" && strokeWidth && strokeWidth > 0;
+
+export const resolveStrokeOutwardOffset = (
+  strokeWidth: number,
+  strokeAlignment: StrokeAlignment = DEFAULT_STROKE_ALIGNMENT,
+) => {
+  switch (strokeAlignment) {
+    case "inside":
+      return 0;
+    case "outside":
+      return strokeWidth;
+    case "center":
+      return strokeWidth / 2;
+  }
+};
+
+// Exact local-space miter tip candidates for one vertex/joint, given the two
+// directions its adjacent edges extend AWAY FROM the shared point (e.g. for
+// an edge arriving from some other point P, that's P - vertex, NOT
+// vertex - P -- the latter measures the path's turning angle at the point,
+// not its own interior angle, and the two differ by theta vs. 180-theta;
+// verified against an independent offset-line-intersection derivation for
+// a right-angle corner, a sharp polygon apex, and an arc corner). With both
+// edges correctly pointing away from the point, the tip lies along the
+// negated sum of their unit vectors -- away from the small wedge the two
+// edges form, no separate "which side is outward" step needed for a convex
+// joint. Shared by polygon and bezier, whose winding/curvature direction
+// isn't known here, so both +/- directions are returned as candidates
+// rather than assuming convexity: always safe for a bounding box, since one
+// candidate is the real tip and the other lands inside or near the shape,
+// never shrinking the eventual union. (arc computes its own single tip
+// directly instead, since its two corners are always known to be convex.)
+export const getMiterTipCandidates = (
+  vertex: Point2D,
+  edgeDirection1: Point2D,
+  edgeDirection2: Point2D,
+  nativeStrokeWidth: number,
+  miterLimit: number,
+): [Point2D, Point2D] => {
+  const unitEdge1 = normalize(edgeDirection1);
+  const unitEdge2 = normalize(edgeDirection2);
+  const theta = angleBetweenVectors(unitEdge1, unitEdge2);
+  const halfWidth = nativeStrokeWidth / 2;
+
+  // theta -> 0 is a degenerate corner reversing back on itself; canvas caps
+  // the real miter length via the bevel-fallback threshold in any case, so
+  // clamp there directly rather than dividing by ~0.
+  const rawMiterLength =
+    theta <= 0 ? Infinity : halfWidth / Math.sin(theta / 2);
+  const miterLength = Math.min(rawMiterLength, nativeStrokeWidth * miterLimit);
+
+  const wedgeDirection = normalize({
+    x: unitEdge1.x + unitEdge2.x,
+    y: unitEdge1.y + unitEdge2.y,
+  });
+
+  return [
+    {
+      x: vertex.x - miterLength * wedgeDirection.x,
+      y: vertex.y - miterLength * wedgeDirection.y,
+    },
+    {
+      x: vertex.x + miterLength * wedgeDirection.x,
+      y: vertex.y + miterLength * wedgeDirection.y,
+    },
+  ];
+};
+
 export const computeTransformedRectangularAABB = (
   bounds: Bounds,
   props: TransformProps,
@@ -162,22 +269,6 @@ export const computeTransformedMultipointAABB = (
   return deriveBoundsFromPoints(
     points.map((point) => transformPoint(point, transformState)),
   );
-};
-
-const getLinearPartOfEllipticalTransform = (
-  centeredPosition: CenteredPosition,
-  transformState: TransformState,
-) => {
-  const { cx: x, cy: y } = centeredPosition;
-
-  const center = transformPoint({ x, y }, transformState);
-  const probeX = transformPoint({ x: x + 1, y }, transformState);
-  const probeY = transformPoint({ x, y: y + 1 }, transformState);
-
-  const columnX = { x: probeX.x - center.x, y: probeX.y - center.y };
-  const columnY = { x: probeY.x - center.x, y: probeY.y - center.y };
-
-  return { columnX, columnY };
 };
 
 const getEllipticalMatrix = (
@@ -231,8 +322,8 @@ export const computeTransformedEllipticalAABB = (
 
   if (!hasRotate && !hasScale) return unTransformedBounds;
 
-  const { columnX, columnY } = getLinearPartOfEllipticalTransform(
-    { cx, cy },
+  const { columnX, columnY } = getLinearPartOfTransform(
+    { x: cx, y: cy },
     transformState,
   );
 

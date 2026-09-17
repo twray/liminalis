@@ -511,6 +511,11 @@ describe("axis-aligned bounds calculation for arc", () => {
   // matching computeTransformedEllipticalAABB's own early-return behavior
   // (see common.test.ts). Sweep-aware tightening only ever kicks in once a
   // transform is actually applied (see the rotated case below).
+  // strokeStyle: "transparent" on this and the next three tests -- they
+  // exist to check pure sweep/rotation/scale geometry, not stroke
+  // behaviour, and the framework's real default stroke ("#333", width 1)
+  // would otherwise silently pad every one of these by a small, unrelated
+  // amount.
   it("returns the full untransformed circle bounds for a partial sweep when there is no rotation or scale", () => {
     const transformedBounds = getArcTransformedAABB({
       cx: 100,
@@ -518,6 +523,7 @@ describe("axis-aligned bounds calculation for arc", () => {
       radius: 50,
       start: 0,
       end: 90,
+      strokeStyle: "transparent",
     });
 
     expect(transformedBounds).toEqual({
@@ -536,6 +542,7 @@ describe("axis-aligned bounds calculation for arc", () => {
       start: 0,
       end: 360,
       rotate: 45,
+      strokeStyle: "transparent",
     });
 
     expect(transformedBounds.x).toBeCloseTo(100, 2);
@@ -553,6 +560,7 @@ describe("axis-aligned bounds calculation for arc", () => {
       end: 360,
       scaleX: 2,
       scaleY: 1,
+      strokeStyle: "transparent",
     });
 
     expect(transformedBounds.x).toBeCloseTo(20, 2);
@@ -570,6 +578,7 @@ describe("axis-aligned bounds calculation for arc", () => {
       start: 0,
       end: 360,
       rotate: 45,
+      strokeStyle: "transparent",
     });
 
     expect(transformedBounds.x).toBeCloseTo(68.38, 2);
@@ -594,6 +603,7 @@ describe("axis-aligned bounds calculation for arc", () => {
       start: 90,
       end: 150,
       rotate: 45,
+      strokeStyle: "transparent",
     });
 
     expect(transformedBounds.x).toBeCloseTo(87.06, 2);
@@ -608,5 +618,150 @@ describe("axis-aligned bounds calculation for arc", () => {
 
     expect(transformedBounds.width).toBeLessThan(naiveProxyBounds.width);
     expect(transformedBounds.height).toBeLessThan(naiveProxyBounds.height);
+  });
+
+  // Breaking suite for stroke-width-aware-bounds-plan.md Phase 2 -- none of
+  // this is implemented yet, so every test below is expected to FAIL until
+  // Phase 2 lands.
+  describe("stroke-width awareness (Phase 2 -- not yet implemented)", () => {
+    it("inflates the radius outward by strokeWidth/2 by default (center alignment)", () => {
+      const transformedBounds = getArcTransformedAABB({
+        cx: 100,
+        cy: 100,
+        radius: 50,
+        start: 0,
+        end: 90,
+        strokeWidth: 20,
+      });
+
+      // Same "full untransformed circle, not sweep-tightened" scope guard
+      // as the plain (unstroked) partial-sweep test above -- just with the
+      // inflated radius (60 = 50 + strokeWidth/2) instead of the raw one.
+      expect(transformedBounds).toEqual({
+        x: 40,
+        y: 40,
+        width: 120,
+        height: 120,
+      });
+    });
+
+    it("inflates the radius outward by the full strokeWidth when strokeAlignment is 'outside'", () => {
+      const transformedBounds = getArcTransformedAABB({
+        cx: 100,
+        cy: 100,
+        radius: 50,
+        start: 0,
+        end: 90,
+        strokeWidth: 20,
+        strokeAlignment: "outside",
+      });
+
+      expect(transformedBounds).toEqual({
+        x: 30,
+        y: 30,
+        width: 140,
+        height: 140,
+      });
+    });
+
+    // These use a deliberately THIN sweep (start:0, end:20 public degrees --
+    // local sweep -90deg..-70deg) rather than a quarter circle: a short
+    // chord across a narrow sweep sits nearly parallel to the curve's own
+    // tangent at each seam, so the real interior angle there is small --
+    // and a small angle means a LARGE miter reach ((strokeWidth/2)/
+    // sin(theta/2) blows up as theta -> 0), giving a clearly visible
+    // overshoot past the round-pen baseline instead of one that happens to
+    // land back inside it (which a quarter-circle's more generous ~45/135
+    // degree corners can do, depending on which axis the tip's bisector
+    // happens to point along -- a bounding box only cares about
+    // axis-aligned extent, not radial distance from center).
+    //
+    // Both edges must point AWAY from the shared vertex for the angle
+    // formula to be correct -- e.g. the chord's own direction as it
+    // extends from the start vertex, not the "direction of travel arriving
+    // via the chord" (its exact negation). An earlier version of this
+    // function used arriving/departing directions directly, which measures
+    // the path's turning angle (180 - the corner's real interior angle),
+    // not the corner's own angle -- verified via an independent offset-
+    // line-intersection derivation for both a symmetric (rect) and a sharp
+    // (a narrow triangle's apex, see polygon.test.ts) corner, which is what
+    // caught the discrepancy in the first place.
+    it("still overshoots the natural (unstroked) bounds for a mitered 'inside' corner -- inside alignment only shrinks the path radius, it never clips", () => {
+      const transformedBounds = getArcTransformedAABB({
+        cx: 100,
+        cy: 100,
+        radius: 50,
+        start: 0,
+        end: 20,
+        closePath: true,
+        strokeWidth: 10,
+        strokeAlignment: "inside",
+        lineJoin: "miter",
+        miterLimit: 5,
+      });
+
+      // Natural (unstroked) bounds for this sweep are the full, untightened
+      // circle -- {x:50,y:50,width:100,height:100} -- per the existing
+      // "no rotate/scale" scope guard above; the mitered inside corner
+      // pushes width out to ~113.69, past that natural width of 100.
+      expect(transformedBounds.x).toBeCloseTo(50, 2);
+      expect(transformedBounds.y).toBeCloseTo(50, 2);
+      expect(transformedBounds.width).toBeCloseTo(113.69, 2);
+      expect(transformedBounds.height).toBeCloseTo(100, 2);
+    });
+
+    // A closed arc's chord-to-curve seam is a real corner (see plan 4.1.1),
+    // so a miter join there can overshoot the plain round-pen radius
+    // inflation above. Arc computes the EXACT per-corner miter tip (not a
+    // conservative worst-case bound the way polygon/bezier do) since arc's
+    // corner geometry -- tangent at the sweep endpoint vs. the closing
+    // chord -- is fully known in closed form at bounds-calc time.
+    it("uses the exact per-corner miter tip for a closed arc's chord seam, not the plain round-pen radius padding", () => {
+      const transformedBounds = getArcTransformedAABB({
+        cx: 100,
+        cy: 100,
+        radius: 50,
+        start: 0,
+        end: 20,
+        closePath: true,
+        strokeWidth: 10,
+        lineJoin: "miter",
+        miterLimit: 5,
+      });
+
+      // Round-pen baseline (radius + strokeWidth/2 = 55) alone would give
+      // {x:45,y:45,width:110,height:110}; the miter tip pushes width out
+      // further, to ~120.40.
+      expect(transformedBounds.x).toBeCloseTo(45, 2);
+      expect(transformedBounds.y).toBeCloseTo(45, 2);
+      expect(transformedBounds.width).toBeCloseTo(120.4, 1);
+      expect(transformedBounds.height).toBeCloseTo(110, 2);
+    });
+
+    // A sufficiently acute corner's exact miter length would exceed
+    // canvas's own bevel-fallback threshold (miterLength/strokeWidth <=
+    // miterLimit) -- at that point canvas draws a bevel instead, so the
+    // tip must be capped at strokeWidth*miterLimit rather than following
+    // 1/sin(theta/2) to an ever-larger, never-actually-rendered value.
+    it("caps the exact miter tip at strokeWidth * miterLimit once the real angle would exceed canvas's own bevel-fallback threshold", () => {
+      const transformedBounds = getArcTransformedAABB({
+        cx: 100,
+        cy: 100,
+        radius: 50,
+        start: 0,
+        end: 20,
+        closePath: true,
+        strokeWidth: 10,
+        lineJoin: "miter",
+        miterLimit: 1,
+      });
+
+      // Capped to strokeWidth * miterLimit = 10 from the vertex, which for
+      // this corner's bisector direction happens to land back exactly on
+      // the round-pen baseline (110) -- no overshoot left once the cap
+      // bites this hard.
+      expect(transformedBounds.width).toBeLessThan(120.4);
+      expect(transformedBounds.width).toBeCloseTo(110, 2);
+    });
   });
 });

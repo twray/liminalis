@@ -477,8 +477,15 @@ describe("axis-aligned bounds calculation for polygon", () => {
     expect(transformedBounds).toEqual({ x: 0, y: 0, width: 0, height: 0 });
   });
 
+  // strokeStyle: "transparent" on these three -- they exist to check pure
+  // rotation/scale geometry, not stroke behaviour, and the framework's real
+  // default stroke ("#333", width 1) would otherwise silently pad every one
+  // of these by a small, unrelated amount.
   it("returns the exact bounding box of a triangle when there is no rotation or scale", () => {
-    const transformedBounds = getPolygonTransformedAABB({ points: triangle });
+    const transformedBounds = getPolygonTransformedAABB({
+      points: triangle,
+      strokeStyle: "transparent",
+    });
 
     expect(transformedBounds).toEqual({ x: 0, y: 0, width: 100, height: 80 });
   });
@@ -487,6 +494,7 @@ describe("axis-aligned bounds calculation for polygon", () => {
     const transformedBounds = getPolygonTransformedAABB({
       points: triangle,
       rotate: 45,
+      strokeStyle: "transparent",
     });
 
     expect(transformedBounds.x).toBeCloseTo(-13.64, 2);
@@ -506,6 +514,7 @@ describe("axis-aligned bounds calculation for polygon", () => {
     const transformedBounds = getPolygonTransformedAABB({
       points: triangle,
       scale: 2,
+      strokeStyle: "transparent",
     });
 
     expect(transformedBounds).toEqual({
@@ -513,6 +522,127 @@ describe("axis-aligned bounds calculation for polygon", () => {
       y: -40,
       width: 200,
       height: 160,
+    });
+  });
+
+  // Breaking suite for stroke-width-aware-bounds-plan.md Phase 2 -- none of
+  // this is implemented yet, so every test below is expected to FAIL until
+  // Phase 2 lands. Uses the closed `triangle` from above (tight fill bbox
+  // {x:0,y:0,width:100,height:80}) throughout.
+  describe("stroke-width awareness (Phase 2 -- not yet implemented)", () => {
+    // lineJoin: "round" explicitly on these first three -- DEFAULT_STROKE_
+    // LINE_JOIN is "miter", so omitting it would silently exercise the
+    // miter path (with a real, if gentle, corner on this triangle) instead
+    // of the plain round-pen padding these three are meant to isolate.
+    it("pads the bounding box outward by strokeWidth/2 by default (center alignment, round/bevel join)", () => {
+      const transformedBounds = getPolygonTransformedAABB({
+        points: triangle,
+        closePath: true,
+        strokeWidth: 10,
+        lineJoin: "round",
+      });
+
+      expect(transformedBounds).toEqual({
+        x: -5,
+        y: -5,
+        width: 110,
+        height: 90,
+      });
+    });
+
+    it("does not pad the bounding box when strokeAlignment is 'inside' -- the interior clip removes the outward half regardless of join style", () => {
+      const transformedBounds = getPolygonTransformedAABB({
+        points: triangle,
+        closePath: true,
+        strokeWidth: 10,
+        strokeAlignment: "inside",
+      });
+
+      expect(transformedBounds).toEqual({ x: 0, y: 0, width: 100, height: 80 });
+    });
+
+    it("pads the bounding box outward by the full strokeWidth when strokeAlignment is 'outside'", () => {
+      const transformedBounds = getPolygonTransformedAABB({
+        points: triangle,
+        closePath: true,
+        strokeWidth: 10,
+        strokeAlignment: "outside",
+        lineJoin: "round",
+      });
+
+      expect(transformedBounds).toEqual({
+        x: -10,
+        y: -10,
+        width: 120,
+        height: 100,
+      });
+    });
+
+    // A closed polygon's vertices are real corners (see plan 4.1.1), so a
+    // miter join can overshoot the plain round-pen padding above. Polygon
+    // now computes the EXACT per-vertex miter tip (not a conservative
+    // worst-case bound) the same way arc does: at each vertex, the real
+    // angle between its two edges (each measured pointing AWAY from the
+    // vertex, not one arriving and one departing -- see arc.ts's
+    // getMiterTipLocal for why that distinction matters) is fully known,
+    // so (strokeWidth/2)/sin(theta/2) -- capped at the bevel-fallback
+    // threshold strokeWidth*miterLimit -- gives a tight bound instead of
+    // always assuming the sharpest angle miterLimit would still honor.
+    // Verified by hand for two of the three vertices: the apex (50,0) has
+    // interior angle ~64.0 degrees, miterLength = (strokeWidth/2)/
+    // sin(32deg) =~ 9.43, dominating the y-extent (pushing y from 0 down to
+    // ~-9.43); base vertex (0,80) has interior angle ~58.0 degrees,
+    // miterLength =~ 10.31, dominating the x-extent (pushing x from 0 to
+    // ~-9.02, and by symmetry the other base vertex pushes maxX out by the
+    // same amount on the right).
+    it("uses the exact per-vertex miter tip for a mitered closed polygon, not the plain round-pen padding", () => {
+      const transformedBounds = getPolygonTransformedAABB({
+        points: triangle,
+        closePath: true,
+        strokeWidth: 10,
+        lineJoin: "miter",
+        miterLimit: 5,
+      });
+
+      expect(transformedBounds.x).toBeCloseTo(-9.02, 1);
+      expect(transformedBounds.y).toBeCloseTo(-9.43, 1);
+      expect(transformedBounds.width).toBeCloseTo(118.04, 1);
+      expect(transformedBounds.height).toBeCloseTo(94.43, 1);
+    });
+
+    // polygon/bezier's "outside" alignment strokes at strokeWidth*2 (native)
+    // and clips away the inward half -- so a mitered "outside" corner's
+    // exact reach uses the DOUBLED width in the same formula:
+    // ((strokeWidth*2)/2)/sin(theta/2) = strokeWidth/sin(theta/2), twice
+    // the "center" case's reach for the same nominal strokeWidth and angle.
+    // This is the plan's most important gotcha for this family -- an
+    // implementation that reuses the "center" formula for every alignment
+    // would under-report here.
+    it("doubles the exact miter reach for a mitered 'outside' polygon, since outside alignment strokes at 2x the nominal strokeWidth", () => {
+      const centerBounds = getPolygonTransformedAABB({
+        points: triangle,
+        closePath: true,
+        strokeWidth: 10,
+        lineJoin: "miter",
+        miterLimit: 5,
+      });
+      const outsideBounds = getPolygonTransformedAABB({
+        points: triangle,
+        closePath: true,
+        strokeWidth: 10,
+        strokeAlignment: "outside",
+        lineJoin: "miter",
+        miterLimit: 5,
+      });
+
+      // Round-pen baseline is strokeWidth further out on every side than
+      // center's, AND each vertex's own miter reach is doubled on top of
+      // that (angles are unchanged by strokeWidth, only the reach scales).
+      expect(outsideBounds.y).toBeLessThan(centerBounds.y);
+      expect(outsideBounds.x).toBeCloseTo(-18.04, 1);
+      expect(outsideBounds.y).toBeCloseTo(-18.87, 1);
+      expect(outsideBounds.width).toBeCloseTo(136.08, 1);
+      expect(outsideBounds.height).toBeCloseTo(108.87, 1);
     });
   });
 });

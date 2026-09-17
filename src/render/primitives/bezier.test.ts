@@ -703,8 +703,16 @@ describe("axis-aligned bounds calculation for bezier", () => {
       segments: [{ point: wiggleStart }, wiggleSegment],
     };
 
+    // strokeStyle: "transparent" on these and the next two rotation tests --
+    // they exist to check pure fill/rotation geometry, not stroke
+    // behaviour, and the framework's real default stroke ("#333", width 1)
+    // would otherwise silently pad every one of these by a small, unrelated
+    // amount.
     it("returns the tight untransformed bounds when there is no rotation or scale", () => {
-      const transformedBounds = getBezierTransformedAABB(archProps);
+      const transformedBounds = getBezierTransformedAABB({
+        ...archProps,
+        strokeStyle: "transparent",
+      });
 
       expect(transformedBounds).toEqual({ x: 0, y: 0, width: 100, height: 50 });
     });
@@ -714,6 +722,7 @@ describe("axis-aligned bounds calculation for bezier", () => {
         ...archProps,
         rotate: 0,
         scale: 1,
+        strokeStyle: "transparent",
       });
 
       expect(transformedBounds).toEqual({ x: 0, y: 0, width: 100, height: 50 });
@@ -733,6 +742,7 @@ describe("axis-aligned bounds calculation for bezier", () => {
       const transformedBounds = getBezierTransformedAABB({
         ...archProps,
         rotate: 45,
+        strokeStyle: "transparent",
       });
 
       expect(transformedBounds.x).toBeCloseTo(23.48, 2);
@@ -761,6 +771,7 @@ describe("axis-aligned bounds calculation for bezier", () => {
       const transformedBounds = getBezierTransformedAABB({
         ...wiggleProps,
         rotate: 45,
+        strokeStyle: "transparent",
       });
 
       expect(transformedBounds.x).toBeCloseTo(8.92, 2);
@@ -782,6 +793,108 @@ describe("axis-aligned bounds calculation for bezier", () => {
         naiveRelocatedBounds.width,
       );
       expect(transformedBounds.x).toBeLessThan(naiveRelocatedBounds.x);
+    });
+
+    // Breaking suite for stroke-width-aware-bounds-plan.md Phase 2 -- none of
+    // this is implemented yet, so every test below is expected to FAIL until
+    // Phase 2 lands. Uses `archProps` from above (closed via closePath: true,
+    // tight fill bbox {x:0,y:0,width:100,height:50}) -- closing a single
+    // curve segment still creates two real corners (curve-end-meets-chord,
+    // chord-meets-curve-start), the same "one curve + implicit closing chord"
+    // shape as a closed arc's chord seam.
+    describe("stroke-width awareness", () => {
+      // lineJoin: "round" explicit here -- DEFAULT_STROKE_LINE_JOIN is
+      // "miter", so omitting it would silently exercise the miter path
+      // (this closed arch has a real corner where the curve meets its
+      // closing chord) instead of the plain round-pen padding this test is
+      // meant to isolate.
+      it("pads the bounding box outward by strokeWidth/2 by default (center alignment, round/bevel join)", () => {
+        const transformedBounds = getBezierTransformedAABB({
+          ...archProps,
+          closePath: true,
+          strokeWidth: 10,
+          lineJoin: "round",
+        });
+
+        expect(transformedBounds).toEqual({
+          x: -5,
+          y: -5,
+          width: 110,
+          height: 60,
+        });
+      });
+
+      it("does not pad the bounding box when strokeAlignment is 'inside' -- the interior clip removes the outward half regardless of join style", () => {
+        const transformedBounds = getBezierTransformedAABB({
+          ...archProps,
+          closePath: true,
+          strokeWidth: 10,
+          strokeAlignment: "inside",
+        });
+
+        expect(transformedBounds).toEqual({
+          x: 0,
+          y: 0,
+          width: 100,
+          height: 50,
+        });
+      });
+
+      // Same family and formula as polygon's equivalent test (see
+      // polygon.test.ts): the exact per-joint miter tip, not a conservative
+      // worst-case bound -- at each of the two joints where the closing
+      // chord meets the curve (start and end), the real angle between the
+      // chord and the curve's own tangent there is fully known. Verified by
+      // hand: both joints have interior angle ~63.43 degrees by symmetry,
+      // miterLength = (strokeWidth/2)/sin(31.72deg) =~ 9.512 -- well under
+      // the strokeWidth*miterLimit=50 cap. The end joint's tip (x =~
+      // 108.09) dominates the x-extent; both joints agree on the y-extent
+      // (~-5, same as the round-pen baseline -- no extra y overshoot here).
+      it("uses the exact per-joint miter tip for a mitered closed curve, not the plain round-pen padding", () => {
+        const transformedBounds = getBezierTransformedAABB({
+          ...archProps,
+          closePath: true,
+          strokeWidth: 10,
+          lineJoin: "miter",
+          miterLimit: 5,
+        });
+
+        expect(transformedBounds.x).toBeCloseTo(-8.09, 1);
+        expect(transformedBounds.y).toBeCloseTo(-5, 1);
+        expect(transformedBounds.width).toBeCloseTo(116.18, 1);
+        expect(transformedBounds.height).toBeCloseTo(60, 1);
+      });
+
+      // polygon/bezier's "outside" alignment strokes at strokeWidth*2
+      // (native) and clips away the inward half -- so a mitered "outside"
+      // joint's exact reach uses the DOUBLED width in the same formula,
+      // roughly twice the "center" case's reach for the same nominal
+      // strokeWidth and angle. Same gotcha as polygon: an implementation
+      // that reuses the "center" formula for every alignment would
+      // under-report "outside" here.
+      it("doubles the exact miter reach for a mitered 'outside' curve, since outside alignment strokes at 2x the nominal strokeWidth", () => {
+        const centerBounds = getBezierTransformedAABB({
+          ...archProps,
+          closePath: true,
+          strokeWidth: 10,
+          lineJoin: "miter",
+          miterLimit: 5,
+        });
+        const outsideBounds = getBezierTransformedAABB({
+          ...archProps,
+          closePath: true,
+          strokeWidth: 10,
+          strokeAlignment: "outside",
+          lineJoin: "miter",
+          miterLimit: 5,
+        });
+
+        expect(outsideBounds.x).toBeLessThan(centerBounds.x);
+        expect(outsideBounds.x).toBeCloseTo(-16.18, 1);
+        expect(outsideBounds.y).toBeCloseTo(-10, 1);
+        expect(outsideBounds.width).toBeCloseTo(132.36, 1);
+        expect(outsideBounds.height).toBeCloseTo(70, 1);
+      });
     });
   });
 });

@@ -1,6 +1,7 @@
 import {
   DEFAULT_BLEND_MODE,
   DEFAULT_STROKE_WIDTH,
+  hasVisibleStroke,
   renderWithTransform,
   setContextGlobals,
 } from "../common";
@@ -47,7 +48,7 @@ export const getTextBounds = (
   text: string,
   props: TextProps,
 ): Bounds => {
-  const { x, y, font } = resolveTextProps(props);
+  const { x, y, font, strokeStyle } = resolveTextProps(props);
 
   context.save();
 
@@ -67,9 +68,8 @@ export const getTextBounds = (
   const descent = metrics.actualBoundingBoxDescent ?? 0;
   const height = Math.max(ascent + descent, fallbackHeight);
 
-  const { strokeStyle = "transparent", strokeWidth = 0 } = props;
-  const shouldInflateForStroke =
-    strokeStyle !== "transparent" && strokeWidth > 0;
+  const { strokeWidth = 0 } = props;
+  const shouldInflateForStroke = hasVisibleStroke({ strokeStyle, strokeWidth });
 
   if (!shouldInflateForStroke) {
     return { x, y, width, height };
@@ -201,7 +201,7 @@ export const text = (
       context.fillText(textValue, x, y);
     }
 
-    if (strokeStyle !== "transparent" && strokeWidth > 0) {
+    if (hasVisibleStroke({ strokeStyle, strokeWidth })) {
       context.strokeStyle = strokeStyle;
       context.lineWidth = strokeWidth;
       context.strokeText(textValue, x, y);

@@ -98,7 +98,8 @@ export interface ClipScope {
   // content was just drawn in.
   postProcessLocalSurface?: (
     surfaceContext:
-      CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
+      | CanvasRenderingContext2D
+      | OffscreenCanvasRenderingContext2D,
     bounds: Bounds,
   ) => void;
 }

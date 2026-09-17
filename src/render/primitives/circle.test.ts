@@ -352,11 +352,17 @@ describe("axis-aligned bounds calculation for circle", () => {
     expect(transformedBounds).toEqual({ x: 0, y: 0, width: 0, height: 0 });
   });
 
+  // strokeStyle: "transparent" throughout this block (except the dedicated
+  // stroke-width awareness describe below) -- these tests exist to check
+  // pure rotation/scale geometry, not stroke behaviour, and the framework's
+  // real default stroke ("#333", width 1) would otherwise silently pad
+  // every one of these by a small, unrelated amount.
   it("returns the full untransformed bounds when there is no rotation or scale", () => {
     const transformedBounds = getCircleTransformedAABB({
       cx: 100,
       cy: 100,
       radius: 50,
+      strokeStyle: "transparent",
     });
 
     expect(transformedBounds).toEqual({
@@ -373,6 +379,7 @@ describe("axis-aligned bounds calculation for circle", () => {
       cy: 150,
       radius: 50,
       rotate: 45,
+      strokeStyle: "transparent",
     });
 
     expect(transformedBounds.x).toBeCloseTo(100, 2);
@@ -388,11 +395,91 @@ describe("axis-aligned bounds calculation for circle", () => {
       radius: 40,
       scaleX: 2,
       scaleY: 1,
+      strokeStyle: "transparent",
     });
 
     expect(transformedBounds.x).toBeCloseTo(20, 2);
     expect(transformedBounds.y).toBeCloseTo(60, 2);
     expect(transformedBounds.width).toBeCloseTo(160, 2);
     expect(transformedBounds.height).toBeCloseTo(80, 2);
+  });
+
+  // Breaking suite for stroke-width-aware-bounds-plan.md Phase 2 -- none of
+  // this is implemented yet, so every "center"/"outside"/scaled case below
+  // is expected to FAIL until Phase 2 lands. CircleProps has no lineJoin or
+  // lineCap (no corners, no free ends -- see the plan's 4.1.1 table), so
+  // strokeWidth + strokeAlignment are the only inputs that matter here.
+  describe("stroke-width awareness (Phase 2 -- not yet implemented)", () => {
+    it("inflates the radius outward by strokeWidth/2 by default (center alignment)", () => {
+      const transformedBounds = getCircleTransformedAABB({
+        cx: 100,
+        cy: 100,
+        radius: 50,
+        strokeWidth: 20,
+      });
+
+      expect(transformedBounds).toEqual({
+        x: 40,
+        y: 40,
+        width: 120,
+        height: 120,
+      });
+    });
+
+    it("does not inflate the radius when strokeAlignment is 'inside'", () => {
+      const transformedBounds = getCircleTransformedAABB({
+        cx: 100,
+        cy: 100,
+        radius: 50,
+        strokeWidth: 20,
+        strokeAlignment: "inside",
+      });
+
+      expect(transformedBounds).toEqual({
+        x: 50,
+        y: 50,
+        width: 100,
+        height: 100,
+      });
+    });
+
+    it("inflates the radius outward by the full strokeWidth when strokeAlignment is 'outside'", () => {
+      const transformedBounds = getCircleTransformedAABB({
+        cx: 100,
+        cy: 100,
+        radius: 50,
+        strokeWidth: 20,
+        strokeAlignment: "outside",
+      });
+
+      expect(transformedBounds).toEqual({
+        x: 30,
+        y: 30,
+        width: 140,
+        height: 140,
+      });
+    });
+
+    // Non-uniform, unrotated scale: with no rotation, each axis's inflated
+    // pen half-width is (radius + strokeWidth/2) * that axis's own scale
+    // factor -- confirms the inflation composes through the row-norm
+    // machinery rather than being tacked on afterwards uniformly.
+    it("scales the inflated radius per-axis under non-uniform scale", () => {
+      const transformedBounds = getCircleTransformedAABB({
+        cx: 100,
+        cy: 100,
+        radius: 40,
+        strokeWidth: 20,
+        scaleX: 2,
+        scaleY: 1,
+      });
+
+      expect(transformedBounds).toEqual({
+        x: 0,
+        y: 50,
+        width: 200,
+        height: 100,
+      });
+    });
   });
 });

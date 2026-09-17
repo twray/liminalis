@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { IAnimatableLike } from "../../types";
 import { createSpyMockContext } from "./testMockCanvasContext";
+import { getRectTransformedAABB } from "./rect";
 import type { Bounds, DrawAPI, RectProps } from "../types";
 
 let mockContext: CanvasRenderingContext2D;
@@ -510,6 +511,170 @@ describe("rect rendering", () => {
     expect(mockContext.miterLimit).toBe(10);
   });
 });
+
+describe("axis-aligned bounds calculation for rect", () => {
+  // strokeStyle: "transparent" on these three -- they exist to check pure
+  // rotation/scale geometry, not stroke behaviour, and the framework's real
+  // default stroke ("#333", width 1) would otherwise silently pad every one
+  // of these by a small, unrelated amount.
+  it("returns the exact fill bounds when there is no rotation or scale", () => {
+    const transformedBounds = getRectTransformedAABB({
+      x: 10,
+      y: 20,
+      width: 100,
+      height: 50,
+      strokeStyle: "transparent",
+    });
+
+    expect(transformedBounds).toEqual({ x: 10, y: 20, width: 100, height: 50 });
+  });
+
+  it("computes the diagonal AABB of a square rotated 45 degrees around its centre", () => {
+    const transformedBounds = getRectTransformedAABB({
+      x: 0,
+      y: 0,
+      width: 100,
+      height: 100,
+      rotate: 45,
+      strokeStyle: "transparent",
+    });
+
+    expect(transformedBounds.x).toBeCloseTo(-20.71, 2);
+    expect(transformedBounds.y).toBeCloseTo(-20.71, 2);
+    expect(transformedBounds.width).toBeCloseTo(141.42, 2);
+    expect(transformedBounds.height).toBeCloseTo(141.42, 2);
+  });
+
+  it("grows the bounding box uniformly around the rect's center for a pure scale", () => {
+    const transformedBounds = getRectTransformedAABB({
+      x: 0,
+      y: 0,
+      width: 100,
+      height: 50,
+      scale: 2,
+      strokeStyle: "transparent",
+    });
+
+    expect(transformedBounds).toEqual({
+      x: -50,
+      y: -25,
+      width: 200,
+      height: 100,
+    });
+  });
+
+  // Rect's stroke-width awareness is implemented now (see stroke-width-
+  // aware-bounds-plan.md Section 6) -- every test below should pass.
+  describe("stroke-width awareness", () => {
+    it("inflates the bounding box outward by strokeWidth/2 by default (center alignment)", () => {
+      const transformedBounds = getRectTransformedAABB({
+        x: 0,
+        y: 0,
+        width: 100,
+        height: 50,
+        strokeWidth: 20,
+      });
+
+      expect(transformedBounds).toEqual({
+        x: -10,
+        y: -10,
+        width: 120,
+        height: 70,
+      });
+    });
+
+    it("does not inflate the bounding box when strokeAlignment is 'inside'", () => {
+      const transformedBounds = getRectTransformedAABB({
+        x: 0,
+        y: 0,
+        width: 100,
+        height: 50,
+        strokeWidth: 20,
+        strokeAlignment: "inside",
+      });
+
+      expect(transformedBounds).toEqual({ x: 0, y: 0, width: 100, height: 50 });
+    });
+
+    it("inflates the bounding box outward by the full strokeWidth when strokeAlignment is 'outside'", () => {
+      const transformedBounds = getRectTransformedAABB({
+        x: 0,
+        y: 0,
+        width: 100,
+        height: 50,
+        strokeWidth: 20,
+        strokeAlignment: "outside",
+      });
+
+      expect(transformedBounds).toEqual({
+        x: -20,
+        y: -20,
+        width: 140,
+        height: 90,
+      });
+    });
+
+    // Non-uniform, unrotated scale keeps the row-norm math simple to hand-
+    // verify: with no rotation, each axis's pen half-width is just
+    // (strokeWidth/2) * that axis's own scale factor.
+    // The stroke pad is applied to the LOCAL rect first (so the padded
+    // rect's own center becomes the scale origin), then the whole padded
+    // rect goes through the standard rotate/scale corner transform -- not
+    // "scale first, then pad the result by strokeWidth/2 * rowNorm". Both
+    // orders agree here (padding by a constant on all sides never moves the
+    // center), so the padded-then-scaled corners are: local padded rect is
+    // {x:-10,y:-10,width:120,height:70} (center at (50,25)); scaling that by
+    // (2,1) around (50,25) sends corner (-10,-10) to (-70,-10) and corner
+    // (110,60) to (170,60), giving width 240 (not the originally-assumed
+    // 140 -- that number came from an arithmetic slip before any real
+    // implementation existed to check it against).
+    it("scales the stroke padding per-axis under non-uniform scale", () => {
+      const transformedBounds = getRectTransformedAABB({
+        x: 0,
+        y: 0,
+        width: 100,
+        height: 50,
+        strokeWidth: 20,
+        scaleX: 2,
+        scaleY: 1,
+      });
+
+      expect(transformedBounds).toEqual({
+        x: -70,
+        y: -10,
+        width: 240,
+        height: 70,
+      });
+    });
+
+    // Rect corners are always fixed at 90 degrees. Offsetting both edges at
+    // a corner outward by strokeWidth/2 and intersecting them for a miter
+    // places the tip at EXACTLY the padded box's own corner -- round and
+    // bevel joins reach the same extremes too. So lineJoin/miterLimit never
+    // affect a rect's axis-aligned bounds, for any join style: this test
+    // guards against an implementation that wrongly reuses polygon/bezier's
+    // conservative miterLimit-based overshoot bound for rect too.
+    it("is unaffected by lineJoin/miterLimit -- 90 degree corners never overshoot the padded box", () => {
+      const transformedBounds = getRectTransformedAABB({
+        x: 0,
+        y: 0,
+        width: 100,
+        height: 50,
+        strokeWidth: 20,
+        lineJoin: "miter",
+        miterLimit: 100,
+      });
+
+      expect(transformedBounds).toEqual({
+        x: -10,
+        y: -10,
+        width: 120,
+        height: 70,
+      });
+    });
+  });
+});
+
 describe("framed clipping for rect", () => {
   it("returns an Animatable when using the frame callback", async () => {
     const { createDrawContext } = await import("../index");
@@ -988,7 +1153,14 @@ describe("framed clipping for rect", () => {
     drawContext.executeDrawCallback(
       (d) => {
         d.group((frameContext) => {
-          d.rect({ x: 100, y: 200, width: 40, height: 20, fillStyle: "red" });
+          d.rect({
+            x: 100,
+            y: 200,
+            width: 40,
+            height: 20,
+            fillStyle: "red",
+            strokeStyle: "transparent",
+          });
 
           if (frameContext.hasMeasurements) {
             frameValues.width = frameContext.getMeasurements().width;
@@ -1025,7 +1197,14 @@ describe("framed clipping for rect", () => {
     drawContext.executeDrawCallback(
       (d) => {
         d.group((frameContext) => {
-          d.rect({ x: 100, y: 200, width: 40, height: 20, fillStyle: "red" });
+          d.rect({
+            x: 100,
+            y: 200,
+            width: 40,
+            height: 20,
+            fillStyle: "red",
+            strokeStyle: "transparent",
+          });
 
           if (frameContext.hasMeasurements) {
             frameValues.width = frameContext.getMeasurements().width;
@@ -1069,6 +1248,7 @@ describe("framed clipping for rect", () => {
               width: 864,
               height: 864,
               useLocalCoordinateContext: true,
+              strokeStyle: "transparent",
             },
             () => {
               d.rect({
@@ -1077,6 +1257,7 @@ describe("framed clipping for rect", () => {
                 width: 1000,
                 height: 800,
                 fillStyle: "red",
+                strokeStyle: "transparent",
               });
             },
           );
@@ -1116,7 +1297,13 @@ describe("framed clipping for rect", () => {
     drawContext.executeDrawCallback(
       (d) => {
         d.group((frameContext) => {
-          d.circle({ cx: 500, cy: 500, radius: 40, fillStyle: "red" });
+          d.circle({
+            cx: 500,
+            cy: 500,
+            radius: 40,
+            fillStyle: "red",
+            strokeStyle: "transparent",
+          });
 
           if (frameContext.hasMeasurements) {
             frameValues.width = frameContext.getMeasurements().width;
@@ -1166,7 +1353,14 @@ describe("framed clipping for rect", () => {
             frameValues.centerY = frameCenter.y;
           }
 
-          d.rect({ x: 100, y: 200, width: 40, height: 20, fillStyle: "red" });
+          d.rect({
+            x: 100,
+            y: 200,
+            width: 40,
+            height: 20,
+            fillStyle: "red",
+            strokeStyle: "transparent",
+          });
         });
       },
       mockContext,
@@ -1209,7 +1403,14 @@ describe("framed clipping for rect", () => {
             frameValues.centerY = frameCenter.y;
           }
 
-          d.rect({ x: 0, y: 0, width: 40, height: 20, fillStyle: "red" });
+          d.rect({
+            x: 0,
+            y: 0,
+            width: 40,
+            height: 20,
+            fillStyle: "red",
+            strokeStyle: "transparent",
+          });
         });
       },
       mockContext,
@@ -1282,6 +1483,7 @@ describe("framed clipping for rect", () => {
             width: 50,
             height: 50,
             fillStyle: "green",
+            strokeStyle: "transparent",
           });
           d.rect({
             x: 250,
@@ -1289,6 +1491,7 @@ describe("framed clipping for rect", () => {
             width: 50,
             height: 50,
             fillStyle: "green",
+            strokeStyle: "transparent",
           });
         });
 
@@ -1301,6 +1504,7 @@ describe("framed clipping for rect", () => {
               width: 50,
               height: 50,
               fillStyle: "blue",
+              strokeStyle: "transparent",
             });
             d.rect({
               x: 150,
@@ -1308,6 +1512,7 @@ describe("framed clipping for rect", () => {
               width: 50,
               height: 50,
               fillStyle: "blue",
+              strokeStyle: "transparent",
             });
           },
           {
@@ -1353,6 +1558,7 @@ describe("framed clipping for rect", () => {
               width: 40,
               height: 20,
               fillStyle: "red",
+              strokeStyle: "transparent",
             });
           },
           { x: 0, y: 0 },
@@ -1381,6 +1587,7 @@ describe("framed clipping for rect", () => {
               width: 40,
               height: 20,
               fillStyle: "red",
+              strokeStyle: "transparent",
             });
           },
           { showBounds: true },
@@ -1402,7 +1609,14 @@ describe("framed clipping for rect", () => {
     const render = (d: DrawAPI) => {
       d.group(
         () => {
-          d.rect({ x: 100, y: 200, width: 40, height: 20, fillStyle: "red" });
+          d.rect({
+            x: 100,
+            y: 200,
+            width: 40,
+            height: 20,
+            fillStyle: "red",
+            strokeStyle: "transparent",
+          });
         },
         { showBounds: true },
       ).animateTo({ x: 200 }, { at: 0, duration: 1000 });
@@ -1433,8 +1647,22 @@ describe("framed clipping for rect", () => {
     const render = (d: DrawAPI) => {
       d.layer(
         () => {
-          d.rect({ x: 50, y: 0, width: 50, height: 50, fillStyle: "blue" });
-          d.rect({ x: 200, y: 0, width: 50, height: 50, fillStyle: "blue" });
+          d.rect({
+            x: 50,
+            y: 0,
+            width: 50,
+            height: 50,
+            fillStyle: "blue",
+            strokeStyle: "transparent",
+          });
+          d.rect({
+            x: 200,
+            y: 0,
+            width: 50,
+            height: 50,
+            fillStyle: "blue",
+            strokeStyle: "transparent",
+          });
         },
         {
           x: 100,
@@ -1476,6 +1704,7 @@ describe("framed clipping for rect", () => {
               width: 100,
               height: 100,
               fillStyle: "blue",
+              strokeStyle: "transparent",
             });
             d.rect({
               x: 250,
@@ -1483,6 +1712,7 @@ describe("framed clipping for rect", () => {
               width: 100,
               height: 100,
               fillStyle: "blue",
+              strokeStyle: "transparent",
             });
           },
           {
@@ -1548,7 +1778,14 @@ describe("framed clipping for rect", () => {
       (d) => {
         d.layer(
           () => {
-            d.rect({ x: 0, y: 0, width: 50, height: 50, fillStyle: "blue" });
+            d.rect({
+              x: 0,
+              y: 0,
+              width: 50,
+              height: 50,
+              fillStyle: "blue",
+              strokeStyle: "transparent",
+            });
           },
           {
             x: 100,
@@ -1582,13 +1819,21 @@ describe("framed clipping for rect", () => {
     const render = (d: DrawAPI) => {
       d.layer(
         () => {
-          d.rect({ x: 0, y: 0, width: 50, height: 50, fillStyle: "blue" });
+          d.rect({
+            x: 0,
+            y: 0,
+            width: 50,
+            height: 50,
+            fillStyle: "blue",
+            strokeStyle: "transparent",
+          });
           d.rect({
             x: 100,
             y: 0,
             width: 50,
             height: 50,
             fillStyle: "blue",
+            strokeStyle: "transparent",
           }).animateTo({ x: 200 }, { at: 0, duration: 1000 });
         },
         {
@@ -1638,6 +1883,7 @@ describe("framed clipping for rect", () => {
             width: 100,
             height: 100,
             fillStyle: "blue",
+            strokeStyle: "transparent",
           });
           d.rect({
             x: 250,
@@ -1645,6 +1891,7 @@ describe("framed clipping for rect", () => {
             width: 100,
             height: 100,
             fillStyle: "blue",
+            strokeStyle: "transparent",
           }).animateTo({ x: 350 }, { at: 0, duration: 1000 });
         },
         {
@@ -1803,7 +2050,14 @@ describe("framed clipping for rect", () => {
     const render = (d: DrawAPI) => {
       d.group(
         () => {
-          d.rect({ x: 100, y: 200, width: 40, height: 20, fillStyle: "red" });
+          d.rect({
+            x: 100,
+            y: 200,
+            width: 40,
+            height: 20,
+            fillStyle: "red",
+            strokeStyle: "transparent",
+          });
         },
         { showBounds: true },
       ).animateTo({ x: 200, rotate: 90 }, { at: 0, duration: 1000 });
@@ -1847,6 +2101,7 @@ describe("framed clipping for rect", () => {
               width: 100,
               height: 100,
               fillStyle: "blue",
+              strokeStyle: "transparent",
             });
             d.rect({
               x: 250,
@@ -1854,6 +2109,7 @@ describe("framed clipping for rect", () => {
               width: 100,
               height: 100,
               fillStyle: "blue",
+              strokeStyle: "transparent",
             });
           },
           {
@@ -1906,7 +2162,14 @@ describe("framed clipping for rect", () => {
 
     const render = (d: DrawAPI) => {
       d.group(() => {
-        d.rect({ x: 100, y: 200, width: 40, height: 20, fillStyle: "red" });
+        d.rect({
+          x: 100,
+          y: 200,
+          width: 40,
+          height: 20,
+          fillStyle: "red",
+          strokeStyle: "transparent",
+        });
       }).animateTo({ x: 200 }, { at: 0, duration: 1000 });
     };
 

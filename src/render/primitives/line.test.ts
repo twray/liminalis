@@ -283,22 +283,29 @@ describe("line rendering", () => {
 });
 
 describe("axis-aligned bounds calculation for line", () => {
+  // strokeStyle: "transparent" throughout this block (except the dedicated
+  // stroke-width awareness describe below) -- these tests exist to check
+  // pure endpoint/rotation/scale geometry, not stroke behaviour, and the
+  // framework's real default stroke ("#333", width 1) would otherwise
+  // silently pad every one of these by a small, unrelated amount.
   it("returns the exact bounding box of a diagonal line when there is no rotation or scale", () => {
     const transformedBounds = getLineTransformedAABB({
       start: { x: 0, y: 0 },
       end: { x: 100, y: 50 },
+      strokeStyle: "transparent",
     });
 
     expect(transformedBounds).toEqual({ x: 0, y: 0, width: 100, height: 50 });
   });
 
-  // A line's AABB is exact by construction (its two endpoints ARE its
-  // extrema), so a perfectly horizontal line legitimately reports zero
-  // height -- no artificial minimum is applied here.
+  // A line's fill-geometry AABB is exact by construction (its two
+  // endpoints ARE its extrema), so a perfectly horizontal line legitimately
+  // reports zero height here -- no artificial minimum is applied.
   it("returns a zero-height bounding box for a perfectly horizontal line", () => {
     const transformedBounds = getLineTransformedAABB({
       start: { x: 0, y: 50 },
       end: { x: 100, y: 50 },
+      strokeStyle: "transparent",
     });
 
     expect(transformedBounds).toEqual({ x: 0, y: 50, width: 100, height: 0 });
@@ -308,6 +315,7 @@ describe("axis-aligned bounds calculation for line", () => {
     const transformedBounds = getLineTransformedAABB({
       start: { x: 50, y: 0 },
       end: { x: 50, y: 100 },
+      strokeStyle: "transparent",
     });
 
     expect(transformedBounds).toEqual({ x: 50, y: 0, width: 0, height: 100 });
@@ -318,6 +326,7 @@ describe("axis-aligned bounds calculation for line", () => {
       start: { x: 0, y: 0 },
       end: { x: 100, y: 100 },
       rotate: 45,
+      strokeStyle: "transparent",
     });
 
     expect(transformedBounds.x).toBeCloseTo(50.0, 2);
@@ -331,6 +340,7 @@ describe("axis-aligned bounds calculation for line", () => {
       start: { x: 0, y: 0 },
       end: { x: 100, y: 100 },
       scale: 2,
+      strokeStyle: "transparent",
     });
 
     expect(transformedBounds).toEqual({
@@ -338,6 +348,48 @@ describe("axis-aligned bounds calculation for line", () => {
       y: -50,
       width: 200,
       height: 200,
+    });
+  });
+
+  // LineProps has no strokeAlignment (always the "center" case, see plan
+  // Section 3) and no lineJoin (a single segment has no corners), so
+  // strokeWidth and lineCap are the only relevant inputs.
+  describe("stroke-width awareness", () => {
+    it("pads the bounding box outward by strokeWidth/2 by default (butt cap)", () => {
+      const transformedBounds = getLineTransformedAABB({
+        start: { x: 0, y: 50 },
+        end: { x: 100, y: 50 },
+        strokeWidth: 10,
+      });
+
+      expect(transformedBounds).toEqual({
+        x: -5,
+        y: 45,
+        width: 110,
+        height: 10,
+      });
+    });
+
+    // A "square" cap extends the stroke past each endpoint along the line's
+    // own tangent direction, not just perpendicular to it -- so its corner
+    // can reach up to strokeWidth/2 * sqrt(2) from the endpoint (see the
+    // plan's step-by-step section for the derivation), exceeding the plain
+    // round-pen pad above for some orientations. Applied as a conservative,
+    // orientation-independent multiplier, same spirit as the miter
+    // overshoot bound for joinable shapes.
+    it("uses the conservative sqrt(2) overshoot for a 'square' cap, not the plain round-pen pad", () => {
+      const transformedBounds = getLineTransformedAABB({
+        start: { x: 0, y: 50 },
+        end: { x: 100, y: 50 },
+        strokeWidth: 10,
+        lineCap: "square",
+      });
+
+      // (strokeWidth / 2) * sqrt(2) =~ 7.07, not strokeWidth/2 = 5
+      expect(transformedBounds.x).toBeCloseTo(-7.07, 2);
+      expect(transformedBounds.y).toBeCloseTo(42.93, 2);
+      expect(transformedBounds.width).toBeCloseTo(114.14, 2);
+      expect(transformedBounds.height).toBeCloseTo(14.14, 2);
     });
   });
 });

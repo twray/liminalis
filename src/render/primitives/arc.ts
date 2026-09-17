@@ -1,9 +1,11 @@
+import type { Point2D } from "../../types";
 import {
   clampNonNegativeValue,
   clampWithinRange,
   degreesToRadians,
 } from "../../util";
 import {
+  angleBetweenVectors,
   computeTransformedEllipticalAABB,
   DEFAULT_BLEND_MODE,
   DEFAULT_STROKE_ALIGNMENT,
@@ -12,9 +14,15 @@ import {
   DEFAULT_STROKE_MITER_LIMIT,
   DEFAULT_STROKE_STYLE,
   DEFAULT_STROKE_WIDTH,
+  deriveBoundsFromPoints,
   EMPTY_BOUNDS,
+  hasVisibleStroke,
+  normalize,
   renderWithTransform,
+  resolveStrokeOutwardOffset,
+  resolveTransformState,
   setContextGlobals,
+  transformPoint,
 } from "../common";
 import type {
   ArcProps,
@@ -117,6 +125,82 @@ const tracePath = (
   }
 };
 
+const getEllipsePoint = (
+  cx: number,
+  cy: number,
+  radiusX: number,
+  radiusY: number,
+  angle: number,
+): Point2D => ({
+  x: cx + radiusX * Math.cos(angle),
+  y: cy + radiusY * Math.sin(angle),
+});
+
+const getEllipseTangent = (
+  radiusX: number,
+  radiusY: number,
+  angle: number,
+): Point2D => ({
+  x: -radiusX * Math.sin(angle),
+  y: radiusY * Math.cos(angle),
+});
+
+// Exact local-space miter tip for one corner. Canvas computes stroke
+// geometry (joins, caps, miter spikes included) entirely in user-space from
+// the raw path + lineWidth, THEN applies the active transform to the whole
+// result -- so this stays in local (untransformed) coordinates throughout,
+// matching that model exactly; only the final tip point needs transforming
+// (see the call site). `strokeWidth` here is always the real, undoubled
+// width -- arc's render function never doubles lineWidth for any
+// strokeAlignment (unlike polygon/bezier), so this is the same value for
+// "inside"/"center"/"outside" alike; only the vertex position differs.
+//
+// `edgeDirection1`/`edgeDirection2` must each point AWAY FROM the vertex,
+// out along their own edge (e.g. for a corner where a curve arrives and a
+// chord departs, that's -tangent and +chordDirection respectively -- NOT
+// "arriving" and "departing" directions taken as-is, which measure the
+// path's turning angle, not the corner's own interior angle, and differ by
+// theta vs. 180-theta). Verified against an independent offset-line
+// intersection derivation for both a symmetric (rect, 90 degree) and a
+// sharp (triangle apex) corner; an earlier version of this function used
+// arriving/departing directions directly and a separate outward-normal-via-
+// reference-point step, which happened to cancel out correctly for one
+// specific case but was wrong in general (see stroke-width-aware-bounds-
+// plan.md Step 4's writeup for the full story). With both edges correctly
+// pointing away from the vertex, the tip direction is simply the negated
+// sum of their unit vectors (away from the small wedge the two edges form,
+// no reference point needed at all) -- valid for the convex corners a
+// closed shape's own seam always is.
+const getMiterTipLocal = (
+  vertex: Point2D,
+  edgeDirection1: Point2D,
+  edgeDirection2: Point2D,
+  strokeWidth: number,
+  miterLimit: number,
+): Point2D => {
+  const unitEdge1 = normalize(edgeDirection1);
+  const unitEdge2 = normalize(edgeDirection2);
+  const theta = angleBetweenVectors(unitEdge1, unitEdge2);
+  const halfStrokeWidth = strokeWidth / 2;
+
+  // theta -> 0 is a degenerate corner reversing back on itself; canvas
+  // caps the real miter length via the bevel-fallback threshold in any
+  // case, so clamp there directly rather than dividing by ~0.
+  const rawMiterLength =
+    theta <= 0 ? Infinity : halfStrokeWidth / Math.sin(theta / 2);
+  const miterLength = Math.min(rawMiterLength, strokeWidth * miterLimit);
+
+  const wedgeDirection = normalize({
+    x: unitEdge1.x + unitEdge2.x,
+    y: unitEdge1.y + unitEdge2.y,
+  });
+
+  return {
+    x: vertex.x - miterLength * wedgeDirection.x,
+    y: vertex.y - miterLength * wedgeDirection.y,
+  };
+};
+
 const getArcAnglesInRadians = (props: ArcProps) => {
   const clampedStart = clampWithinRange(props.start, 0, 360);
   const clampedEnd = clampWithinRange(props.end, 0, 360);
@@ -178,7 +262,7 @@ export const arc = (
       context.fill();
     }
 
-    if (strokeStyle !== "transparent" && strokeWidth > 0) {
+    if (hasVisibleStroke({ strokeStyle, strokeWidth })) {
       context.strokeStyle = strokeStyle;
       context.lineWidth = strokeWidth;
       context.lineJoin = lineJoin;
@@ -256,13 +340,42 @@ export const getArcTransformedAABB = (props: ArcProps) => {
 
   if (!computedArcValues) return EMPTY_BOUNDS;
 
-  const { radiusX, radiusY } = computedArcValues;
-  const { cx, cy } = props;
-  // Same start/end used for actual rendering (tracePath), so the AABB's
-  // sweep window can never drift out of sync with what's drawn.
+  const {
+    cx,
+    cy,
+    strokeStyle = DEFAULT_STROKE_STYLE,
+    strokeWidth = DEFAULT_STROKE_WIDTH,
+    strokeAlignment = DEFAULT_STROKE_ALIGNMENT,
+    closePath,
+    lineJoin,
+    miterLimit = DEFAULT_STROKE_MITER_LIMIT,
+  } = props;
+
   const { startInRadians, endInRadians } = getArcAnglesInRadians(props);
 
-  return computeTransformedEllipticalAABB(
+  if (!hasVisibleStroke({ strokeStyle, strokeWidth })) {
+    return computeTransformedEllipticalAABB(
+      {
+        cx,
+        cy,
+        radiusX: computedArcValues.radiusX,
+        radiusY: computedArcValues.radiusY,
+        startInRadians,
+        endInRadians,
+      },
+      props,
+    );
+  }
+
+  const strokeOutwardOffset = resolveStrokeOutwardOffset(
+    strokeWidth,
+    strokeAlignment,
+  );
+
+  const radiusX = computedArcValues.radiusX + strokeOutwardOffset;
+  const radiusY = computedArcValues.radiusY + strokeOutwardOffset;
+
+  const bounds = computeTransformedEllipticalAABB(
     {
       cx,
       cy,
@@ -273,4 +386,81 @@ export const getArcTransformedAABB = (props: ArcProps) => {
     },
     props,
   );
+
+  const hasMiteredClosedCorners =
+    closePath && lineJoin === "miter" && strokeWidth > 0;
+
+  if (!hasMiteredClosedCorners) {
+    return bounds;
+  }
+
+  const halfStrokeWidth = strokeWidth / 2;
+  const pathRadiusX =
+    strokeAlignment === "inside"
+      ? clampNonNegativeValue(computedArcValues.radiusX - halfStrokeWidth)
+      : strokeAlignment === "outside"
+        ? computedArcValues.radiusX + halfStrokeWidth
+        : computedArcValues.radiusX;
+  const pathRadiusY =
+    strokeAlignment === "inside"
+      ? clampNonNegativeValue(computedArcValues.radiusY - halfStrokeWidth)
+      : strokeAlignment === "outside"
+        ? computedArcValues.radiusY + halfStrokeWidth
+        : computedArcValues.radiusY;
+
+  const startPoint = getEllipsePoint(
+    cx,
+    cy,
+    pathRadiusX,
+    pathRadiusY,
+    startInRadians,
+  );
+  const endPoint = getEllipsePoint(
+    cx,
+    cy,
+    pathRadiusX,
+    pathRadiusY,
+    endInRadians,
+  );
+  const startTangent = getEllipseTangent(
+    pathRadiusX,
+    pathRadiusY,
+    startInRadians,
+  );
+  const endTangent = getEllipseTangent(pathRadiusX, pathRadiusY, endInRadians);
+  // "Away from start, toward end" -- the chord's own physical direction as
+  // it extends from the start vertex.
+  const chordAwayFromStart = {
+    x: endPoint.x - startPoint.x,
+    y: endPoint.y - startPoint.y,
+  };
+
+  const startTip = getMiterTipLocal(
+    startPoint,
+    chordAwayFromStart,
+    startTangent,
+    strokeWidth,
+    miterLimit,
+  );
+  const endTip = getMiterTipLocal(
+    endPoint,
+    { x: -endTangent.x, y: -endTangent.y },
+    { x: -chordAwayFromStart.x, y: -chordAwayFromStart.y },
+    strokeWidth,
+    miterLimit,
+  );
+
+  const transformState = resolveTransformState(props, bounds);
+  const transformedTips = [startTip, endTip].map((tip) =>
+    transformPoint(tip, transformState),
+  );
+
+  const boundsCorners: Point2D[] = [
+    { x: bounds.x, y: bounds.y },
+    { x: bounds.x + bounds.width, y: bounds.y },
+    { x: bounds.x + bounds.width, y: bounds.y + bounds.height },
+    { x: bounds.x, y: bounds.y + bounds.height },
+  ];
+
+  return deriveBoundsFromPoints([...boundsCorners, ...transformedTips]);
 };

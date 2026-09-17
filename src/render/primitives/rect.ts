@@ -1,16 +1,19 @@
 import type { Corners } from "../../types";
 import { isCorners } from "../../util";
 import {
+  computeTransformedRectangularAABB,
   DEFAULT_BLEND_MODE,
   DEFAULT_FILL_STYLE,
   DEFAULT_STROKE_LINE_JOIN,
   DEFAULT_STROKE_MITER_LIMIT,
   DEFAULT_STROKE_STYLE,
   DEFAULT_STROKE_WIDTH,
+  hasVisibleStroke,
   renderWithTransform,
+  resolveStrokeOutwardOffset,
   setContextGlobals,
 } from "../common";
-import type { ClosedPathDescriptor, RectProps } from "../types";
+import type { Bounds, ClosedPathDescriptor, RectProps } from "../types";
 
 const resolveRoundRectCornerRadius = (
   cornerRadius: Corners | number,
@@ -79,7 +82,7 @@ export const rect = (
       context.fill();
     }
 
-    if (strokeStyle !== "transparent" && strokeWidth > 0) {
+    if (hasVisibleStroke({ strokeStyle, strokeWidth })) {
       context.strokeStyle = strokeStyle;
       context.lineWidth = strokeWidth;
       context.lineJoin = lineJoin;
@@ -132,4 +135,31 @@ export const rectPathDescriptor = (props: RectProps): ClosedPathDescriptor => {
       tracePath(context, x, y, width, height, cornerRadius);
     },
   };
+};
+
+export const getRectTransformedAABB = (props: RectProps): Bounds => {
+  const {
+    strokeStyle = DEFAULT_STROKE_STYLE,
+    strokeWidth = DEFAULT_STROKE_WIDTH,
+    strokeAlignment,
+  } = props;
+  const { bounds } = rectPathDescriptor(props);
+
+  if (!hasVisibleStroke({ strokeStyle, strokeWidth })) {
+    return computeTransformedRectangularAABB(bounds, props);
+  }
+
+  const strokeOutwardOffset = resolveStrokeOutwardOffset(
+    strokeWidth,
+    strokeAlignment,
+  );
+
+  const strokeAwareBounds = {
+    x: bounds.x - strokeOutwardOffset,
+    y: bounds.y - strokeOutwardOffset,
+    width: bounds.width + strokeOutwardOffset * 2,
+    height: bounds.height + strokeOutwardOffset * 2,
+  };
+
+  return computeTransformedRectangularAABB(strokeAwareBounds, props);
 };

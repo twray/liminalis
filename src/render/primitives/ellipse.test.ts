@@ -339,12 +339,18 @@ describe("axis-aligned bounds calculation for ellipse", () => {
     expect(transformedBounds).toEqual({ x: 0, y: 0, width: 0, height: 0 });
   });
 
+  // strokeStyle: "transparent" throughout this block (except the dedicated
+  // stroke-width awareness describe below) -- these tests exist to check
+  // pure rotation/scale geometry, not stroke behaviour, and the framework's
+  // real default stroke ("#333", width 1) would otherwise silently pad
+  // every one of these by a small, unrelated amount.
   it("returns the full untransformed bounds when there is no rotation or scale", () => {
     const transformedBounds = getEllipseTransformedAABB({
       cx: 100,
       cy: 100,
       radiusX: 40,
       radiusY: 20,
+      strokeStyle: "transparent",
     });
 
     expect(transformedBounds).toEqual({
@@ -365,6 +371,7 @@ describe("axis-aligned bounds calculation for ellipse", () => {
       radiusX: 40,
       radiusY: 20,
       rotate: 45,
+      strokeStyle: "transparent",
     });
 
     expect(transformedBounds.x).toBeCloseTo(68.38, 2);
@@ -381,11 +388,72 @@ describe("axis-aligned bounds calculation for ellipse", () => {
       radiusY: 20,
       scaleX: 2,
       scaleY: 1.5,
+      strokeStyle: "transparent",
     });
 
     expect(transformedBounds.x).toBeCloseTo(20, 2);
     expect(transformedBounds.y).toBeCloseTo(70, 2);
     expect(transformedBounds.width).toBeCloseTo(160, 2);
     expect(transformedBounds.height).toBeCloseTo(60, 2);
+  });
+
+  // Breaking suite for stroke-width-aware-bounds-plan.md Phase 2 -- none of
+  // this is implemented yet, so the "center"/"outside" cases below are
+  // expected to FAIL until Phase 2 lands. EllipseProps has no lineJoin or
+  // lineCap (see the plan's 4.1.1 table), so strokeWidth + strokeAlignment
+  // are the only inputs that matter here.
+  describe("stroke-width awareness (Phase 2 -- not yet implemented)", () => {
+    it("inflates each radius outward by strokeWidth/2 by default (center alignment)", () => {
+      const transformedBounds = getEllipseTransformedAABB({
+        cx: 100,
+        cy: 100,
+        radiusX: 40,
+        radiusY: 20,
+        strokeWidth: 10,
+      });
+
+      expect(transformedBounds).toEqual({
+        x: 55,
+        y: 75,
+        width: 90,
+        height: 50,
+      });
+    });
+
+    it("does not inflate either radius when strokeAlignment is 'inside'", () => {
+      const transformedBounds = getEllipseTransformedAABB({
+        cx: 100,
+        cy: 100,
+        radiusX: 40,
+        radiusY: 20,
+        strokeWidth: 10,
+        strokeAlignment: "inside",
+      });
+
+      expect(transformedBounds).toEqual({
+        x: 60,
+        y: 80,
+        width: 80,
+        height: 40,
+      });
+    });
+
+    it("inflates each radius outward by the full strokeWidth when strokeAlignment is 'outside'", () => {
+      const transformedBounds = getEllipseTransformedAABB({
+        cx: 100,
+        cy: 100,
+        radiusX: 40,
+        radiusY: 20,
+        strokeWidth: 10,
+        strokeAlignment: "outside",
+      });
+
+      expect(transformedBounds).toEqual({
+        x: 50,
+        y: 70,
+        width: 100,
+        height: 60,
+      });
+    });
   });
 });
