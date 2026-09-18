@@ -187,6 +187,7 @@ describe("bezier rendering", () => {
       0,
     );
 
+    // Open shape: strokeAlignment is silently ignored, same as "center".
     expect(mockContext.clip).not.toHaveBeenCalled();
     expect(mockContext.lineWidth).toBe(10);
 
@@ -217,11 +218,22 @@ describe("bezier rendering", () => {
       0,
     );
 
-    expect(mockContext.clip).toHaveBeenCalledWith();
-    expect(mockContext.lineWidth).toBe(20);
+    // Closed shape: points are actually offset inward (a true geometric
+    // offset, not the old double-width-plus-clip mechanism -- see
+    // stroke-alignment-geometric-offset-plan.md). Verified by hand: the
+    // seam at (100,120) has real interior angle ~45 degrees (chord vs.
+    // curve tangent), giving an offset distance of (strokeWidth/2)/
+    // sin(22.5deg) =~ 13.07 along its bisector.
+    expect(mockContext.clip).not.toHaveBeenCalled();
+    expect(mockContext.lineWidth).toBe(10);
+    expect(mockContext.moveTo).toHaveBeenCalledWith(112.07106781186548, 115);
   });
 
-  it("treats matching start and end points as a closed bezier shape", async () => {
+  // Two segments so the shared start/end point is a real (non-degenerate)
+  // corner -- a single-segment loop back to its own start via one control
+  // point is a cusp (interior angle 0 there), which is a genuinely
+  // degenerate case rather than a useful example of the fix.
+  it("treats matching start and end points as a closed bezier shape, offsetting the shared joint correctly", async () => {
     const { createDrawContext } = await import("../index");
     const drawContext = createDrawContext();
 
@@ -234,6 +246,10 @@ describe("bezier rendering", () => {
             },
             {
               control: { x: 140, y: 80 },
+              point: { x: 180, y: 120 },
+            },
+            {
+              control: { x: 140, y: 160 },
               point: { x: 100, y: 120 },
             },
           ],
@@ -249,9 +265,14 @@ describe("bezier rendering", () => {
       0,
     );
 
+    // The shared joint (100,120) has a real interior angle of exactly 90
+    // degrees (verified by hand), giving an offset distance of
+    // (strokeWidth/2)/sin(45deg) =~ 7.071 -- straight along -x here, since
+    // the two curve tangents there are symmetric about the x-axis.
     expect(mockContext.closePath).toHaveBeenCalled();
-    expect(mockContext.clip).toHaveBeenCalledWith("evenodd");
-    expect(mockContext.lineWidth).toBe(20);
+    expect(mockContext.clip).not.toHaveBeenCalled();
+    expect(mockContext.lineWidth).toBe(10);
+    expect(mockContext.moveTo).toHaveBeenCalledWith(92.92893218813452, 120);
   });
 
   it("animates start, control, and end points on bezier segments", async () => {
@@ -824,20 +845,34 @@ describe("axis-aligned bounds calculation for bezier", () => {
         });
       });
 
-      it("does not pad the bounding box when strokeAlignment is 'inside' -- the interior clip removes the outward half regardless of join style", () => {
+      // Since stroke-alignment-geometric-offset-plan.md landed, "inside" no
+      // longer means "exactly 0 growth regardless of join style" the way
+      // it did under the old clip-based mechanism (a literal clip against
+      // the original path is exact for ANY boundary shape). The new
+      // mechanism offsets only the curve's defining points (start, end,
+      // and an approximated control point -- see the plan's control-point
+      // heuristic), then pads THAT offset curve by the plain round-pen
+      // strokeWidth/2. For a genuinely CURVED segment (unlike polygon's
+      // straight edges, where the same two steps exactly cancel), the
+      // round-pen dilation of the offset curve's body doesn't exactly
+      // retrace the original curve -- so a small but real net growth
+      // remains even for round/bevel joins. Verified by hand: the offset
+      // curve is start=(8.09,5), control=(50,105), end=(91.91,5) (each
+      // point moved along its own joint's bisector), whose own tight
+      // bounds (peaking at y=55) padded by 5 more gives the values below.
+      it("no longer guarantees exactly 0 growth for strokeAlignment 'inside' -- a curve's round-pen dilation doesn't exactly retrace an endpoint-only offset", () => {
         const transformedBounds = getBezierTransformedAABB({
           ...archProps,
           closePath: true,
           strokeWidth: 10,
           strokeAlignment: "inside",
+          lineJoin: "round",
         });
 
-        expect(transformedBounds).toEqual({
-          x: 0,
-          y: 0,
-          width: 100,
-          height: 50,
-        });
+        expect(transformedBounds.x).toBeCloseTo(3.09, 1);
+        expect(transformedBounds.y).toBeCloseTo(0, 1);
+        expect(transformedBounds.width).toBeCloseTo(93.82, 1);
+        expect(transformedBounds.height).toBeCloseTo(60, 1);
       });
 
       // Same family and formula as polygon's equivalent test (see
@@ -847,9 +882,7 @@ describe("axis-aligned bounds calculation for bezier", () => {
       // chord and the curve's own tangent there is fully known. Verified by
       // hand: both joints have interior angle ~63.43 degrees by symmetry,
       // miterLength = (strokeWidth/2)/sin(31.72deg) =~ 9.512 -- well under
-      // the strokeWidth*miterLimit=50 cap. The end joint's tip (x =~
-      // 108.09) dominates the x-extent; both joints agree on the y-extent
-      // (~-5, same as the round-pen baseline -- no extra y overshoot here).
+      // the strokeWidth*miterLimit=50 cap.
       it("uses the exact per-joint miter tip for a mitered closed curve, not the plain round-pen padding", () => {
         const transformedBounds = getBezierTransformedAABB({
           ...archProps,
@@ -865,14 +898,19 @@ describe("axis-aligned bounds calculation for bezier", () => {
         expect(transformedBounds.height).toBeCloseTo(60, 1);
       });
 
-      // polygon/bezier's "outside" alignment strokes at strokeWidth*2
-      // (native) and clips away the inward half -- so a mitered "outside"
-      // joint's exact reach uses the DOUBLED width in the same formula,
-      // roughly twice the "center" case's reach for the same nominal
-      // strokeWidth and angle. Same gotcha as polygon: an implementation
-      // that reuses the "center" formula for every alignment would
+      // polygon/bezier's "outside" alignment now works by actually
+      // offsetting the points outward first (see
+      // stroke-alignment-geometric-offset-plan.md), then applying the same
+      // miter formula to THAT offset curve at the plain (never doubled)
+      // strokeWidth -- for polygon's straight edges the two offsets compose
+      // to exactly double the "center" reach; for bezier, the quadratic
+      // control-point heuristic (average of both endpoint displacements,
+      // since one shared control point can't preserve both tangents
+      // exactly) introduces a small extra deviation on top of that. Same
+      // underlying gotcha as polygon either way: an implementation that
+      // reused the "center" formula for every alignment would still
       // under-report "outside" here.
-      it("doubles the exact miter reach for a mitered 'outside' curve, since outside alignment strokes at 2x the nominal strokeWidth", () => {
+      it("reaches roughly double the 'center' miter distance for a mitered 'outside' curve, via composing two real offsets", () => {
         const centerBounds = getBezierTransformedAABB({
           ...archProps,
           closePath: true,
@@ -890,10 +928,10 @@ describe("axis-aligned bounds calculation for bezier", () => {
         });
 
         expect(outsideBounds.x).toBeLessThan(centerBounds.x);
-        expect(outsideBounds.x).toBeCloseTo(-16.18, 1);
+        expect(outsideBounds.x).toBeCloseTo(-16.78, 1);
         expect(outsideBounds.y).toBeCloseTo(-10, 1);
-        expect(outsideBounds.width).toBeCloseTo(132.36, 1);
-        expect(outsideBounds.height).toBeCloseTo(70, 1);
+        expect(outsideBounds.width).toBeCloseTo(133.55, 1);
+        expect(outsideBounds.height).toBeCloseTo(60, 1);
       });
     });
   });

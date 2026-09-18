@@ -2,6 +2,7 @@ import type { Point2D } from "../../types";
 import {
   computeTransformedMultipointAABB,
   DEFAULT_BLEND_MODE,
+  DEFAULT_FILL_STYLE,
   DEFAULT_STROKE_ALIGNMENT,
   DEFAULT_STROKE_LINE_CAP,
   DEFAULT_STROKE_LINE_JOIN,
@@ -12,10 +13,11 @@ import {
   EMPTY_BOUNDS,
   getLinearPartOfTransform,
   getMiterTipCandidates,
+  getOffsetVertex,
   getRowNorms,
+  hasVisibleFill,
   hasVisibleStroke,
   renderWithTransform,
-  resolveStrokeOutwardOffset,
   resolveTransformState,
   setContextGlobals,
   transformPoint,
@@ -53,6 +55,55 @@ const getComputedValuesFromProps = (
   return { shouldClosePath, bounds };
 };
 
+// When the caller supplies a polygon whose last point already duplicates
+// its first (rather than using closePath: true with a non-duplicated
+// list), that repeated point isn't a second distinct ring vertex -- it's
+// the same corner twice. Left alone, both copies would see a degenerate
+// zero-length "edge" back to themselves (previous/next collapsing onto the
+// vertex itself), breaking the angle math at exactly that corner. Mirrors
+// bezier.ts's identical naturallyClosed handling.
+const getDistinctRingPoints = (points: Point2D[]): Point2D[] => {
+  const first = points[0];
+  const last = points[points.length - 1];
+  const isDuplicateClosingPoint =
+    points.length > 2 && first.x === last.x && first.y === last.y;
+
+  return isDuplicateClosingPoint ? points.slice(0, -1) : points;
+};
+
+// A true parallel offset of the closed ring, moving every vertex along its
+// own local bisector by (strokeWidth/2)/sin(theta/2) (see
+// stroke-alignment-geometric-offset-plan.md). Positive strokeWidth/2 moves
+// outward, negative moves inward -- getOffsetVertex's own sign convention.
+// Exact for convex vertices; a reflex vertex offset outward can, in
+// principle, cross other edges of the offset shape (out of scope here --
+// see the plan's concave caveat). Returns an array the same length as the
+// input -- including a repeated closing point, if the input had one, so
+// tracePath still draws the same number of segments.
+const getOffsetPolygonPoints = (
+  points: Point2D[],
+  signedOffset: number,
+): Point2D[] => {
+  const ringPoints = getDistinctRingPoints(points);
+  const ringLength = ringPoints.length;
+
+  const offsetRingPoints = ringPoints.map((vertex, index) => {
+    const previousPoint = ringPoints[(index - 1 + ringLength) % ringLength];
+    const nextPoint = ringPoints[(index + 1) % ringLength];
+
+    return getOffsetVertex(
+      vertex,
+      { x: previousPoint.x - vertex.x, y: previousPoint.y - vertex.y },
+      { x: nextPoint.x - vertex.x, y: nextPoint.y - vertex.y },
+      signedOffset,
+    );
+  });
+
+  return ringPoints.length === points.length
+    ? offsetRingPoints
+    : [...offsetRingPoints, offsetRingPoints[0]];
+};
+
 const tracePath = (
   context: CanvasRenderingContext2D,
   points: Point2D[],
@@ -80,6 +131,7 @@ export const polygon = (
 ): void => {
   const {
     points,
+    fillStyle = DEFAULT_FILL_STYLE,
     strokeStyle = DEFAULT_STROKE_STYLE,
     strokeWidth = DEFAULT_STROKE_WIDTH,
     strokeAlignment = DEFAULT_STROKE_ALIGNMENT,
@@ -88,6 +140,7 @@ export const polygon = (
     lineCap = DEFAULT_STROKE_LINE_CAP,
     opacity = 1,
     blend = DEFAULT_BLEND_MODE,
+    closePath,
   } = props;
   const computedValues = getComputedValuesFromProps(props);
   const { shouldClosePath, bounds } = computedValues;
@@ -101,52 +154,32 @@ export const polygon = (
 
     setContextGlobals(context, { opacity, blend });
 
-    if (strokeStyle !== "transparent" && strokeWidth > 0) {
+    const canApplyStrokeAlignment =
+      hasVisibleStroke({ strokeStyle, strokeWidth }) && shouldClosePath;
+
+    const strokePoints =
+      canApplyStrokeAlignment && strokeAlignment === "inside"
+        ? getOffsetPolygonPoints(points, -strokeWidth / 2)
+        : canApplyStrokeAlignment && strokeAlignment === "outside"
+          ? getOffsetPolygonPoints(points, strokeWidth / 2)
+          : points;
+
+    context.beginPath();
+    tracePath(context, strokePoints, shouldClosePath);
+
+    if (hasVisibleFill({ fillStyle }) && closePath) {
+      context.fillStyle = fillStyle;
+      context.fill();
+    }
+
+    if (hasVisibleStroke({ strokeStyle, strokeWidth })) {
       context.strokeStyle = strokeStyle;
+      console.log(strokeStyle);
       context.lineWidth = strokeWidth;
       context.lineJoin = lineJoin;
       context.miterLimit = miterLimit;
       context.lineCap = lineCap;
-
-      const canApplyStrokeAlignment = shouldClosePath;
-
-      if (canApplyStrokeAlignment && strokeAlignment === "inside") {
-        context.lineWidth = strokeWidth * 2;
-
-        context.save();
-        context.beginPath();
-        tracePath(context, points, true);
-        context.clip();
-
-        context.beginPath();
-        tracePath(context, points, true);
-        context.stroke();
-        context.restore();
-      } else if (canApplyStrokeAlignment && strokeAlignment === "outside") {
-        context.lineWidth = strokeWidth * 2;
-
-        const clipPadding = strokeWidth * 2;
-
-        context.save();
-        context.beginPath();
-        context.rect(
-          bounds.x - clipPadding,
-          bounds.y - clipPadding,
-          bounds.width + clipPadding * 2,
-          bounds.height + clipPadding * 2,
-        );
-        tracePath(context, points, true);
-        context.clip("evenodd");
-
-        context.beginPath();
-        tracePath(context, points, true);
-        context.stroke();
-        context.restore();
-      } else {
-        context.beginPath();
-        tracePath(context, points, shouldClosePath);
-        context.stroke();
-      }
+      context.stroke();
     }
 
     context.restore();
@@ -184,11 +217,12 @@ export const polygonPathDescriptor = (
 // open polygon's two endpoints are free ends instead (handled by lineCap,
 // not lineJoin), so only its interior vertices get a join.
 const getMiterTipCandidatesForPolygon = (
-  points: Point2D[],
+  rawPoints: Point2D[],
   shouldClosePath: boolean,
   nativeStrokeWidth: number,
   miterLimit: number,
 ): Point2D[] => {
+  const points = shouldClosePath ? getDistinctRingPoints(rawPoints) : rawPoints;
   const pointCount = points.length;
   const firstJointIndex = shouldClosePath ? 0 : 1;
   const lastJointIndex = shouldClosePath ? pointCount - 1 : pointCount - 2;
@@ -235,9 +269,24 @@ export const getPolygonTransformedAABB = (props: PolygonProps): Bounds => {
   } = props;
   if (points.length <= 2) return EMPTY_BOUNDS;
 
-  const bounds = computeTransformedMultipointAABB(points, props);
+  if (!hasVisibleStroke({ strokeStyle, strokeWidth })) {
+    return computeTransformedMultipointAABB(points, props);
+  }
 
-  if (!hasVisibleStroke({ strokeStyle, strokeWidth })) return bounds;
+  const { shouldClosePath } = getComputedValuesFromProps(props);
+
+  // A true geometric offset of the points themselves (see
+  // stroke-alignment-geometric-offset-plan.md) -- once the path is
+  // pre-offset, "inside"/"outside" render (and therefore bound) EXACTLY
+  // like "center" does: a plain centered stroke of the real strokeWidth.
+  const effectivePoints =
+    shouldClosePath && strokeAlignment === "inside"
+      ? getOffsetPolygonPoints(points, -strokeWidth / 2)
+      : shouldClosePath && strokeAlignment === "outside"
+        ? getOffsetPolygonPoints(points, strokeWidth / 2)
+        : points;
+
+  const bounds = computeTransformedMultipointAABB(effectivePoints, props);
 
   // Round-pen baseline: dilating the fill geometry's boundary by an
   // isotropic pen is a Minkowski sum with a disk, which simply grows an
@@ -245,16 +294,18 @@ export const getPolygonTransformedAABB = (props: PolygonProps): Bounds => {
   // covers every edge's own contribution (and every round/bevel join's)
   // regardless of corner sharpness. Row-norm-scaled per axis for non-
   // uniform scale/rotation (Section 3 / Step 1); any probe point works
-  // since the linear part is constant across an affine transform.
-  const extent = resolveStrokeOutwardOffset(strokeWidth, strokeAlignment);
+  // since the linear part is constant across an affine transform. Always
+  // the plain strokeWidth/2 now -- strokeAlignment's effect is already
+  // baked into effectivePoints, not a separate extent calculation.
+  const halfStrokeWidth = strokeWidth / 2;
   const transformState = resolveTransformState(props, bounds);
   const { columnX, columnY } = getLinearPartOfTransform(
-    points[0],
+    effectivePoints[0],
     transformState,
   );
   const { rowNormX, rowNormY } = getRowNorms(columnX, columnY);
-  const padX = extent * rowNormX;
-  const padY = extent * rowNormY;
+  const padX = halfStrokeWidth * rowNormX;
+  const padY = halfStrokeWidth * rowNormY;
 
   const paddedBounds: Bounds = {
     x: bounds.x - padX,
@@ -263,24 +314,22 @@ export const getPolygonTransformedAABB = (props: PolygonProps): Bounds => {
     height: bounds.height + padY * 2,
   };
 
-  if (lineJoin !== "miter" || strokeAlignment === "inside") {
+  if (lineJoin !== "miter") {
     return paddedBounds;
   }
 
   // A miter spike is an ADDITIONAL protrusion beyond the round-pen
   // baseline, only at corners -- so union the exact tip candidates in
-  // rather than replacing the baseline with them. "outside" strokes at
-  // strokeWidth*2 before clipping away the inward half (Section 3), so
-  // that's the width canvas's own miter formula actually sees; "center"
-  // uses the native, undoubled width.
-  const { shouldClosePath } = getComputedValuesFromProps(props);
-  const nativeStrokeWidth =
-    strokeAlignment === "outside" ? strokeWidth * 2 : strokeWidth;
-
+  // rather than replacing the baseline with them. Computed on the SAME
+  // effectivePoints the render function actually strokes, at the real
+  // (never doubled, now that offsetting replaces the old double-width-
+  // plus-clip mechanism) strokeWidth -- including for "inside", which can
+  // still genuinely overshoot the offset (and even the original) boundary
+  // for a sufficiently acute corner, same as arc's "inside" case.
   const transformedTipCandidates = getMiterTipCandidatesForPolygon(
-    points,
+    effectivePoints,
     shouldClosePath,
-    nativeStrokeWidth,
+    strokeWidth,
     miterLimit,
   ).map((tip) => transformPoint(tip, transformState));
 

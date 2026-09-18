@@ -12,10 +12,10 @@ import {
   deriveBoundsFromPoints,
   getLinearPartOfTransform,
   getMiterTipCandidates,
+  getOffsetVertex,
   getRowNorms,
   hasVisibleStroke,
   renderWithTransform,
-  resolveStrokeOutwardOffset,
   resolveTransformState,
   setContextGlobals,
   transformPoint,
@@ -400,43 +400,32 @@ export const bezier = (
 
       const canApplyStrokeAlignment = shouldClosePath;
 
-      if (canApplyStrokeAlignment && strokeAlignment === "inside") {
-        context.lineWidth = strokeWidth * 2;
+      // A true geometric offset of the path itself (exact for the on-curve
+      // points, an approximation for control points), stroked normally at
+      // the real strokeWidth -- not the old double-width-plus-clip
+      // approach, which cut through the middle of each join's actual
+      // shape instead of along its true outward boundary, visibly
+      // clipping/flattening every join under "inside"/"outside" (see
+      // stroke-alignment-geometric-offset-plan.md).
+      const strokeGeometry =
+        canApplyStrokeAlignment && strokeAlignment === "inside"
+          ? getOffsetBezierGeometry(startPoint, curveSegments, -strokeWidth / 2)
+          : canApplyStrokeAlignment && strokeAlignment === "outside"
+            ? getOffsetBezierGeometry(
+                startPoint,
+                curveSegments,
+                strokeWidth / 2,
+              )
+            : { startPoint, curveSegments };
 
-        context.save();
-        context.beginPath();
-        tracePath(context, startPoint, curveSegments, true);
-        context.clip();
-
-        context.beginPath();
-        tracePath(context, startPoint, curveSegments, true);
-        context.stroke();
-        context.restore();
-      } else if (canApplyStrokeAlignment && strokeAlignment === "outside") {
-        context.lineWidth = strokeWidth * 2;
-
-        const clipPadding = strokeWidth * 2;
-
-        context.save();
-        context.beginPath();
-        context.rect(
-          bounds.x - clipPadding,
-          bounds.y - clipPadding,
-          bounds.width + clipPadding * 2,
-          bounds.height + clipPadding * 2,
-        );
-        tracePath(context, startPoint, curveSegments, true);
-        context.clip("evenodd");
-
-        context.beginPath();
-        tracePath(context, startPoint, curveSegments, true);
-        context.stroke();
-        context.restore();
-      } else {
-        context.beginPath();
-        tracePath(context, startPoint, curveSegments, shouldClosePath);
-        context.stroke();
-      }
+      context.beginPath();
+      tracePath(
+        context,
+        strokeGeometry.startPoint,
+        strokeGeometry.curveSegments,
+        shouldClosePath,
+      );
+      context.stroke();
     }
 
     context.restore();
@@ -576,6 +565,135 @@ const getMiterTipCandidatesForBezier = (
   return candidates;
 };
 
+// The offset on-curve position for every joint (index 0 = startPoint,
+// index i = curveSegments[i-1].point), mirroring
+// getMiterTipCandidatesForBezier's joint traversal exactly but computing a
+// single offset point per joint (via getOffsetVertex) instead of a miter
+// candidate pair. Returns an array the same length as [startPoint,
+// ...curveSegments.map(s => s.point)] -- including a repeated closing
+// point, if the curve had one, mapped to the same offset as the first
+// joint.
+const getOffsetJointPoints = (
+  startPoint: Point2D,
+  curveSegments: BezierCurveSegment[],
+  signedOffset: number,
+): Point2D[] => {
+  const segmentCount = curveSegments.length;
+  const fullJointPoints = [startPoint, ...curveSegments.map((s) => s.point)];
+  const lastSegmentEnd = curveSegments[segmentCount - 1].point;
+  const naturallyClosed =
+    lastSegmentEnd.x === startPoint.x && lastSegmentEnd.y === startPoint.y;
+
+  const ringPoints = naturallyClosed
+    ? fullJointPoints.slice(0, -1)
+    : fullJointPoints;
+  const ringLength = ringPoints.length;
+
+  const offsetRingPoints = ringPoints.map((joint, index) => {
+    const edgeAfterDirection =
+      index < segmentCount
+        ? getSegmentTangentAtStart(joint, curveSegments[index])
+        : {
+            x: ringPoints[0].x - joint.x,
+            y: ringPoints[0].y - joint.y,
+          };
+
+    const previousSegmentIndex = naturallyClosed
+      ? (index - 1 + ringLength) % ringLength
+      : index - 1;
+    const edgeBeforeDirection =
+      previousSegmentIndex >= 0
+        ? (() => {
+            const tangentAtEnd = getSegmentTangentAtEnd(
+              curveSegments[previousSegmentIndex],
+            );
+            return { x: -tangentAtEnd.x, y: -tangentAtEnd.y };
+          })()
+        : {
+            x: ringPoints[ringLength - 1].x - joint.x,
+            y: ringPoints[ringLength - 1].y - joint.y,
+          };
+
+    return getOffsetVertex(
+      joint,
+      edgeBeforeDirection,
+      edgeAfterDirection,
+      signedOffset,
+    );
+  });
+
+  return naturallyClosed
+    ? [...offsetRingPoints, offsetRingPoints[0]]
+    : offsetRingPoints;
+};
+
+// A true offset for the on-curve points (exact, same formula as polygon's
+// vertex offset); an APPROXIMATION for control points, since the real
+// perpendicular offset of a Bezier curve isn't itself a Bezier curve (see
+// stroke-alignment-geometric-offset-plan.md). Chosen to preserve exact
+// tangent direction at both curve endpoints wherever the control structure
+// allows it: a cubic segment's two independent control points each move by
+// the SAME displacement as their nearest on-curve point (tangent at an
+// endpoint depends only on that endpoint and its adjacent control point,
+// so shifting both by the same vector leaves the direction unchanged); a
+// quadratic segment's single shared control point can't satisfy both
+// endpoint tangents at once, so it moves by their AVERAGE displacement.
+const getOffsetBezierGeometry = (
+  startPoint: Point2D,
+  curveSegments: BezierCurveSegment[],
+  signedOffset: number,
+): { startPoint: Point2D; curveSegments: BezierCurveSegment[] } => {
+  const fullJointPoints = [startPoint, ...curveSegments.map((s) => s.point)];
+  const offsetJointPoints = getOffsetJointPoints(
+    startPoint,
+    curveSegments,
+    signedOffset,
+  );
+  const displacements = fullJointPoints.map((joint, index) => ({
+    x: offsetJointPoints[index].x - joint.x,
+    y: offsetJointPoints[index].y - joint.y,
+  }));
+
+  const offsetSegments: BezierCurveSegment[] = curveSegments.map(
+    (segment, index) => {
+      const startDisplacement = displacements[index];
+      const endDisplacement = displacements[index + 1];
+      const newPoint = offsetJointPoints[index + 1];
+
+      if (isCubicBezierSegment(segment)) {
+        return {
+          control: [
+            {
+              x: segment.control[0].x + startDisplacement.x,
+              y: segment.control[0].y + startDisplacement.y,
+            },
+            {
+              x: segment.control[1].x + endDisplacement.x,
+              y: segment.control[1].y + endDisplacement.y,
+            },
+          ] as [Point2D, Point2D],
+          point: newPoint,
+        };
+      }
+
+      const averageDisplacement = {
+        x: (startDisplacement.x + endDisplacement.x) / 2,
+        y: (startDisplacement.y + endDisplacement.y) / 2,
+      };
+
+      return {
+        control: {
+          x: segment.control.x + averageDisplacement.x,
+          y: segment.control.y + averageDisplacement.y,
+        },
+        point: newPoint,
+      };
+    },
+  );
+
+  return { startPoint: offsetJointPoints[0], curveSegments: offsetSegments };
+};
+
 export const getBezierTransformedAABB = (props: BezierProps): Bounds => {
   const computedValues = getComputedValuesFromProps(props);
 
@@ -590,18 +708,37 @@ export const getBezierTransformedAABB = (props: BezierProps): Bounds => {
   } = props;
 
   const { startPoint, curveSegments, shouldClosePath } = computedValues;
-  const tightBounds = getTightBezierBounds(startPoint, curveSegments);
+
+  // A true geometric offset of the points themselves (see
+  // stroke-alignment-geometric-offset-plan.md) -- once the path is
+  // pre-offset, "inside"/"outside" render (and therefore bound) EXACTLY
+  // like "center" does: a plain centered stroke of the real strokeWidth.
+  // Only meaningful when there's a real stroke to offset for in the first
+  // place, so skip it (and the padding/miter steps below) entirely when
+  // there isn't -- but still run the real transform either way.
+  const hasStroke = hasVisibleStroke({ strokeStyle, strokeWidth });
+  const effectiveGeometry =
+    hasStroke && shouldClosePath && strokeAlignment === "inside"
+      ? getOffsetBezierGeometry(startPoint, curveSegments, -strokeWidth / 2)
+      : hasStroke && shouldClosePath && strokeAlignment === "outside"
+        ? getOffsetBezierGeometry(startPoint, curveSegments, strokeWidth / 2)
+        : { startPoint, curveSegments };
+
+  const tightBounds = getTightBezierBounds(
+    effectiveGeometry.startPoint,
+    effectiveGeometry.curveSegments,
+  );
 
   const transformState = resolveTransformState(props, tightBounds);
   const { hasRotate, hasScale } = transformState;
 
   const transformedStartPoint =
     hasRotate || hasScale
-      ? transformPoint(startPoint, transformState)
-      : startPoint;
+      ? transformPoint(effectiveGeometry.startPoint, transformState)
+      : effectiveGeometry.startPoint;
   const transformedSegments: BezierCurveSegment[] =
     hasRotate || hasScale
-      ? curveSegments.map((segment) =>
+      ? effectiveGeometry.curveSegments.map((segment) =>
           isCubicBezierSegment(segment)
             ? {
                 control: [
@@ -615,16 +752,14 @@ export const getBezierTransformedAABB = (props: BezierProps): Bounds => {
                 point: transformPoint(segment.point, transformState),
               },
         )
-      : curveSegments;
+      : effectiveGeometry.curveSegments;
 
   const transformedTightBounds =
     hasRotate || hasScale
       ? getTightBezierBounds(transformedStartPoint, transformedSegments)
       : tightBounds;
 
-  if (!hasVisibleStroke({ strokeStyle, strokeWidth })) {
-    return transformedTightBounds;
-  }
+  if (!hasStroke) return transformedTightBounds;
 
   // Round-pen baseline: dilating the fill geometry's boundary by an
   // isotropic pen is a Minkowski sum with a disk, which simply grows an
@@ -633,15 +768,17 @@ export const getBezierTransformedAABB = (props: BezierProps): Bounds => {
   // segment's own contribution (and every round/bevel join's) regardless
   // of corner sharpness. Row-norm-scaled per axis for non-uniform
   // scale/rotation (Section 3 / Step 1); any probe point works since the
-  // linear part is constant across an affine transform.
-  const extent = resolveStrokeOutwardOffset(strokeWidth, strokeAlignment);
+  // linear part is constant across an affine transform. Always the plain
+  // strokeWidth/2 now -- strokeAlignment's effect is already baked into
+  // effectiveGeometry, not a separate extent calculation.
+  const halfStrokeWidth = strokeWidth / 2;
   const { columnX, columnY } = getLinearPartOfTransform(
-    startPoint,
+    effectiveGeometry.startPoint,
     transformState,
   );
   const { rowNormX, rowNormY } = getRowNorms(columnX, columnY);
-  const padX = extent * rowNormX;
-  const padY = extent * rowNormY;
+  const padX = halfStrokeWidth * rowNormX;
+  const padY = halfStrokeWidth * rowNormY;
 
   const paddedBounds: Bounds = {
     x: transformedTightBounds.x - padX,
@@ -650,24 +787,23 @@ export const getBezierTransformedAABB = (props: BezierProps): Bounds => {
     height: transformedTightBounds.height + padY * 2,
   };
 
-  if (lineJoin !== "miter" || strokeAlignment === "inside") {
+  if (lineJoin !== "miter") {
     return paddedBounds;
   }
 
   // A miter spike is an ADDITIONAL protrusion beyond the round-pen
   // baseline, only at joints -- so union the exact tip candidates in
-  // rather than replacing the baseline with them. "outside" strokes at
-  // strokeWidth*2 before clipping away the inward half (Section 3), so
-  // that's the width canvas's own miter formula actually sees; "center"
-  // uses the native, undoubled width.
-  const nativeStrokeWidth =
-    strokeAlignment === "outside" ? strokeWidth * 2 : strokeWidth;
-
+  // rather than replacing the baseline with them. Computed on the SAME
+  // effectiveGeometry the render function actually strokes, at the real
+  // (never doubled, now that offsetting replaces the old double-width-
+  // plus-clip mechanism) strokeWidth -- including for "inside", which can
+  // still genuinely overshoot the offset (and even the original) boundary
+  // for a sufficiently acute joint, same as arc's "inside" case.
   const transformedTipCandidates = getMiterTipCandidatesForBezier(
-    startPoint,
-    curveSegments,
+    effectiveGeometry.startPoint,
+    effectiveGeometry.curveSegments,
     shouldClosePath,
-    nativeStrokeWidth,
+    strokeWidth,
     miterLimit,
   ).map((tip) => transformPoint(tip, transformState));
 

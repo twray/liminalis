@@ -151,6 +151,7 @@ export interface LineProps
 
 export interface PolygonProps
   extends
+    FillStyles,
     StrokeStyles,
     JoinableStrokeStyles,
     CappableStrokeStyles,

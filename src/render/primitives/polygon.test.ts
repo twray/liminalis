@@ -85,7 +85,8 @@ describe("polygon rendering", () => {
       0,
     );
 
-    expect(mockContext.clip).not.toHaveBeenCalled();
+    // Open shape: strokeAlignment is silently ignored, same as "center".
+    expect(mockContext.moveTo).toHaveBeenCalledWith(100, 100);
     expect(mockContext.lineWidth).toBe(10);
 
     vi.clearAllMocks();
@@ -110,11 +111,22 @@ describe("polygon rendering", () => {
       0,
     );
 
-    expect(mockContext.clip).toHaveBeenCalledWith();
-    expect(mockContext.lineWidth).toBe(20);
+    // Closed shape: points are actually offset inward -- verified by hand
+    // (vertex (100,100)'s own corner angle is ~63.43 degrees, giving an
+    // offset distance of (strokeWidth/2)/sin(31.72deg) =~ 9.512 along its
+    // bisector). lineWidth stays the real strokeWidth; no clip involved.
+    expect(mockContext.moveTo).toHaveBeenCalledWith(108.09016994374947, 105);
+    expect(mockContext.lineWidth).toBe(10);
   });
 
-  it("uses doubled stroke width for inside and outside closed polygons", async () => {
+  // This is the actual fix from stroke-alignment-geometric-offset-plan.md:
+  // previously, "inside"/"outside" doubled the native lineWidth and relied
+  // on a clip to hide the wrong half, which cut through the middle of each
+  // join's real shape instead of along its true outward boundary --
+  // visibly clipping/flattening every join. Both alignments now stroke the
+  // real (undoubled) strokeWidth against a genuinely offset path instead,
+  // with no clip at all -- fixing every join style, not just miter.
+  it("no longer clips or doubles the stroke width for inside and outside closed polygons -- offsets the path instead", async () => {
     const { createDrawContext } = await import("../index");
     const drawContext = createDrawContext();
 
@@ -138,7 +150,8 @@ describe("polygon rendering", () => {
       0,
     );
 
-    expect(mockContext.lineWidth).toBe(16);
+    expect(mockContext.lineWidth).toBe(8);
+    expect(mockContext.clip).not.toHaveBeenCalled();
 
     vi.clearAllMocks();
 
@@ -162,7 +175,8 @@ describe("polygon rendering", () => {
       0,
     );
 
-    expect(mockContext.lineWidth).toBe(16);
+    expect(mockContext.lineWidth).toBe(8);
+    expect(mockContext.clip).not.toHaveBeenCalled();
   });
 
   it("keeps original stroke width for open polygons even when strokeAlignment is set", async () => {
@@ -192,7 +206,12 @@ describe("polygon rendering", () => {
     expect(mockContext.clip).not.toHaveBeenCalled();
   });
 
-  it("treats matching first and last points as a closed shape", async () => {
+  // The repeated closing point is the SAME ring vertex as the first one,
+  // not a second distinct corner -- both must resolve to the same,
+  // correctly-computed offset (not the degenerate "left unmoved" result a
+  // naive per-index offset would give that vertex, seeing a zero-length
+  // edge back to its own duplicate).
+  it("treats matching first and last points as a closed shape, offsetting both copies identically", async () => {
     const { createDrawContext } = await import("../index");
     const drawContext = createDrawContext();
 
@@ -217,7 +236,9 @@ describe("polygon rendering", () => {
     );
 
     expect(mockContext.closePath).toHaveBeenCalled();
-    expect(mockContext.clip).toHaveBeenCalledWith("evenodd");
+    expect(mockContext.clip).not.toHaveBeenCalled();
+    expect(mockContext.moveTo).toHaveBeenCalledWith(91.90983005625053, 95);
+    expect(mockContext.lineTo).toHaveBeenLastCalledWith(91.90983005625053, 95);
   });
 
   it("animates numeric point coordinates in the points array", async () => {
@@ -550,7 +571,17 @@ describe("axis-aligned bounds calculation for polygon", () => {
       });
     });
 
-    it("does not pad the bounding box when strokeAlignment is 'inside' -- the interior clip removes the outward half regardless of join style", () => {
+    // No clip involved any more (see stroke-alignment-geometric-offset-
+    // plan.md) -- this now holds for an exact algebraic reason instead: the
+    // vertex is offset inward by L = (strokeWidth/2)/sin(theta/2) along its
+    // bisector, then a "miter" join on that offset path (default lineJoin,
+    // not overridden here) extends back outward by the SAME L along the
+    // SAME bisector (identical theta and wedge direction, since a true
+    // parallel offset preserves edge directions exactly) -- landing
+    // exactly back on the original vertex, not past it. This is a
+    // genuinely tighter guarantee than arc's "inside" case, whose radius-
+    // shrink is only an approximation of a true offset and can overshoot.
+    it("returns exactly the original bounds when strokeAlignment is 'inside' -- the inward offset and the outward miter reach cancel exactly", () => {
       const transformedBounds = getPolygonTransformedAABB({
         points: triangle,
         closePath: true,
@@ -561,7 +592,21 @@ describe("axis-aligned bounds calculation for polygon", () => {
       expect(transformedBounds).toEqual({ x: 0, y: 0, width: 100, height: 80 });
     });
 
-    it("pads the bounding box outward by the full strokeWidth when strokeAlignment is 'outside'", () => {
+    // Since stroke-alignment-geometric-offset-plan.md landed, "outside" no
+    // longer means "pad the ORIGINAL points by strokeWidth" -- it means
+    // "actually offset the points outward by strokeWidth/2 first" (a true
+    // parallel offset, reaching (strokeWidth/2)/sin(theta/2) from each
+    // original vertex along its own bisector -- already MORE than a flat
+    // strokeWidth/2 for any real corner), THEN pad THAT offset shape by
+    // the plain round-pen strokeWidth/2. The two steps compound, so the
+    // real reach from the original points is now correctly larger than
+    // the simple old approximation -- which is the whole point of the fix:
+    // the old, smaller number under-estimated how far the (now correctly
+    // sharp-cornered) offset path actually reaches, which is exactly what
+    // caused the reported clipping bug. Verified independently by hand:
+    // offset points are (50,-9.43), (-9.02,85), (109.02,85); their own
+    // tight bbox padded by 5 more (strokeWidth/2) gives the values below.
+    it("pads the bounding box outward from the offset (not original) points when strokeAlignment is 'outside'", () => {
       const transformedBounds = getPolygonTransformedAABB({
         points: triangle,
         closePath: true,
@@ -570,12 +615,10 @@ describe("axis-aligned bounds calculation for polygon", () => {
         lineJoin: "round",
       });
 
-      expect(transformedBounds).toEqual({
-        x: -10,
-        y: -10,
-        width: 120,
-        height: 100,
-      });
+      expect(transformedBounds.x).toBeCloseTo(-14.02, 1);
+      expect(transformedBounds.y).toBeCloseTo(-14.43, 1);
+      expect(transformedBounds.width).toBeCloseTo(128.04, 1);
+      expect(transformedBounds.height).toBeCloseTo(104.43, 1);
     });
 
     // A closed polygon's vertices are real corners (see plan 4.1.1), so a
@@ -610,15 +653,20 @@ describe("axis-aligned bounds calculation for polygon", () => {
       expect(transformedBounds.height).toBeCloseTo(94.43, 1);
     });
 
-    // polygon/bezier's "outside" alignment strokes at strokeWidth*2 (native)
-    // and clips away the inward half -- so a mitered "outside" corner's
-    // exact reach uses the DOUBLED width in the same formula:
-    // ((strokeWidth*2)/2)/sin(theta/2) = strokeWidth/sin(theta/2), twice
-    // the "center" case's reach for the same nominal strokeWidth and angle.
-    // This is the plan's most important gotcha for this family -- an
-    // implementation that reuses the "center" formula for every alignment
-    // would under-report here.
-    it("doubles the exact miter reach for a mitered 'outside' polygon, since outside alignment strokes at 2x the nominal strokeWidth", () => {
+    // No more doubled nativeStrokeWidth (see stroke-alignment-geometric-
+    // offset-plan.md) -- the same final numbers now fall out of composing
+    // two real, undoubled offsets instead: the vertex first moves outward
+    // by L = (strokeWidth/2)/sin(theta/2) (the offset step), then a miter
+    // join on THAT offset path extends outward by the same L again (same
+    // theta and wedge direction as the original vertex, since a true
+    // parallel offset preserves edge directions exactly) -- two
+    // displacements of L in the same direction compose to exactly 2L, the
+    // same total reach the old "doubled nativeStrokeWidth" formula gave.
+    // Still the plan's most important gotcha for this family, just via a
+    // different (now correct-by-construction, not a special case)
+    // mechanism -- an implementation that reused the "center" formula for
+    // every alignment would still under-report "outside" here.
+    it("reaches twice the 'center' miter distance for a mitered 'outside' polygon, via composing two real offsets", () => {
       const centerBounds = getPolygonTransformedAABB({
         points: triangle,
         closePath: true,

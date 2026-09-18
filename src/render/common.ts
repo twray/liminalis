@@ -1,5 +1,6 @@
 import type {
   Dimensions2D,
+  FillStyles,
   IAnimatableLike,
   PartialDrawStyles,
   PartialIsometricStyles,
@@ -155,11 +156,6 @@ export const normalize = (v: Point2D): Point2D => {
   return length === 0 ? { x: 0, y: 0 } : { x: v.x / length, y: v.y / length };
 };
 
-// Angle between two direction vectors in [0, PI] -- atan2(cross, dot) is
-// more numerically stable near 0/PI than acos(dot/(|u||v|)), and (unlike
-// outward-normal-style perpendicular sums) is scale-invariant on its own:
-// cross and dot both scale by |u|*|v|, so their ratio -- and therefore this
-// angle -- is unaffected by the input vectors' magnitudes.
 export const angleBetweenVectors = (u: Point2D, v: Point2D): number => {
   const cross = u.x * v.y - u.y * v.x;
   const dot = u.x * v.x + u.y * v.y;
@@ -168,6 +164,9 @@ export const angleBetweenVectors = (u: Point2D, v: Point2D): number => {
 
 export const hasVisibleStroke = ({ strokeStyle, strokeWidth }: StrokeStyles) =>
   strokeStyle !== "transparent" && strokeWidth && strokeWidth > 0;
+
+export const hasVisibleFill = ({ fillStyle }: FillStyles) =>
+  fillStyle !== "transparent";
 
 export const resolveStrokeOutwardOffset = (
   strokeWidth: number,
@@ -183,22 +182,6 @@ export const resolveStrokeOutwardOffset = (
   }
 };
 
-// Exact local-space miter tip candidates for one vertex/joint, given the two
-// directions its adjacent edges extend AWAY FROM the shared point (e.g. for
-// an edge arriving from some other point P, that's P - vertex, NOT
-// vertex - P -- the latter measures the path's turning angle at the point,
-// not its own interior angle, and the two differ by theta vs. 180-theta;
-// verified against an independent offset-line-intersection derivation for
-// a right-angle corner, a sharp polygon apex, and an arc corner). With both
-// edges correctly pointing away from the point, the tip lies along the
-// negated sum of their unit vectors -- away from the small wedge the two
-// edges form, no separate "which side is outward" step needed for a convex
-// joint. Shared by polygon and bezier, whose winding/curvature direction
-// isn't known here, so both +/- directions are returned as candidates
-// rather than assuming convexity: always safe for a bounding box, since one
-// candidate is the real tip and the other lands inside or near the shape,
-// never shrinking the eventual union. (arc computes its own single tip
-// directly instead, since its two corners are always known to be convex.)
 export const getMiterTipCandidates = (
   vertex: Point2D,
   edgeDirection1: Point2D,
@@ -233,6 +216,35 @@ export const getMiterTipCandidates = (
       y: vertex.y + miterLength * wedgeDirection.y,
     },
   ];
+};
+
+export const getOffsetVertex = (
+  vertex: Point2D,
+  edgeDirection1: Point2D,
+  edgeDirection2: Point2D,
+  signedOffset: number,
+): Point2D => {
+  const unitEdge1 = normalize(edgeDirection1);
+  const unitEdge2 = normalize(edgeDirection2);
+  const theta = angleBetweenVectors(unitEdge1, unitEdge2);
+
+  if (theta <= 0) {
+    // Degenerate corner reversing back on itself -- no well-defined
+    // bisector; leave the vertex where it is rather than divide by ~0.
+    return vertex;
+  }
+
+  const offsetLength = signedOffset / Math.sin(theta / 2);
+
+  const wedgeDirection = normalize({
+    x: unitEdge1.x + unitEdge2.x,
+    y: unitEdge1.y + unitEdge2.y,
+  });
+
+  return {
+    x: vertex.x - offsetLength * wedgeDirection.x,
+    y: vertex.y - offsetLength * wedgeDirection.y,
+  };
 };
 
 export const computeTransformedRectangularAABB = (
