@@ -174,7 +174,6 @@ export const polygon = (
 
     if (hasVisibleStroke({ strokeStyle, strokeWidth })) {
       context.strokeStyle = strokeStyle;
-      console.log(strokeStyle);
       context.lineWidth = strokeWidth;
       context.lineJoin = lineJoin;
       context.miterLimit = miterLimit;
