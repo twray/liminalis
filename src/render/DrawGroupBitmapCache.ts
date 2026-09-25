@@ -20,8 +20,7 @@ interface RenderGroupParams {
 
 type CachedSurface = OffscreenCanvas | HTMLCanvasElement;
 type RenderSurfaceContext =
-  | CanvasRenderingContext2D
-  | OffscreenCanvasRenderingContext2D;
+  CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
 
 interface CachedGroupEntry {
   signature: string;
@@ -155,6 +154,14 @@ class DrawGroupBitmapCache {
 
     resizeSurfaceIfNeeded(surface, backingWidth, backingHeight);
 
+    // "2d" always yields a 2D context on either constituent of CachedSurface
+    // -- TypeScript can't line up OffscreenCanvas's and HTMLCanvasElement's
+    // differently-shaped getContext overload lists when called on their
+    // union, so it falls back to each one's most general overload
+    // (HTMLCanvasElement's being `RenderingContext | null`, which drags in
+    // ImageBitmapRenderingContext/WebGL types that were never actually
+    // possible here). Asserting the known-correct return type sidesteps
+    // that overload-resolution limitation rather than fighting it.
     const surfaceContext = surface.getContext(
       "2d",
     ) as RenderSurfaceContext | null;
@@ -210,8 +217,7 @@ class DrawGroupBitmapCache {
     const drawImageY = useLocalCoordinateContext ? 0 : boundsY;
 
     const targetCanvas = (targetContext as { canvas?: unknown }).canvas as
-      | { getContext?: unknown }
-      | undefined;
+      { getContext?: unknown } | undefined;
     const canUseBitmapCaching =
       !!targetCanvas && typeof targetCanvas.getContext === "function";
 
@@ -238,6 +244,8 @@ class DrawGroupBitmapCache {
     const isStableRepeat = cachedEntry?.signature === signature;
 
     if (isStableRepeat && cachedEntry?.surface) {
+      // Real cache hit: skip re-rendering entirely, just blit the existing
+      // surface.
       targetContext.drawImage(
         cachedEntry.surface,
         drawImageX,
@@ -248,6 +256,12 @@ class DrawGroupBitmapCache {
       return;
     }
 
+    // Only build a surface now if either (a) this signature has genuinely
+    // repeated once already -- stability proven, promote to a cached
+    // surface -- or (b) a masking scope needs one unconditionally. A
+    // brand-new or just-changed signature with no masking requirement takes
+    // the cheap direct-render path instead, and records {surface: null} so
+    // the NEXT frame can detect a repeat and promote.
     if (!isStableRepeat && !needsImmediateSurfaceForMasking) {
       draw(targetContext);
       this.#cachedGroups.set(groupId, { signature, surface: null });
