@@ -11,17 +11,7 @@ interface RenderGroupParams {
   signature: string;
   targetContext: CanvasRenderingContext2D;
   bounds: Bounds;
-  // Whether descendants already author coordinates relative to this group's
-  // own (0,0) (layer()/place()/text-with-local-context) or relative to the
-  // space the group itself was declared in (group(), shape-as-frame clips).
-  // Determines whether the local surface needs an internal offset translate
-  // to line up authored coordinates with its own small pixel grid, and where
-  // the finished surface gets blitted back onto the parent.
   useLocalCoordinateContext: boolean;
-  // Only consulted for its optional postProcessLocalSurface hook (e.g.
-  // text()'s destination-in glyph masking) — everything else about this
-  // group's own transform has already been applied to targetContext by the
-  // caller before renderGroup is invoked.
   scope: ClipScope | null;
   draw: (
     context: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
@@ -35,7 +25,7 @@ type RenderSurfaceContext =
 
 interface CachedGroupEntry {
   signature: string;
-  surface: CachedSurface;
+  surface: CachedSurface | null;
 }
 
 const getEnvironmentSignature = ({
@@ -116,6 +106,82 @@ class DrawGroupBitmapCache {
     this.#cachedGroups.clear();
   }
 
+  // Builds (or resizes/reuses) the group's offscreen surface, renders into
+  // it, runs any post-process step, caches the result, and blits it onto
+  // targetContext. This is the one place that surface-lifecycle work
+  // happens, shared by both call sites in renderGroup below (a
+  // stability-confirmed promotion, and a masking scope's every-frame
+  // requirement) rather than two near-duplicate copies.
+  #buildRenderAndCacheSurface({
+    groupId,
+    signature,
+    targetContext,
+    draw,
+    scope,
+    bounds,
+    backingWidth,
+    backingHeight,
+    pixelRatio,
+    useLocalCoordinateContext,
+    drawImageX,
+    drawImageY,
+    width,
+    height,
+  }: {
+    groupId: string;
+    signature: string;
+    targetContext: CanvasRenderingContext2D;
+    draw: RenderGroupParams["draw"];
+    scope: ClipScope | null;
+    bounds: Bounds;
+    backingWidth: number;
+    backingHeight: number;
+    pixelRatio: number;
+    useLocalCoordinateContext: boolean;
+    drawImageX: number;
+    drawImageY: number;
+    width: number;
+    height: number;
+  }): void {
+    const { x: boundsX, y: boundsY } = bounds;
+    const existingSurface = this.#cachedGroups.get(groupId)?.surface;
+    const surface =
+      existingSurface ?? createSurface(backingWidth, backingHeight);
+
+    if (!surface) {
+      draw(targetContext);
+      return;
+    }
+
+    resizeSurfaceIfNeeded(surface, backingWidth, backingHeight);
+
+    const surfaceContext = surface.getContext(
+      "2d",
+    ) as RenderSurfaceContext | null;
+
+    if (!surfaceContext) {
+      draw(targetContext);
+      return;
+    }
+
+    clearSurface(surfaceContext, backingWidth, backingHeight);
+
+    if (typeof surfaceContext.setTransform === "function") {
+      surfaceContext.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+    }
+
+    if (!useLocalCoordinateContext) {
+      surfaceContext.translate?.(-boundsX, -boundsY);
+    }
+
+    draw(surfaceContext);
+    scope?.postProcessLocalSurface?.(surfaceContext, bounds);
+
+    this.#cachedGroups.set(groupId, { signature, surface });
+
+    targetContext.drawImage(surface, drawImageX, drawImageY, width, height);
+  }
+
   renderGroup({
     groupId,
     signature,
@@ -153,9 +219,15 @@ class DrawGroupBitmapCache {
     // destination-in glyph masking) needs an isolated local surface to
     // operate on regardless of whether the generic bitmap-caching duck-type
     // check passes — masking the shared target context directly would erase
-    // whatever unrelated content already sits on it.
+    // whatever unrelated content already sits on it. Unlike the generic
+    // caching case below, this is a CORRECTNESS requirement, not a
+    // performance one, so it can't be deferred behind the stability gate --
+    // it needs a real, isolated surface on every single frame, regardless
+    // of whether this group's signature has ever repeated.
+    const needsImmediateSurfaceForMasking = !!scope?.postProcessLocalSurface;
+
     const requiresLocalSurface =
-      canUseBitmapCaching || !!scope?.postProcessLocalSurface;
+      canUseBitmapCaching || needsImmediateSurfaceForMasking;
 
     if (!requiresLocalSurface) {
       draw(targetContext);
@@ -163,8 +235,9 @@ class DrawGroupBitmapCache {
     }
 
     const cachedEntry = this.#cachedGroups.get(groupId);
+    const isStableRepeat = cachedEntry?.signature === signature;
 
-    if (cachedEntry && cachedEntry.signature === signature) {
+    if (isStableRepeat && cachedEntry?.surface) {
       targetContext.drawImage(
         cachedEntry.surface,
         drawImageX,
@@ -175,43 +248,28 @@ class DrawGroupBitmapCache {
       return;
     }
 
-    const surface =
-      cachedEntry?.surface ?? createSurface(backingWidth, backingHeight);
-
-    if (!surface) {
+    if (!isStableRepeat && !needsImmediateSurfaceForMasking) {
       draw(targetContext);
+      this.#cachedGroups.set(groupId, { signature, surface: null });
       return;
     }
 
-    resizeSurfaceIfNeeded(surface, backingWidth, backingHeight);
-
-    const surfaceContext = surface.getContext("2d");
-
-    if (!surfaceContext) {
-      draw(targetContext);
-      return;
-    }
-
-    clearSurface(surfaceContext, backingWidth, backingHeight);
-
-    if (typeof surfaceContext.setTransform === "function") {
-      surfaceContext.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
-    }
-
-    if (!useLocalCoordinateContext) {
-      surfaceContext.translate?.(-boundsX, -boundsY);
-    }
-
-    draw(surfaceContext);
-
-    scope?.postProcessLocalSurface?.(surfaceContext, bounds);
-
-    this.#cachedGroups.set(groupId, {
+    this.#buildRenderAndCacheSurface({
+      groupId,
       signature,
-      surface,
+      targetContext,
+      draw,
+      scope,
+      bounds,
+      backingWidth,
+      backingHeight,
+      pixelRatio,
+      useLocalCoordinateContext,
+      drawImageX,
+      drawImageY,
+      width,
+      height,
     });
-
-    targetContext.drawImage(surface, drawImageX, drawImageY, width, height);
   }
 }
 

@@ -143,6 +143,10 @@ describe("bitmap caching skips unchanged nested content", () => {
 
     roundRectWidths = [];
 
+    // spec/bitmap-cache-strategy-plan.md: a signature's first repeat
+    // promotes the group to a real cached surface, but that promotion
+    // frame still has to render once to populate it -- the actual
+    // skip-the-redraw payoff lands one frame later than it used to.
     drawContext.executeDrawCallback(
       (d) => renderCallback(d, 16),
       context,
@@ -154,17 +158,34 @@ describe("bitmap caching skips unchanged nested content", () => {
     const countFrame2Static = roundRectWidths.filter(
       (w) => w === STATIC_RECT_WIDTH,
     ).length;
-    const countFrame2Animating = roundRectWidths.filter(
+
+    expect(countFrame2Static).toBe(STATIC_RECT_COUNT);
+
+    roundRectWidths = [];
+
+    drawContext.executeDrawCallback(
+      (d) => renderCallback(d, 32),
+      context,
+      800,
+      600,
+      32,
+    );
+
+    const countFrame3Static = roundRectWidths.filter(
+      (w) => w === STATIC_RECT_WIDTH,
+    ).length;
+    const countFrame3Animating = roundRectWidths.filter(
       (w) => w === ANIMATING_RECT_WIDTH,
     ).length;
 
-    // The key assertion: the static group's cache hit, so none of its 20
-    // rects re-issued their draw calls on the second frame...
-    expect(countFrame2Static).toBe(0);
+    // The key assertion: the static group's signature has now repeated
+    // twice, so it's a real cache hit -- none of its 20 rects re-issued
+    // their draw calls...
+    expect(countFrame3Static).toBe(0);
     // ...even though the frame as a whole is not static (root's own cache
     // still misses because of the animating sibling), so this is genuinely
     // proving per-group scoping, not "the whole canvas never changes".
-    expect(countFrame2Animating).toBe(1);
+    expect(countFrame3Animating).toBe(1);
   });
 
   it("redraws a group's content again once something inside it actually changes", () => {
@@ -198,13 +219,26 @@ describe("bitmap caching skips unchanged nested content", () => {
     expect(roundRectWidths.filter((w) => w === RECT_WIDTH)).toHaveLength(1);
     roundRectWidths = [];
 
-    // Same call, same props — should cache-hit and skip.
+    // Same call, same props, first repeat — spec/bitmap-cache-strategy-plan.md:
+    // this promotes the group to a real cached surface, which still has to
+    // render once to build it.
     drawContext.executeDrawCallback(
       (d) => renderCallback(d, 0),
       context,
       800,
       600,
       16,
+    );
+    expect(roundRectWidths.filter((w) => w === RECT_WIDTH)).toHaveLength(1);
+    roundRectWidths = [];
+
+    // Same call, same props, second repeat — now a real cache hit, skip.
+    drawContext.executeDrawCallback(
+      (d) => renderCallback(d, 0),
+      context,
+      800,
+      600,
+      32,
     );
     expect(roundRectWidths.filter((w) => w === RECT_WIDTH)).toHaveLength(0);
 
@@ -215,7 +249,7 @@ describe("bitmap caching skips unchanged nested content", () => {
       context,
       800,
       600,
-      32,
+      48,
     );
     expect(roundRectWidths.filter((w) => w === RECT_WIDTH)).toHaveLength(1);
   });

@@ -2355,6 +2355,12 @@ describe("framed clipping for rect", () => {
       }, {});
     };
 
+    // spec/bitmap-cache-strategy-plan.md: a signature's first appearance is
+    // a direct render with no surface at all -- promotion to a real cached
+    // surface only happens once the signature has repeated once. So this
+    // now needs three identical frames to reach a genuine cache hit: frame 1
+    // (unproven, direct), frame 2 (repeat -- promote, builds + blits), frame
+    // 3 (repeat again -- real hit, blit only).
     drawContext.executeDrawCallback(
       renderCallback,
       cacheableContext,
@@ -2368,6 +2374,13 @@ describe("framed clipping for rect", () => {
       800,
       600,
       16,
+    );
+    drawContext.executeDrawCallback(
+      renderCallback,
+      cacheableContext,
+      800,
+      600,
+      32,
     );
 
     const firstSurface = MockOffscreenCanvas.instances[0];
@@ -2510,6 +2523,19 @@ describe("framed clipping for rect", () => {
         return count + rectCalls;
       }, 0);
 
+    // spec/bitmap-cache-strategy-plan.md's stability gate applies to EVERY
+    // group, root included -- a signature's first appearance is a direct
+    // render with no surface, so two identical-time calls are needed before
+    // the inner layer (or whichever ancestor ends up holding the rotate(45)
+    // call once it's applied) actually gets a real cached surface to
+    // inspect via MockOffscreenCanvas.instances.
+    drawContext.executeDrawCallback(
+      renderCallback,
+      cacheableContext,
+      800,
+      600,
+      0,
+    );
     drawContext.executeDrawCallback(
       renderCallback,
       cacheableContext,
@@ -2523,6 +2549,17 @@ describe("framed clipping for rect", () => {
     const firstFrameInnerRects = countInnerShowBoundsRects();
     expect(firstFrameInnerRects).toBeGreaterThan(0);
 
+    // Two more identical-time calls at the settled rotate(45) value, for the
+    // same reason -- the ancestor holding this rotate call needs its own
+    // signature to repeat once before it's promoted to a real surface this
+    // test can inspect.
+    drawContext.executeDrawCallback(
+      renderCallback,
+      cacheableContext,
+      800,
+      600,
+      1000,
+    );
     drawContext.executeDrawCallback(
       renderCallback,
       cacheableContext,
@@ -2685,6 +2722,17 @@ describe("framed clipping for rect", () => {
         return count + rotates;
       }, 0);
 
+    // spec/bitmap-cache-strategy-plan.md's stability gate applies to EVERY
+    // group, root included -- see the equivalent comment in the previous
+    // test for why two identical-time calls are needed at each checkpoint
+    // before there's a real cached surface for these counters to inspect.
+    drawContext.executeDrawCallback(
+      renderCallback,
+      cacheableContext,
+      800,
+      600,
+      0,
+    );
     drawContext.executeDrawCallback(
       renderCallback,
       cacheableContext,
@@ -2696,6 +2744,13 @@ describe("framed clipping for rect", () => {
     expect(firstFrameShowBoundsRects).toBeGreaterThan(0);
     expect(countRotationsAt45()).toBe(0);
 
+    drawContext.executeDrawCallback(
+      renderCallback,
+      cacheableContext,
+      800,
+      600,
+      1000,
+    );
     drawContext.executeDrawCallback(
       renderCallback,
       cacheableContext,
