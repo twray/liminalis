@@ -1,4 +1,8 @@
-export interface AppSettings {
+export interface RenderOptimisations {
+  enableBitmapBasedCaching: boolean;
+}
+
+export interface AppSettings extends RenderOptimisations {
   computerKeyboardDebugEnabled: boolean;
   showFps?: boolean;
   midiEnabled?: boolean;

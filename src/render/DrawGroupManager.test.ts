@@ -1,8 +1,25 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { EMPTY_BOUNDS } from "./common";
 import DrawGroupManager from "./DrawGroupManager";
-import type { Bounds, ClipScope } from "./types";
+import type { Bounds, ClipScope, DrawAPI } from "./types";
+
+// Hoisted, so it applies to this whole file. Harmless for the
+// DrawGroupManager suite, which never touches ImageAssetCache -- it exists
+// for the signature-memoisation suite at the bottom, where an image's
+// readiness is the thing that has to invalidate a signature whose props
+// never changed.
+vi.mock("../core/ImageAssetCache", () => ({
+  imageAssetCache: {
+    getReadyAsset: () => readyAsset,
+  },
+}));
+
+// `source` is what the image primitive hands to drawImage, which is how a
+// real image draw is told apart from a cache blit.
+const IMAGE_SOURCE = { marker: "image-source" };
+let readyAsset: { source: unknown; width: number; height: number } | null =
+  null;
 
 const createPassthroughCache = () => ({
   renderGroup: vi.fn(
@@ -37,7 +54,50 @@ describe("DrawGroupManager", () => {
         y: 2,
       });
 
-      expect(signature).toBe('rect|props:{"x":1.000000,"y":2.000000}');
+      expect(signature).toBe('rect|props:{"x":1,"y":2}');
+    });
+
+    // What a signature must actually guarantee is an equality RELATION --
+    // equal state produces equal strings, different state produces
+    // different ones. The literal format is incidental (it was
+    // "1.000000" before numbers were serialised more cheaply) and nothing
+    // parses or persists it, so these pin the contract that matters.
+    it("is independent of key order", () => {
+      expect(
+        DrawGroupManager.createPrimitiveSignature("rect", { x: 1, y: 2 }),
+      ).toBe(DrawGroupManager.createPrimitiveSignature("rect", { y: 2, x: 1 }));
+    });
+
+    it("collapses float noise below six decimal places", () => {
+      // Otherwise arithmetic that lands a hair away from the same value
+      // would churn every cache keyed on this signature.
+      expect(
+        DrawGroupManager.createPrimitiveSignature("rect", { x: 0.1 + 0.2 }),
+      ).toBe(DrawGroupManager.createPrimitiveSignature("rect", { x: 0.3 }));
+    });
+
+    it("still distinguishes values that differ within six decimal places", () => {
+      expect(
+        DrawGroupManager.createPrimitiveSignature("rect", { x: 1.000001 }),
+      ).not.toBe(
+        DrawGroupManager.createPrimitiveSignature("rect", { x: 1.000002 }),
+      );
+    });
+
+    it("distinguishes a number from the string of that number", () => {
+      expect(
+        DrawGroupManager.createPrimitiveSignature("rect", { x: 1 }),
+      ).not.toBe(DrawGroupManager.createPrimitiveSignature("rect", { x: "1" }));
+    });
+
+    it("escapes strings that would otherwise forge the serialized form", () => {
+      // Hand-quoting is only safe for strings with nothing to escape; a
+      // value containing a quote must not be able to imitate structure.
+      expect(
+        DrawGroupManager.createPrimitiveSignature("rect", { a: 'x","b":"y' }),
+      ).not.toBe(
+        DrawGroupManager.createPrimitiveSignature("rect", { a: "x", b: "y" }),
+      );
     });
 
     it("appends an extra signature segment when provided", () => {
@@ -508,5 +568,341 @@ describe("DrawGroupManager", () => {
 
       expect(capturedRender).toHaveBeenCalledTimes(1);
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Signature memoisation reuses the previous frame's signature string when a
+// primitive's inputs are unchanged, instead of re-running stableSerialize.
+// Every cache in the renderer keys off the strings this manager builds, so a
+// signature that is reused when it SHOULDN'T be does not merely cost
+// performance -- it shows stale pixels. These tests pin the invalidation
+// paths rather than the optimisation, because that is the direction that
+// fails silently.
+// ---------------------------------------------------------------------------
+
+let paintedWidths: number[] = [];
+
+// Fuller than createMockContext above, which only needs save/restore for
+// stack mechanics. This one has to satisfy the real primitive render path.
+const createCanvasMockContext = (): CanvasRenderingContext2D => {
+  const context = {
+    save: vi.fn(),
+    restore: vi.fn(),
+    translate: vi.fn(),
+    rotate: vi.fn(),
+    scale: vi.fn(),
+    setTransform: vi.fn(),
+    clearRect: vi.fn(),
+    beginPath: vi.fn(),
+    closePath: vi.fn(),
+    clip: vi.fn(),
+    rect: vi.fn(),
+    arc: vi.fn(),
+    ellipse: vi.fn(),
+    moveTo: vi.fn(),
+    lineTo: vi.fn(),
+    quadraticCurveTo: vi.fn(),
+    bezierCurveTo: vi.fn(),
+    fill: vi.fn(),
+    stroke: vi.fn(),
+    fillRect: vi.fn(),
+    fillText: vi.fn(),
+    strokeText: vi.fn(),
+    drawImage: vi.fn(),
+    roundRect: vi.fn((_x: number, _y: number, width: number) => {
+      paintedWidths.push(width);
+    }),
+    measureText: vi.fn(
+      (value: string) =>
+        ({
+          width: value.length * 10,
+          actualBoundingBoxAscent: 10,
+          actualBoundingBoxDescent: 2,
+        }) as TextMetrics,
+    ),
+    globalAlpha: 1,
+    globalCompositeOperation: "source-over",
+    fillStyle: "",
+    strokeStyle: "",
+    lineWidth: 1,
+  } as unknown as CanvasRenderingContext2D;
+
+  (context as unknown as { canvas: unknown }).canvas = {
+    width: 800,
+    height: 600,
+    getContext: vi.fn(),
+  };
+
+  return context;
+};
+
+class SignatureMockOffscreenCanvas {
+  static instances: SignatureMockOffscreenCanvas[] = [];
+
+  width: number;
+  height: number;
+  context: CanvasRenderingContext2D;
+
+  constructor(width: number, height: number) {
+    SignatureMockOffscreenCanvas.instances.push(this);
+    this.width = width;
+    this.height = height;
+    this.context = createCanvasMockContext();
+    (this.context as unknown as { canvas: unknown }).canvas = this;
+  }
+
+  getContext(kind: string) {
+    return kind === "2d" ? this.context : null;
+  }
+}
+
+const GROUPED_WIDTH = 41;
+
+describe("signature memoisation", () => {
+  const previousOffscreenCanvas = (globalThis as any).OffscreenCanvas;
+
+  // Scoped to this describe rather than the file, so the DrawGroupManager
+  // suite above keeps whatever global it started with.
+  beforeEach(() => {
+    paintedWidths = [];
+    readyAsset = null;
+    SignatureMockOffscreenCanvas.instances = [];
+    (globalThis as any).OffscreenCanvas = SignatureMockOffscreenCanvas;
+  });
+
+  afterEach(() => {
+    (globalThis as any).OffscreenCanvas = previousOffscreenCanvas;
+  });
+
+  const groupedScene =
+    (width: number) =>
+    (d: DrawAPI): void => {
+      d.group(
+        () => {
+          d.rect({
+            x: 10,
+            y: 10,
+            width,
+            height: 20,
+            fillStyle: "#333",
+            strokeStyle: "transparent",
+          });
+        },
+        { x: 0, y: 0, width: 300, height: 200 },
+      );
+    };
+
+  // A memo hit produces the IDENTICAL signature string, so it changes
+  // nothing about what is rendered -- no render-based assertion can detect
+  // one. Counting serialisations is the only way to observe the
+  // optimisation actually happening.
+  const countRectSerialisations = (spy: ReturnType<typeof vi.spyOn>): number =>
+    spy.mock.calls.filter((call) => call[0] === "rect").length;
+
+  it("stops serialising a primitive whose props are unchanged", async () => {
+    const { createDrawContext } = await import("./index");
+    const drawContext = createDrawContext();
+    const context = createCanvasMockContext();
+
+    const serialiseSpy = vi.spyOn(DrawGroupManager, "createPrimitiveSignature");
+
+    try {
+      drawContext.executeDrawCallback(
+        groupedScene(GROUPED_WIDTH),
+        context,
+        800,
+        600,
+        0,
+      );
+      drawContext.executeDrawCallback(
+        groupedScene(GROUPED_WIDTH),
+        context,
+        800,
+        600,
+        16,
+      );
+
+      const beforeThirdFrame = countRectSerialisations(serialiseSpy);
+
+      drawContext.executeDrawCallback(
+        groupedScene(GROUPED_WIDTH),
+        context,
+        800,
+        600,
+        32,
+      );
+
+      expect(countRectSerialisations(serialiseSpy)).toBe(beforeThirdFrame);
+    } finally {
+      serialiseSpy.mockRestore();
+    }
+  });
+
+  it("stops serialising again once a changing primitive settles", async () => {
+    // The memo stops comparing props for a primitive that is actively
+    // changing, since the comparison would fail before a serialisation that
+    // has to happen anyway. That must be self-correcting: once the
+    // primitive stops moving it has to start hitting the memo again, or the
+    // optimisation is simply disabled for anything that ever animated.
+    const { createDrawContext } = await import("./index");
+    const drawContext = createDrawContext();
+    const context = createCanvasMockContext();
+
+    const serialiseSpy = vi.spyOn(DrawGroupManager, "createPrimitiveSignature");
+
+    try {
+      // Three changing frames, then it settles.
+      [41, 42, 43, 43, 43].forEach((width, index) => {
+        drawContext.executeDrawCallback(
+          groupedScene(width),
+          context,
+          800,
+          600,
+          index * 16,
+        );
+      });
+
+      const beforeSettledFrame = countRectSerialisations(serialiseSpy);
+
+      drawContext.executeDrawCallback(groupedScene(43), context, 800, 600, 96);
+
+      expect(countRectSerialisations(serialiseSpy)).toBe(beforeSettledFrame);
+    } finally {
+      serialiseSpy.mockRestore();
+    }
+  });
+
+  it("keeps the group cache working while memoising", async () => {
+    const { createDrawContext } = await import("./index");
+    const drawContext = createDrawContext();
+    const context = createCanvasMockContext();
+
+    drawContext.executeDrawCallback(
+      groupedScene(GROUPED_WIDTH),
+      context,
+      800,
+      600,
+      0,
+    );
+    drawContext.executeDrawCallback(
+      groupedScene(GROUPED_WIDTH),
+      context,
+      800,
+      600,
+      16,
+    );
+
+    paintedWidths = [];
+
+    drawContext.executeDrawCallback(
+      groupedScene(GROUPED_WIDTH),
+      context,
+      800,
+      600,
+      32,
+    );
+
+    // A reused signature must still equal what a fresh serialisation would
+    // produce, or the cache would miss and redraw here.
+    expect(paintedWidths).not.toContain(GROUPED_WIDTH);
+  });
+
+  it("recomputes when a prop actually changes", async () => {
+    const { createDrawContext } = await import("./index");
+    const drawContext = createDrawContext();
+    const context = createCanvasMockContext();
+
+    drawContext.executeDrawCallback(
+      groupedScene(GROUPED_WIDTH),
+      context,
+      800,
+      600,
+      0,
+    );
+    drawContext.executeDrawCallback(
+      groupedScene(GROUPED_WIDTH),
+      context,
+      800,
+      600,
+      16,
+    );
+
+    paintedWidths = [];
+
+    drawContext.executeDrawCallback(groupedScene(77), context, 800, 600, 32);
+
+    expect(paintedWidths).toContain(77);
+  });
+
+  it("returns to the cheap path once a changing primitive settles", async () => {
+    // The render-visible counterpart to the serialisation-count test above:
+    // a settled primitive must also stop being REPAINTED, which is the
+    // downstream consequence of its signature going stable again.
+    const { createDrawContext } = await import("./index");
+    const drawContext = createDrawContext();
+    const context = createCanvasMockContext();
+
+    // Three changing frames, then it settles.
+    [41, 42, 43, 43, 43, 43].forEach((width, index) => {
+      drawContext.executeDrawCallback(
+        groupedScene(width),
+        context,
+        800,
+        600,
+        index * 16,
+      );
+    });
+
+    paintedWidths = [];
+
+    drawContext.executeDrawCallback(groupedScene(43), context, 800, 600, 96);
+
+    // Settled: the group's signature is stable again, so its cache hits and
+    // nothing is redrawn.
+    expect(paintedWidths).not.toContain(43);
+  });
+
+  it("recomputes when the extra signature changes even though props are identical", async () => {
+    // The subtle one: an image's props never change, but its signature must
+    // still flip when the asset finishes loading. Memoising on props alone
+    // would pin the signature at "not ready" and the image would never
+    // appear.
+    const { createDrawContext } = await import("./index");
+    const drawContext = createDrawContext();
+    const context = createCanvasMockContext();
+
+    const imageScene = (d: DrawAPI): void => {
+      d.image("https://example.test/asset.png", {
+        x: 0,
+        y: 0,
+        width: 100,
+        height: 100,
+      });
+    };
+
+    drawContext.executeDrawCallback(imageScene, context, 800, 600, 0);
+    drawContext.executeDrawCallback(imageScene, context, 800, 600, 16);
+
+    // Same props, asset now available.
+    readyAsset = { source: IMAGE_SOURCE, width: 100, height: 100 };
+
+    drawContext.executeDrawCallback(imageScene, context, 800, 600, 32);
+
+    // Asserting specifically that the IMAGE was drawn, not merely that
+    // drawImage ran -- a cache blit calls drawImage too, which is why an
+    // untargeted assertion here passes even with the invalidation removed.
+    const drewTheImage = [
+      context,
+      ...SignatureMockOffscreenCanvas.instances.map(
+        (surface) => surface.context,
+      ),
+    ].some((candidate) =>
+      vi
+        .mocked(candidate.drawImage)
+        .mock.calls.some((call) => call[0] === IMAGE_SOURCE),
+    );
+
+    expect(drewTheImage).toBe(true);
   });
 });

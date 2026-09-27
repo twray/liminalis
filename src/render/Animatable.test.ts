@@ -1132,6 +1132,204 @@ describe("Complex Multi-Frame Scenarios", () => {
       expect(arcResults[5].end).toBe(180);
     });
 
+    describe("settled animation caching", () => {
+      // Once every segment has elapsed the result cannot change, but the
+      // registry clears and the scene re-declares segments every frame, so
+      // a finished animation was rebuilding its timeline and re-evaluating
+      // indefinitely. A cache hit returns the SAME object, which is how
+      // these tests observe it.
+      const linear = (t: number) => t;
+
+      // One frame of the AnimatableRegistry lifecycle.
+      const beginFrame = (
+        animatable: Animatable<{ radius: number }>,
+        timeInMs: number,
+        initialProps: { radius: number } = { radius: 0 },
+      ) => {
+        animatable.captureCurrentProps(timeInMs);
+        animatable.updateInitialProps(initialProps);
+        animatable.clearSegments();
+      };
+
+      it("reuses the computed result once every segment has elapsed", () => {
+        const animatable = new Animatable({ radius: 0 }, 0);
+        animatable.animateTo(
+          { radius: 100 },
+          { at: 0, duration: 100, easing: linear },
+        );
+
+        const settledResult = animatable.getCurrentProps(500);
+
+        beginFrame(animatable, 600);
+        animatable.animateTo(
+          { radius: 100 },
+          { at: 0, duration: 100, easing: linear },
+        );
+
+        const nextFrameResult = animatable.getCurrentProps(600);
+
+        expect(nextFrameResult).toBe(settledResult);
+        expect(nextFrameResult.radius).toBe(100);
+      });
+
+      it("recomputes when a settled animation's target changes", () => {
+        // The failure this guards against is silent: a stale value that
+        // renders indefinitely because the cache never noticed the target
+        // moved.
+        const animatable = new Animatable({ radius: 0 }, 0);
+        animatable.animateTo(
+          { radius: 100 },
+          { at: 0, duration: 100, easing: linear },
+        );
+
+        const settledResult = animatable.getCurrentProps(500);
+        expect(settledResult.radius).toBe(100);
+
+        beginFrame(animatable, 600);
+        animatable.animateTo(
+          { radius: 250 },
+          { at: 0, duration: 100, easing: linear },
+        );
+
+        const retargeted = animatable.getCurrentProps(600);
+
+        expect(retargeted).not.toBe(settledResult);
+        expect(retargeted.radius).toBe(250);
+      });
+
+      it("recomputes when the base props change under a settled animation", () => {
+        const animatable = new Animatable({ radius: 0 }, 0);
+        animatable.animateTo(
+          { radius: 100 },
+          { at: 0, duration: 100, easing: linear },
+        );
+
+        const settledResult = animatable.getCurrentProps(500);
+
+        // Same animation, different starting point.
+        beginFrame(animatable, 600, { radius: 40 });
+        animatable.animateTo(
+          { radius: 100 },
+          { at: 0, duration: 100, easing: linear },
+        );
+
+        expect(animatable.getCurrentProps(600)).not.toBe(settledResult);
+      });
+
+      it("never treats an unscheduled segment as settled", () => {
+        // at: null means the segment has no start time yet and could begin
+        // at any point, so nothing about it can be declared final.
+        const animatable = new Animatable({ radius: 0 }, 0);
+        animatable.animateTo(
+          { radius: 100 },
+          { at: null, duration: 100, easing: linear },
+        );
+
+        const first = animatable.getCurrentProps(5000);
+
+        beginFrame(animatable, 5016);
+        animatable.animateTo(
+          { radius: 100 },
+          { at: null, duration: 100, easing: linear },
+        );
+
+        expect(animatable.getCurrentProps(5016)).not.toBe(first);
+      });
+
+      it("does not report a mid-flight animation as settled", () => {
+        const animatable = new Animatable({ radius: 0 }, 0);
+        animatable.animateTo(
+          { radius: 100 },
+          { at: 0, duration: 1000, easing: linear },
+        );
+
+        const midFlight = animatable.getCurrentProps(500);
+        expect(midFlight.radius).toBeCloseTo(50);
+
+        beginFrame(animatable, 750);
+        animatable.animateTo(
+          { radius: 100 },
+          { at: 0, duration: 1000, easing: linear },
+        );
+
+        const later = animatable.getCurrentProps(750);
+
+        expect(later).not.toBe(midFlight);
+        expect(later.radius).toBeCloseTo(75);
+      });
+    });
+
+    describe("deferred props snapshot", () => {
+      // captureCurrentProps used to compute a full getCurrentProps -- a
+      // timeline rebuild plus deep clones -- for every animatable on every
+      // frame, while the result is consumed only when a newly-introduced
+      // segment inherits an in-flight value. Measured at ~21ms of a ~48ms
+      // scene build for 1024 primitives. It now stashes its inputs and
+      // resolves on demand; these tests pin that it stays deferred.
+      it("does not evaluate props while capturing, only when a reader needs them", () => {
+        const animatable = new Animatable({ radius: 20 }, 0);
+        animatable.animateTo({ radius: 100 }, { at: 0, duration: 500 });
+
+        const evaluateSpy = vi.spyOn(animatable, "getCurrentProps");
+
+        animatable.captureCurrentProps(250);
+
+        // The expensive part must not have run yet.
+        expect(evaluateSpy).not.toHaveBeenCalled();
+
+        evaluateSpy.mockRestore();
+      });
+
+      it("skips the snapshot entirely when nothing was in flight", () => {
+        // No segments means no live value to inherit, so there is nothing a
+        // snapshot could contribute over the initial props.
+        const animatable = new Animatable({ radius: 20 }, 0);
+
+        const evaluateSpy = vi.spyOn(animatable, "getCurrentProps");
+
+        animatable.captureCurrentProps(250);
+        animatable.updateInitialProps({ radius: 20 });
+        animatable.clearSegments();
+
+        expect(evaluateSpy).not.toHaveBeenCalled();
+
+        evaluateSpy.mockRestore();
+      });
+
+      it("still resolves the in-flight value when a re-attack actually needs it", () => {
+        // The deferral must be invisible: a segment introduced mid-flight
+        // has to inherit the live interpolated value, not the initial one.
+        const linear = (t: number) => t;
+
+        const results = simulateRegistryStyleFrames(
+          { radius: 0 },
+          0,
+          (anim, { time }) => {
+            anim.animateTo(
+              { radius: 100 },
+              { at: 0, duration: 1000, easing: linear },
+            );
+
+            if (time >= 500) {
+              // Introduced mid-flight: must start from ~50, not from 0.
+              anim.animateTo(
+                { radius: 0 },
+                { at: 500, duration: 1000, easing: linear },
+              );
+            }
+          },
+          [0, 250, 500, 750],
+        );
+
+        expect(results[0].radius).toBe(0);
+        expect(results[1].radius).toBeCloseTo(25);
+        expect(results[2].radius).toBeCloseTo(50);
+        // Falling back from the inherited ~50 rather than restarting at 100.
+        expect(results[3].radius).toBeLessThan(50);
+        expect(results[3].radius).toBeGreaterThan(0);
+      });
+    });
+
     it("preserves attack -> release -> re-attack continuity under frame rebuilds", () => {
       const linear = (t: number) => t;
       let attackTime = 0;

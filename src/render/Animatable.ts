@@ -45,6 +45,25 @@ class Animatable<TProps extends object> implements IAnimatableLike<TProps> {
   #segments: Segment<TProps>[] = [];
   #appliedOptions: Partial<AnimationSegmentOptions> = {};
   #propsSnapshot: Partial<TProps> | null = null;
+  #staticPropsCache: { initialProps: TProps; result: TProps } | null = null;
+  #settledCache: {
+    initialProps: TProps;
+    segments: Segment<TProps>[];
+    settledAtRelativeTime: number;
+    result: TProps;
+  } | null = null;
+  // Inputs for a snapshot that has been requested but not yet computed. See
+  // captureCurrentProps: resolving a snapshot costs a full getCurrentProps
+  // (timeline rebuild plus deep clones), and it is consumed only in the
+  // narrow case where a newly-introduced segment inherits an in-flight
+  // value -- so the inputs are stashed and the work deferred until a reader
+  // actually needs it.
+  #pendingSnapshotSource: {
+    segments: Segment<TProps>[];
+    initialProps: TProps;
+    previousSnapshot: Partial<TProps> | null;
+    timeInMs: number;
+  } | null = null;
   #segmentStartValues: Map<string, number> = new Map();
   #hasWarnedAboutDelayWithAt = false;
   #hasWarnedAboutMissingDuration = false;
@@ -63,13 +82,145 @@ class Animatable<TProps extends object> implements IAnimatableLike<TProps> {
     this.#currentFrameTimeInMs = timeInMs;
   }
 
+  // Re-cloning identical props every frame is pure waste, and keeping the
+  // existing object also lets getCurrentProps below recognise "nothing
+  // changed" by reference alone. Conservative: nested values compare by
+  // reference, so anything non-flat re-clones.
   updateInitialProps(props: TProps): void {
+    if (this.#shallowEqualsInitialProps(props)) {
+      return;
+    }
+
     this.#initialProps = this.#cloneValue(props);
   }
 
+  #shallowEqualsInitialProps(props: TProps): boolean {
+    return Animatable.#shallowRecordEquals(
+      this.#initialProps as Record<string, unknown>,
+      props as Record<string, unknown>,
+    );
+  }
+
+  // Conservative by design: nested values compare by reference, so anything
+  // non-flat reads as changed and forces a recompute. A false "changed"
+  // costs one evaluation; a false "unchanged" would render a stale value.
+  static #shallowRecordEquals(
+    previous: Record<string, unknown>,
+    next: Record<string, unknown>,
+  ): boolean {
+    if (previous === next) {
+      return true;
+    }
+
+    let nextKeyCount = 0;
+
+    for (const key in next) {
+      nextKeyCount += 1;
+
+      if (previous[key] !== next[key]) {
+        return false;
+      }
+    }
+
+    let previousKeyCount = 0;
+
+    for (const _key in previous) {
+      previousKeyCount += 1;
+    }
+
+    return previousKeyCount === nextKeyCount;
+  }
+
+  // An animation whose segments have all elapsed produces the same result
+  // forever, but the registry clears and the scene re-declares segments
+  // every frame, so they are new objects each time and identity tells us
+  // nothing. Comparing them structurally is far cheaper than rebuilding the
+  // timeline, cloning the props twice and re-evaluating every segment --
+  // which is what a finished animation was otherwise paying, every frame,
+  // indefinitely.
+  #segmentsMatchCached(cachedSegments: Segment<TProps>[]): boolean {
+    if (cachedSegments.length !== this.#segments.length) {
+      return false;
+    }
+
+    for (let index = 0; index < cachedSegments.length; index++) {
+      const cached = cachedSegments[index];
+      const current = this.#segments[index];
+
+      if (
+        !Animatable.#shallowRecordEquals(
+          cached.targetProps as Record<string, unknown>,
+          current.targetProps as Record<string, unknown>,
+        ) ||
+        !Animatable.#shallowRecordEquals(
+          cached.options as unknown as Record<string, unknown>,
+          current.options as unknown as Record<string, unknown>,
+        )
+      ) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  // Records what the snapshot WOULD be computed from, rather than computing
+  // it. Both #segments and #initialProps are reassigned (never mutated in
+  // place) by clearSegments/updateInitialProps immediately after this call,
+  // so holding references to the outgoing ones is enough to reconstruct the
+  // value later if anything asks for it.
   captureCurrentProps(timeInMs: number): void {
     this.#currentFrameTimeInMs = timeInMs;
-    this.#propsSnapshot = this.getCurrentProps(timeInMs);
+
+    if (this.#segments.length === 0) {
+      // Nothing was in flight, so there is no live value to inherit and the
+      // snapshot could only ever be a copy of the initial props -- which
+      // every consumer already falls back to.
+      this.#propsSnapshot = null;
+      this.#pendingSnapshotSource = null;
+      return;
+    }
+
+    this.#pendingSnapshotSource = {
+      segments: this.#segments,
+      initialProps: this.#initialProps,
+      previousSnapshot: this.#propsSnapshot,
+      timeInMs,
+    };
+    this.#propsSnapshot = null;
+  }
+
+  // Computes a deferred snapshot on first read, against the state captured
+  // at capture time rather than current state. Clearing the pending source
+  // before evaluating means a re-entrant read (getCurrentProps consults the
+  // snapshot while resolving segments) sees the previous frame's snapshot,
+  // exactly as it did when this was computed eagerly.
+  #resolvePropsSnapshot(): Partial<TProps> | null {
+    const source = this.#pendingSnapshotSource;
+
+    if (!source) {
+      return this.#propsSnapshot;
+    }
+
+    this.#pendingSnapshotSource = null;
+
+    const currentSegments = this.#segments;
+    const currentInitialProps = this.#initialProps;
+    const currentFrameTimeInMs = this.#currentFrameTimeInMs;
+
+    this.#segments = source.segments;
+    this.#initialProps = source.initialProps;
+    this.#propsSnapshot = source.previousSnapshot;
+
+    try {
+      this.#propsSnapshot = this.getCurrentProps(source.timeInMs);
+    } finally {
+      this.#segments = currentSegments;
+      this.#initialProps = currentInitialProps;
+      this.#currentFrameTimeInMs = currentFrameTimeInMs;
+    }
+
+    return this.#propsSnapshot;
   }
 
   clearSegments(): void {
@@ -78,6 +229,8 @@ class Animatable<TProps extends object> implements IAnimatableLike<TProps> {
 
   clearSnapshot(): void {
     this.#propsSnapshot = null;
+    this.#pendingSnapshotSource = null;
+    this.#settledCache = null;
   }
 
   hasSegmentTargeting(key: keyof TProps): boolean {
@@ -102,7 +255,55 @@ class Animatable<TProps extends object> implements IAnimatableLike<TProps> {
 
   getCurrentProps(timeInMs: number): TProps {
     this.#currentFrameTimeInMs = timeInMs;
+
+    // With no segments there is nothing to interpolate, so the answer is
+    // just the initial props. Worth special-casing because the general path
+    // below builds a timeline array and clones the props TWICE (once here,
+    // once at the end of #evaluatePropsAtTime) to arrive at the same value
+    // -- and in a typical scene the overwhelming majority of primitives are
+    // never animated at all.
+    if (this.#segments.length === 0) {
+      // Nothing animating and the same props object as last time means the
+      // answer is identical to the one already handed out, so hand out the
+      // same object rather than cloning it again.
+      //
+      // INVARIANT: consumers must treat returned props as read-only. They
+      // already did -- primitives only read them -- but this makes the
+      // object shared across frames rather than freshly cloned per frame,
+      // so a mutation would now persist.
+      const cached = this.#staticPropsCache;
+
+      if (cached && cached.initialProps === this.#initialProps) {
+        return cached.result;
+      }
+
+      const result = this.#cloneValue(this.#initialProps);
+
+      this.#staticPropsCache = {
+        initialProps: this.#initialProps,
+        result,
+      };
+
+      return result;
+    }
+
+    this.#staticPropsCache = null;
+
     const relativeTime = timeInMs - this.#firstInvokedTime;
+
+    const settled = this.#settledCache;
+
+    if (
+      settled &&
+      settled.initialProps === this.#initialProps &&
+      relativeTime >= settled.settledAtRelativeTime &&
+      this.#segmentsMatchCached(settled.segments)
+    ) {
+      // Same inputs, and time is past the point where every segment has
+      // finished -- the answer cannot change. Same read-only invariant as
+      // the no-segments cache above.
+      return settled.result;
+    }
 
     // Build timeline: calculate effective start times for all segments
     const timeline = this.#buildTimeline();
@@ -112,7 +313,47 @@ class Animatable<TProps extends object> implements IAnimatableLike<TProps> {
     const baseProps = this.#cloneValue(this.#initialProps);
 
     // For each property, find the value at the current time
-    return this.#evaluatePropsAtTime(timeline, baseProps, relativeTime);
+    const result = this.#evaluatePropsAtTime(timeline, baseProps, relativeTime);
+
+    this.#cacheIfSettled(timeline, relativeTime, result);
+
+    return result;
+  }
+
+  #cacheIfSettled(
+    timeline: AnimatableTimelineEntry<TProps>[],
+    relativeTime: number,
+    result: TProps,
+  ): void {
+    let settledAtRelativeTime = 0;
+
+    for (let index = 0; index < timeline.length; index++) {
+      const entry = timeline[index];
+
+      // A segment with no start time is unscheduled and may begin at any
+      // point, so nothing can be declared settled.
+      if (entry.startTime === null) {
+        this.#settledCache = null;
+        return;
+      }
+
+      settledAtRelativeTime = Math.max(
+        settledAtRelativeTime,
+        entry.startTime + entry.duration,
+      );
+    }
+
+    if (timeline.length === 0 || relativeTime < settledAtRelativeTime) {
+      this.#settledCache = null;
+      return;
+    }
+
+    this.#settledCache = {
+      initialProps: this.#initialProps,
+      segments: this.#segments,
+      settledAtRelativeTime,
+      result,
+    };
   }
 
   #buildTimeline(): AnimatableTimelineEntry<TProps>[] {
@@ -177,12 +418,16 @@ class Animatable<TProps extends object> implements IAnimatableLike<TProps> {
     return timeline;
   }
 
+  // NOTE: takes OWNERSHIP of baseProps and mutates it in place. Its only
+  // caller is getCurrentProps, which passes a clone it just made -- cloning
+  // it a second time here meant every animating primitive deep-copied its
+  // props twice per frame to produce one result.
   #evaluatePropsAtTime(
     timeline: AnimatableTimelineEntry<TProps>[],
     baseProps: TProps,
     time: number,
   ): TProps {
-    const result = this.#cloneValue(baseProps);
+    const result = baseProps;
 
     // Sort by start time for proper evaluation order
     const sortedEntries = timeline
@@ -294,24 +539,36 @@ class Animatable<TProps extends object> implements IAnimatableLike<TProps> {
     return result;
   }
 
+  // Runs several times per primitive per frame, so allocation matters more
+  // than elegance here: Object.entries() would allocate one array for the
+  // whole object plus a two-element array per key, every call. Keys are
+  // walked directly instead. Primitives are non-objects and return
+  // immediately, which is the overwhelmingly common case for leaf values.
   #cloneValue<T>(value: T): T {
-    if (Array.isArray(value)) {
-      return value.map((item) => this.#cloneValue(item)) as T;
+    if (value === null || typeof value !== "object") {
+      return value;
     }
 
-    if (value !== null && typeof value === "object") {
-      const cloned: Record<string, unknown> = {};
+    if (Array.isArray(value)) {
+      const clonedArray = new Array(value.length);
 
-      for (const [key, nestedValue] of Object.entries(
-        value as Record<string, unknown>,
-      )) {
-        cloned[key] = this.#cloneValue(nestedValue);
+      for (let index = 0; index < value.length; index++) {
+        clonedArray[index] = this.#cloneValue(value[index]);
       }
 
-      return cloned as T;
+      return clonedArray as T;
     }
 
-    return value;
+    const source = value as Record<string, unknown>;
+    const cloned: Record<string, unknown> = {};
+    const keys = Object.keys(source);
+
+    for (let index = 0; index < keys.length; index++) {
+      const key = keys[index];
+      cloned[key] = this.#cloneValue(source[key]);
+    }
+
+    return cloned as T;
   }
 
   #collectNumericLeafTargets(
@@ -511,7 +768,9 @@ class Animatable<TProps extends object> implements IAnimatableLike<TProps> {
         segmentTargetsCache,
       )
     ) {
-      value = this.#getNumericValueAtPath(this.#propsSnapshot, path) ?? value;
+      value =
+        this.#getNumericValueAtPath(this.#resolvePropsSnapshot(), path) ??
+        value;
     }
 
     for (const entry of sortedEntries) {
@@ -604,9 +863,11 @@ class Animatable<TProps extends object> implements IAnimatableLike<TProps> {
     path: string,
     segmentTargetsCache: Map<Segment<TProps>, AnimatableNumericLeafTarget[]>,
   ): boolean {
+    const snapshot = this.#resolvePropsSnapshot();
+
     if (
-      this.#propsSnapshot === null ||
-      this.#getNumericValueAtPath(this.#propsSnapshot, path) === undefined
+      snapshot === null ||
+      this.#getNumericValueAtPath(snapshot, path) === undefined
     ) {
       return false;
     }
@@ -699,6 +960,7 @@ class Animatable<TProps extends object> implements IAnimatableLike<TProps> {
     this.#segments = [];
     this.#segmentStartValues.clear();
     this.#propsSnapshot = null;
+    this.#pendingSnapshotSource = null;
   }
 
   /**

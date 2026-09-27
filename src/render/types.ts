@@ -66,6 +66,15 @@ export interface TransformState {
 
 export interface ContextGlobalProps extends WithOpacity, WithBlend {}
 
+export interface MemoizedSignature {
+  primitiveType: string;
+  props: Record<string, unknown>;
+  propKeys: string[];
+  extraSignature: string | undefined;
+  signature: string;
+  skipComparison: boolean;
+}
+
 // A CompositeInfo-bearing ClipScope corresponds 1:1 to a DrawGroupNode
 // (see withClipScopedGroup) and describes everything the compositor needs to
 // give that group its own correctly-sized, correctly-positioned offscreen

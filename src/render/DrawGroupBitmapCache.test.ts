@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import DrawGroupBitmapCache from "./DrawGroupBitmapCache";
-import type { Bounds, ClipScope } from "./types";
+import type { Bounds, ClipScope, DrawAPI } from "./types";
 
 class MockOffscreenCanvas {
   static instances: MockOffscreenCanvas[] = [];
@@ -566,5 +566,181 @@ describe("DrawGroupBitmapCache", () => {
 
     expect(MockOffscreenCanvas.instances).toHaveLength(0);
     expect(draw).toHaveBeenCalledWith(targetContext);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The root group is not a special case in DrawGroupManager.renderToContext --
+// it takes the same cache.renderGroup path as every other group, with an
+// identity scope and full-canvas bounds. That means a scene where nothing
+// changed collapses to a single full-canvas blit, because the root's
+// signature is built recursively from every descendant's.
+//
+// These go through the real createDrawContext rather than driving the cache
+// directly, because the property under test is the INTERACTION between
+// signature propagation and the stability gate -- neither half proves it
+// alone. It was previously asserted only by a comment.
+// ---------------------------------------------------------------------------
+
+const createRecordingContext = () => {
+  const calls: string[] = [];
+  const record =
+    (method: string) =>
+    (...args: unknown[]) => {
+      calls.push(method);
+      void args;
+    };
+
+  const context = {
+    save: vi.fn(),
+    restore: vi.fn(),
+    translate: vi.fn(),
+    rotate: vi.fn(),
+    scale: vi.fn(),
+    setTransform: vi.fn(),
+    clearRect: vi.fn(),
+    beginPath: vi.fn(record("beginPath")),
+    closePath: vi.fn(),
+    clip: vi.fn(record("clip")),
+    rect: vi.fn(record("rect")),
+    arc: vi.fn(),
+    ellipse: vi.fn(),
+    moveTo: vi.fn(),
+    lineTo: vi.fn(),
+    quadraticCurveTo: vi.fn(),
+    bezierCurveTo: vi.fn(),
+    fill: vi.fn(record("fill")),
+    stroke: vi.fn(record("stroke")),
+    fillRect: vi.fn(record("fillRect")),
+    fillText: vi.fn(),
+    strokeText: vi.fn(),
+    drawImage: vi.fn(record("drawImage")),
+    roundRect: vi.fn(record("roundRect")),
+    measureText: vi.fn(() => ({ width: 10 }) as TextMetrics),
+    globalAlpha: 1,
+    globalCompositeOperation: "source-over",
+    fillStyle: "",
+    strokeStyle: "",
+    lineWidth: 1,
+  } as unknown as CanvasRenderingContext2D;
+
+  (context as unknown as { canvas: unknown }).canvas = {
+    width: 400,
+    height: 300,
+    getContext: vi.fn(),
+  };
+
+  return { context, calls };
+};
+
+// Distinct from the MockOffscreenCanvas above: that one is a minimal stub for
+// asserting surface dimensions, this one records every call made against its
+// context so a blit can be told apart from a repaint. createSceneDriver
+// installs it per test, and the suite above reinstalls its own in beforeEach,
+// so the two never interfere regardless of execution order.
+class RecordingOffscreenCanvas {
+  width: number;
+  height: number;
+  context: CanvasRenderingContext2D;
+
+  constructor(width: number, height: number) {
+    this.width = width;
+    this.height = height;
+    this.context = createRecordingContext().context;
+    (this.context as unknown as { canvas: unknown }).canvas = this;
+  }
+
+  getContext(kind: string) {
+    return kind === "2d" ? this.context : null;
+  }
+}
+
+// Returns a driver rather than rendering a fixed list, so a test can clear
+// the call log BETWEEN frames. Accumulating across the warm-up frames is
+// what made the invalidation test below vacuous on its first attempt: those
+// frames paint every primitive by definition, so any assertion that the log
+// merely contains a paint call passes whatever the cache does.
+const createSceneDriver = async () => {
+  (globalThis as unknown as Record<string, unknown>).OffscreenCanvas =
+    RecordingOffscreenCanvas;
+
+  const { createDrawContext } = await import("./index");
+  const drawContext = createDrawContext();
+  const { context, calls } = createRecordingContext();
+
+  let frameIndex = 0;
+
+  return {
+    context,
+    calls,
+    render: (scene: (d: DrawAPI) => void) => {
+      drawContext.executeDrawCallback(
+        scene,
+        context,
+        400,
+        300,
+        frameIndex * 16,
+      );
+      frameIndex += 1;
+    },
+  };
+};
+
+const twentyRects =
+  (firstRectX: number) =>
+  (d: DrawAPI): void => {
+    for (let index = 0; index < 20; index++) {
+      d.rect({
+        x: index === 0 ? firstRectX : index * 10,
+        y: 5,
+        width: 8,
+        height: 8,
+        fillStyle: "#333",
+      });
+    }
+  };
+
+describe("root bitmap cache", () => {
+  it("collapses an unchanged scene to a single full-canvas blit", async () => {
+    // Two frames to establish the repeat the cache promotes on, then a third
+    // to observe.
+    const scene = await createSceneDriver();
+
+    scene.render(twentyRects(0));
+    scene.render(twentyRects(0));
+
+    scene.calls.length = 0;
+    vi.mocked(scene.context.drawImage).mockClear();
+
+    scene.render(twentyRects(0));
+
+    // Nothing but the blit reaches the target context, and its dimensions
+    // are the full canvas -- a per-primitive cache blit would also be a
+    // drawImage, so the count alone would not prove the ROOT hit.
+    expect(scene.calls).toEqual(["drawImage"]);
+    expect(
+      vi
+        .mocked(scene.context.drawImage)
+        .mock.calls.map((call) => call.slice(1)),
+    ).toEqual([[0, 0, 400, 300]]);
+  });
+
+  it("repaints the root when any single descendant changes", async () => {
+    // The root's signature is built from every descendant's, so one rect
+    // moving has to invalidate the whole canvas. Without that propagation
+    // the root would blit a stale surface and the move would never appear.
+    const scene = await createSceneDriver();
+
+    scene.render(twentyRects(0));
+    scene.render(twentyRects(0));
+    scene.render(twentyRects(0));
+
+    // Cleared AFTER the scene has settled into blitting, so anything the
+    // log contains from here is caused by the move alone.
+    scene.calls.length = 0;
+
+    scene.render(twentyRects(77));
+
+    expect(scene.calls).toContain("roundRect");
   });
 });

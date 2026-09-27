@@ -87,6 +87,7 @@ interface SceneSettings {
   videoFormat?: VideoFormatPreference;
   enableAudioCapture?: boolean;
   audioInputDeviceId?: string;
+  enableBitmapBasedCaching?: boolean;
 }
 
 interface SetupFunctionProps<TState> {
@@ -137,6 +138,7 @@ const DEFAULTS = {
   SETTINGS_VIDEO_RECORDING_SCALE: 1,
   SETTINGS_VIDEO_FORMAT: "auto" as VideoFormatPreference,
   SETTINGS_ENABLE_AUDIO_CAPTURE: false,
+  SETTINGS_ENABLE_BITMAP_BASED_CACHING: true,
   FPS_LOG_INTERVAL_IN_MS: 250,
 };
 
@@ -152,6 +154,7 @@ class VisualisationAnimationLoopHandler<TState> {
     computerKeyboardDebugEnabled:
       DEFAULTS.SETTINGS_COMPUTER_KEYBOARD_DEBUG_ENABLED,
     showFps: DEFAULTS.SETTINGS_SHOW_FPS,
+    enableBitmapBasedCaching: DEFAULTS.SETTINGS_ENABLE_BITMAP_BASED_CACHING,
   };
 
   #noteEventManager = new NoteEventManager("major");
@@ -204,6 +207,7 @@ class VisualisationAnimationLoopHandler<TState> {
     videoFormat = DEFAULTS.SETTINGS_VIDEO_FORMAT,
     enableAudioCapture = DEFAULTS.SETTINGS_ENABLE_AUDIO_CAPTURE,
     audioInputDeviceId,
+    enableBitmapBasedCaching = DEFAULTS.SETTINGS_ENABLE_BITMAP_BASED_CACHING,
   }: SceneSettings) {
     this.#settings = { ...this.#settings, fps, autoScaleDown };
 
@@ -215,6 +219,7 @@ class VisualisationAnimationLoopHandler<TState> {
       ...this.#appProperties,
       computerKeyboardDebugEnabled,
       showFps,
+      enableBitmapBasedCaching,
     };
 
     this.#videoRecordingScale = videoRecordingScale;
@@ -398,7 +403,9 @@ class VisualisationAnimationLoopHandler<TState> {
 
     // Create draw context scoped to this render lifecycle
     // This persists across frames but is isolated to this scene
-    const drawContext = createDrawContext();
+    const drawContext = createDrawContext({
+      enableBitmapBasedCaching: this.#appProperties.enableBitmapBasedCaching,
+    });
 
     const renderer = () => {
       return (canvasProps: CanvasProps) => {

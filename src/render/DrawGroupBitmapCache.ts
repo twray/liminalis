@@ -20,7 +20,8 @@ interface RenderGroupParams {
 
 type CachedSurface = OffscreenCanvas | HTMLCanvasElement;
 type RenderSurfaceContext =
-  CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
+  | CanvasRenderingContext2D
+  | OffscreenCanvasRenderingContext2D;
 
 interface CachedGroupEntry {
   signature: string;
@@ -82,11 +83,19 @@ const resizeSurfaceIfNeeded = (
 class DrawGroupBitmapCache {
   #cachedGroups = new Map<string, CachedGroupEntry>();
   #environmentSignature = "";
+  #enabled: boolean;
   #environment: BitmapCacheEnvironment = {
     width: 0,
     height: 0,
     devicePixelRatio: 1,
   };
+
+  // Disabling turns off surface caching as an optimisation only. A masking
+  // scope still gets its isolated surface, because that one is a correctness
+  // requirement (see renderGroup) and has nothing to do with caching.
+  constructor({ enabled = true }: { enabled?: boolean } = {}) {
+    this.#enabled = enabled;
+  }
 
   beginFrame(environment: BitmapCacheEnvironment): void {
     this.#environment = environment;
@@ -217,9 +226,12 @@ class DrawGroupBitmapCache {
     const drawImageY = useLocalCoordinateContext ? 0 : boundsY;
 
     const targetCanvas = (targetContext as { canvas?: unknown }).canvas as
-      { getContext?: unknown } | undefined;
+      | { getContext?: unknown }
+      | undefined;
     const canUseBitmapCaching =
-      !!targetCanvas && typeof targetCanvas.getContext === "function";
+      this.#enabled &&
+      !!targetCanvas &&
+      typeof targetCanvas.getContext === "function";
 
     // A scope with its own post-processing step (e.g. text()'s
     // destination-in glyph masking) needs an isolated local surface to

@@ -15,6 +15,7 @@ import type {
   ContextGlobalProps,
   EllipticalAttributes,
   EllipticalRadius,
+  MemoizedSignature,
   TransformOrigin,
   TransformProps,
   TransformState,
@@ -491,6 +492,43 @@ export const createNoopAnimatable = <TProps extends object>(
   };
 
   return noopAnimatable;
+};
+
+export const memoPropsMatch = (
+  cached: MemoizedSignature,
+  next: Record<string, unknown>,
+): boolean => {
+  const { props: previous, propKeys } = cached;
+
+  if (previous === next) {
+    return true;
+  }
+
+  // Values first: a changed primitive usually differs in the first numeric
+  // field checked, so this exits early on the common miss.
+  for (let index = 0; index < propKeys.length; index++) {
+    const key = propKeys[index];
+
+    // NaN !== NaN reads as changed, which is the safe direction.
+    if (previous[key] !== next[key]) {
+      return false;
+    }
+  }
+
+  // Then confirm nothing was ADDED, which the loop above cannot detect.
+  // Counted rather than collected, to keep this allocation-free.
+  //
+  // Defensive: no test covers this, because a prop-shape change can't be
+  // produced through the public API -- mergeStyles normalises every
+  // primitive's props to a fixed shape, so only values ever differ. Kept
+  // because the memo must not depend on that remaining true.
+  let nextKeyCount = 0;
+
+  for (const _key in next) {
+    nextKeyCount += 1;
+  }
+
+  return nextKeyCount === propKeys.length;
 };
 
 export const toIsometricStyles = (

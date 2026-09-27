@@ -11,7 +11,11 @@ import { createIsometricPrimitive } from "./primitives/isometric";
 
 import { createClipScope, withClipScopedGroup } from "./clipping";
 
-import type { IAnimatableLike, PartialDrawStyles } from "../types";
+import type {
+  IAnimatableLike,
+  PartialDrawStyles,
+  RenderOptimisations,
+} from "../types";
 import type { ClipScope, DrawAPI, Measurements } from "./types";
 
 import {
@@ -21,6 +25,7 @@ import {
   centerOf,
   computeTransformedRectangularAABB,
   createNoopAnimatable,
+  memoPropsMatch,
 } from "./common";
 
 import { devicePixelRatio } from "../util/";
@@ -73,6 +78,7 @@ import type {
   ImageProps,
   LayerOptions,
   LineProps,
+  MemoizedSignature,
   PolygonProps,
   RectProps,
   TextProps,
@@ -85,9 +91,66 @@ interface QueueAnimatableHooks<TProps> {
   getTransformedAABB?: (props: TProps) => Bounds;
 }
 
-export const createDrawContext = (): DrawContext => {
+export const createDrawContext = (
+  optimisations: Partial<RenderOptimisations> = {},
+): DrawContext => {
+  const { enableBitmapBasedCaching = true } = optimisations;
+
+  // Keyed by the Animatable, which is the only per-primitive identity that
+  // survives between frames here (props objects and group handles are
+  // rebuilt every frame). Weak so entries disappear with the animatable
+  // when registry.endFrame() drops it.
+  const signatureMemo = new WeakMap<object, MemoizedSignature>();
+
+  const resolveSignature = (
+    owner: object | null,
+    primitiveType: string,
+    props: Record<string, unknown>,
+    extraSignature: string | undefined,
+  ): string => {
+    const cached = owner ? signatureMemo.get(owner) : undefined;
+
+    if (
+      cached &&
+      !cached.skipComparison &&
+      cached.primitiveType === primitiveType &&
+      cached.extraSignature === extraSignature &&
+      memoPropsMatch(cached, props)
+    ) {
+      return cached.signature;
+    }
+
+    const signature = DrawGroupManager.createPrimitiveSignature(
+      primitiveType,
+      props,
+      extraSignature,
+    );
+
+    if (owner) {
+      // Recomputing and getting the SAME string back means the props were
+      // stable after all, so resume comparing next frame -- that is how a
+      // primitive returns to the cheap path once its animation settles, at
+      // a cost of one frame's lag.
+      const skipComparison = cached ? cached.signature !== signature : false;
+
+      signatureMemo.set(owner, {
+        primitiveType,
+        props,
+        propKeys:
+          skipComparison && cached ? cached.propKeys : Object.keys(props),
+        extraSignature,
+        signature,
+        skipComparison,
+      });
+    }
+
+    return signature;
+  };
+
   const registry = new AnimatableRegistry();
-  const drawGroupBitmapCache = new DrawGroupBitmapCache();
+  const drawGroupBitmapCache = new DrawGroupBitmapCache({
+    enabled: enableBitmapBasedCaching,
+  });
   const renderWarningManager = new RenderWarningManager();
 
   const executeDrawCallback = (
@@ -165,18 +228,22 @@ export const createDrawContext = (): DrawContext => {
         return createNoopAnimatable(mergedProps);
       }
 
-      return registry.queue(mergedProps, (props) => {
+      // Assigned immediately below; the closure only runs at flush time, by
+      // which point it is set. Needed because the memo is keyed on the
+      // animatable, which queue() returns rather than provides.
+      let signatureOwner: object | null = null;
+
+      const queuedAnimatable = registry.queue(mergedProps, (props) => {
         if (shouldCollectBounds) {
           // Current bounds collected per-frame of animation
           activeBoundsCollector?.includeBounds(resolveTransformedBounds(props));
         }
 
-        const extraSignatureFromProps = getExtraSignature?.(props);
-
-        const signature = DrawGroupManager.createPrimitiveSignature(
+        const signature = resolveSignature(
+          signatureOwner,
           primitiveType,
-          props,
-          extraSignatureFromProps,
+          props as Record<string, unknown>,
+          getExtraSignature?.(props),
         );
 
         targetGroupHandle.pushPrimitiveOperation({
@@ -184,6 +251,10 @@ export const createDrawContext = (): DrawContext => {
           render: (targetContext) => renderFn(targetContext, props),
         });
       });
+
+      signatureOwner = queuedAnimatable;
+
+      return queuedAnimatable;
     };
 
     // Queues a framable + animatable operation that can also create a frame scope.

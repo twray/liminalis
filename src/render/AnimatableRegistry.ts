@@ -63,6 +63,14 @@ class AnimatableRegistry {
     const currentLocalIndex = this.#localIndexStack.length - 1;
     const localIndex = this.#localIndexStack[currentLocalIndex]++;
 
+    // At root -- which is where the overwhelming majority of primitives in
+    // a typical scene are declared -- the path is empty and the spread plus
+    // join produce a string identical to the index alone, at the cost of an
+    // array allocation per primitive per frame.
+    if (this.#scopePath.length === 0) {
+      return String(localIndex);
+    }
+
     return [...this.#scopePath, String(localIndex)].join("/");
   }
 
