@@ -398,6 +398,52 @@ describe("CanvasRenderer", () => {
     expect((globalThis as any).cancelAnimationFrame).toHaveBeenCalledTimes(1);
   });
 
+  it("does not systematically drop frames when native ticks arrive at exactly the target cadence", () => {
+    const frameCallbacks: FrameRequestCallback[] = [];
+
+    (globalThis as any).requestAnimationFrame = vi.fn(
+      (callback: FrameRequestCallback) => {
+        frameCallbacks.push(callback);
+        return frameCallbacks.length;
+      },
+    );
+
+    (globalThis as any).cancelAnimationFrame = vi.fn();
+
+    const { canvas } = createMockCanvas();
+    const renderer = new CanvasRenderer();
+    const renderCallback = vi.fn();
+
+    renderer.start(
+      () => renderCallback,
+      createSettings(canvas, {
+        dimensions: [320, 200],
+        fps: 60,
+        playbackRate: "throttle",
+      }),
+    );
+
+    const TICK_COUNT = 1000;
+    const nativeIntervalMs = 1000 / 60;
+    let timestamp = 0;
+
+    for (let i = 0; i < TICK_COUNT; i++) {
+      timestamp += nativeIntervalMs;
+      frameCallbacks[frameCallbacks.length - 1]?.(timestamp);
+    }
+
+    // A 60fps throttle driven by a 60Hz native signal should accept
+    // essentially every tick -- a handful of frames' slack for the first
+    // frame / boundary rounding, nothing more. The pre-fix implementation
+    // drops roughly 1 in 5 frames here from float drift alone, with zero
+    // injected jitter.
+    expect(renderCallback.mock.calls.length).toBeGreaterThanOrEqual(
+      TICK_COUNT - 5,
+    );
+
+    renderer.stop();
+  });
+
   it("supports fixed playback-rate frame stepping", () => {
     const frameCallbacks: FrameRequestCallback[] = [];
 

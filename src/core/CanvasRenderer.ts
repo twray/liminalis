@@ -459,6 +459,37 @@ class CanvasRenderer {
     return fps;
   }
 
+  // Shared by both playback rates below. Advances a scheduled-next-frame
+  // boundary by a FIXED step, rather than resetting it to whichever
+  // timestamp the accepted frame actually arrived on. That distinction is
+  // the entire fix: resetting to the actual timestamp lets one tick whose
+  // delta lands a hair under frameIntervalInMs get dropped with no
+  // compensation -- the lost time simply vanishes rather than carrying
+  // forward -- which compounds into a sustained, systematic shortfall
+  // against the target fps (verified: a perfectly regular 60Hz-native
+  // clock against a 60fps target dropped to ~67% delivered frames under
+  // the old reset-to-actual scheme, from float drift alone, with zero
+  // injected jitter -- see CanvasRenderer.test.ts's regression test).
+  // Advancing by a fixed step instead means a dropped tick's slot is still
+  // "owed" and gets caught on the very next tick, so nothing is lost.
+  #advanceFixedCadence(
+    timestampInMs: number,
+    frameIntervalInMs: number,
+    scheduledTimeInMs: number | null,
+  ): { shouldRender: boolean; nextScheduledTimeInMs: number } {
+    let scheduled = scheduledTimeInMs ?? timestampInMs;
+
+    if (timestampInMs < scheduled) {
+      return { shouldRender: false, nextScheduledTimeInMs: scheduled };
+    }
+
+    while (timestampInMs >= scheduled) {
+      scheduled += frameIntervalInMs;
+    }
+
+    return { shouldRender: true, nextScheduledTimeInMs: scheduled };
+  }
+
   #shouldRenderFrame(
     timestampInMs: number,
     fps: number,
@@ -467,32 +498,32 @@ class CanvasRenderer {
     const frameIntervalInMs = 1000 / fps;
 
     if (playbackRate === "fixed") {
-      if (this.#nextFixedFrameTimeInMs === null) {
-        this.#nextFixedFrameTimeInMs = timestampInMs;
-      }
+      const { shouldRender, nextScheduledTimeInMs } =
+        this.#advanceFixedCadence(
+          timestampInMs,
+          frameIntervalInMs,
+          this.#nextFixedFrameTimeInMs,
+        );
 
-      if (timestampInMs < this.#nextFixedFrameTimeInMs) {
-        return false;
-      }
-
-      while (timestampInMs >= this.#nextFixedFrameTimeInMs) {
-        this.#nextFixedFrameTimeInMs += frameIntervalInMs;
-      }
-
-      return true;
+      this.#nextFixedFrameTimeInMs = nextScheduledTimeInMs;
+      return shouldRender;
     }
 
-    if (this.#lastThrottleFrameTimeInMs === null) {
-      this.#lastThrottleFrameTimeInMs = timestampInMs;
-      return true;
-    }
+    // "throttle" used to reset its reference to the accepted frame's own
+    // timestamp instead of advancing a fixed step -- see
+    // #advanceFixedCadence's comment. Passing #lastThrottleFrameTimeInMs
+    // through unchanged (still null until the first tick, unlike
+    // #nextFixedFrameTimeInMs which start() seeds with #startTimeInMs)
+    // preserves this mode's existing first-frame timing exactly; only the
+    // advancing behaviour after that first frame is corrected.
+    const { shouldRender, nextScheduledTimeInMs } = this.#advanceFixedCadence(
+      timestampInMs,
+      frameIntervalInMs,
+      this.#lastThrottleFrameTimeInMs,
+    );
 
-    if (timestampInMs - this.#lastThrottleFrameTimeInMs < frameIntervalInMs) {
-      return false;
-    }
-
-    this.#lastThrottleFrameTimeInMs = timestampInMs;
-    return true;
+    this.#lastThrottleFrameTimeInMs = nextScheduledTimeInMs;
+    return shouldRender;
   }
 
   #requestAnimationFrame(callback: FrameRequestCallback): number {
