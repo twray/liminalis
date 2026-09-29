@@ -29,7 +29,7 @@ interface RenderGroupsParams {
   height: number;
 }
 
-interface WithNestedGroupParams {
+interface NestedGroupParams {
   scope: ClipScope | null;
   getInvalidationSignature: () => string;
 }
@@ -48,6 +48,7 @@ export interface DrawGroupHandle {
     signature: string;
     render: (context: CanvasRenderingContext2D) => void;
   }) => void;
+  withNestedGroup: (params: NestedGroupParams, callbackFn: () => void) => void;
 }
 
 class DrawGroupManager {
@@ -60,11 +61,16 @@ class DrawGroupManager {
     this.#groupStack = [this.#rootGroup];
   }
 
-  withNestedGroup(
-    { scope, getInvalidationSignature }: WithNestedGroupParams,
+  withNestedGroup(params: NestedGroupParams, callbackFn: () => void): void {
+    this.#pushNestedGroup(this.#getCurrentGroup(), params, callbackFn);
+  }
+
+  #pushNestedGroup(
+    parentGroup: DrawGroupNode,
+    params: NestedGroupParams,
     callbackFn: () => void,
-  ): void {
-    const parentGroup = this.#getCurrentGroup();
+  ) {
+    const { scope, getInvalidationSignature } = params;
     const nestedGroup = this.#createDrawGroup(scope, getInvalidationSignature);
 
     parentGroup.operations.push({
@@ -127,6 +133,9 @@ class DrawGroupManager {
           signature: params.signature,
           render: params.render,
         });
+      },
+      withNestedGroup: (params: NestedGroupParams, callbackFn: () => void) => {
+        this.#pushNestedGroup(group, params, callbackFn);
       },
     };
   }

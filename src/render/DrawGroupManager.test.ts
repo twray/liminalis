@@ -492,6 +492,153 @@ describe("DrawGroupManager", () => {
     });
   });
 
+  // A group's own signature always begins `id:<groupId>|invalidate:<its own>`,
+  // so the second segment identifies which group a signature belongs to.
+  // Searching the whole string would match an ancestor instead, since a
+  // parent's signature embeds every descendant's.
+  const ownSignature = (
+    cache: ReturnType<typeof createPassthroughCache>,
+    marker: string,
+  ): string =>
+    cache.renderGroup.mock.calls
+      .map((call) => call[0].signature as string)
+      .find(
+        (signature) => signature.split("|")[1] === `invalidate:${marker}`,
+      ) ?? "";
+
+  describe("captureCurrentGroupHandle().withNestedGroup", () => {
+    // Deliberately exercised with a synthetic primitive rather than anything
+    // video-specific: the capability is general, and testing it that way is
+    // what shows it is not something that merely happens to suit video.
+    //
+    // It exists because a primitive with animated props cannot open its own
+    // group at declare time (the animated bounds are not resolved yet) nor at
+    // paint time (the tree is already being walked). The only correct moment
+    // is flush, by which point the live group stack has unwound back to root
+    // — so the group has to be opened against a parent captured earlier.
+    const captureInsideGroup = (manager: DrawGroupManager) => {
+      let handle!: ReturnType<DrawGroupManager["captureCurrentGroupHandle"]>;
+
+      manager.withNestedGroup(
+        { scope: noScope, getInvalidationSignature: () => "outer" },
+        () => {
+          handle = manager.captureCurrentGroupHandle();
+        },
+      );
+
+      // The stack has now unwound past "outer", mirroring flush time.
+      return handle;
+    };
+
+    it("nests under the group open when the handle was captured, not the live stack top", () => {
+      const manager = new DrawGroupManager();
+      const cache = createPassthroughCache();
+      const handle = captureInsideGroup(manager);
+
+      handle.withNestedGroup(
+        { scope: noScope, getInvalidationSignature: () => "deferred" },
+        () => {},
+      );
+
+      manager.renderToContext({
+        cache: cache as any,
+        targetContext: createMockContext(),
+        width: 100,
+        height: 100,
+      });
+
+      // "outer" must contain the deferred group. A naive implementation
+      // reading #getCurrentGroup() afresh would have parented it to root.
+      expect(ownSignature(cache, "outer")).toContain("invalidate:deferred");
+    });
+
+    it("routes pushes made inside the callback into the new nested group", () => {
+      const manager = new DrawGroupManager();
+      const cache = createPassthroughCache();
+      const handle = captureInsideGroup(manager);
+
+      handle.withNestedGroup(
+        { scope: noScope, getInvalidationSignature: () => "deferred" },
+        () => {
+          manager.pushPrimitiveOperation({
+            signature: "inner",
+            render: vi.fn(),
+          });
+        },
+      );
+
+      manager.renderToContext({
+        cache: cache as any,
+        targetContext: createMockContext(),
+        width: 100,
+        height: 100,
+      });
+
+      // Asserted on the deferred group's OWN signature. Checking an ancestor
+      // would not discriminate: because signatures are built by string
+      // concatenation, "outer" reads identically whether the primitive landed
+      // in the nested group or was appended to outer alongside it.
+      expect(ownSignature(cache, "deferred")).toContain("primitive:inner");
+    });
+
+    it("restores the live stack once the call returns", () => {
+      const manager = new DrawGroupManager();
+      const cache = createPassthroughCache();
+      const handle = captureInsideGroup(manager);
+
+      handle.withNestedGroup(
+        { scope: noScope, getInvalidationSignature: () => "deferred" },
+        () => {},
+      );
+
+      // Back in ordinary live-stack context, which is root here.
+      manager.pushPrimitiveOperation({ signature: "after", render: vi.fn() });
+
+      manager.renderToContext({
+        cache: cache as any,
+        targetContext: createMockContext(),
+        width: 100,
+        height: 100,
+      });
+
+      // Leaked stack would have parented this to the deferred group instead.
+      expect(ownSignature(cache, "root")).toContain("primitive:after");
+      expect(ownSignature(cache, "deferred")).not.toContain("primitive:after");
+    });
+
+    it("restores the live stack even when the callback throws", () => {
+      const manager = new DrawGroupManager();
+      const cache = createPassthroughCache();
+      const handle = captureInsideGroup(manager);
+      const error = new Error("boom");
+
+      expect(() =>
+        handle.withNestedGroup(
+          { scope: noScope, getInvalidationSignature: () => "deferred" },
+          () => {
+            throw error;
+          },
+        ),
+      ).toThrow(error);
+
+      manager.pushPrimitiveOperation({ signature: "after", render: vi.fn() });
+
+      manager.renderToContext({
+        cache: cache as any,
+        targetContext: createMockContext(),
+        width: 100,
+        height: 100,
+      });
+
+      // Both halves are needed. A parent's signature embeds every
+      // descendant's, so the positive assertion alone passes even when the
+      // push landed in the leaked nested group -- this test was vacuous
+      // without the negative one, and the break matrix is what surfaced it.
+      expect(ownSignature(cache, "root")).toContain("primitive:after");
+      expect(ownSignature(cache, "deferred")).not.toContain("primitive:after");
+    });
+  });
+
   describe("captureCurrentGroupHandle", () => {
     it("pushes into the group that was current when captured, not whatever is current when pushed", () => {
       const manager = new DrawGroupManager();
@@ -904,5 +1051,136 @@ describe("signature memoisation", () => {
     );
 
     expect(drewTheImage).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Step 3 of spec/video-primitive-plan.md adds an optional `ownGroup` hook to
+// queueAnimatable, letting a primitive open its own cache-isolating group at
+// flush time. These tests cover the half of that step which is observable
+// today: that primitives NOT passing the hook are unaffected.
+//
+// The hook's own branch is deliberately NOT covered here, and cannot be:
+// queueAnimatable is a closure inside createDrawContext, and no primitive
+// passes `ownGroup` until video() exists (step 6). Exercising it would mean
+// either exporting a test seam or adding a consumer early, both worse than
+// the gap. It is covered at step 7 instead, once video() supplies the hook.
+//
+// Self-contained mock rather than reusing one of the OffscreenCanvas mocks in
+// DrawGroupBitmapCache.test.ts: those aggregate per-surface draw calls, where
+// this only needs to count how many surfaces exist -- one per cached group,
+// which is what makes "did this primitive get its own group?" observable
+// through the public API.
+// ---------------------------------------------------------------------------
+
+describe("queueAnimatable group boundaries (no ownGroup hook)", () => {
+  const createSurfaceCountingEnvironment = () => {
+    const surfaces: object[] = [];
+
+    class CountingOffscreenCanvas {
+      width: number;
+      height: number;
+      context: CanvasRenderingContext2D;
+
+      constructor(width: number, height: number) {
+        surfaces.push(this);
+        this.width = width;
+        this.height = height;
+        this.context = new Proxy({} as Record<string, unknown>, {
+          get: (_target, property) => {
+            if (property === "canvas") return this;
+            if (property === "measureText") return () => ({ width: 10 });
+            return () => undefined;
+          },
+          set: () => true,
+        }) as unknown as CanvasRenderingContext2D;
+      }
+
+      getContext(kind: string) {
+        return kind === "2d" ? this.context : null;
+      }
+    }
+
+    (globalThis as unknown as Record<string, unknown>).OffscreenCanvas =
+      CountingOffscreenCanvas;
+
+    const targetContext = new Proxy({} as Record<string, unknown>, {
+      get: (_target, property) => {
+        if (property === "canvas") {
+          return { width: 400, height: 300, getContext: vi.fn() };
+        }
+        if (property === "measureText") return () => ({ width: 10 });
+        return () => undefined;
+      },
+      set: () => true,
+    }) as unknown as CanvasRenderingContext2D;
+
+    return { surfaces, targetContext };
+  };
+
+  // Four frames: enough for every stable group to clear the cache's
+  // two-frame promotion gate and allocate its surface.
+  const countSurfacesForScene = async (scene: (draw: DrawAPI) => void) => {
+    const { createDrawContext } = await import("./index");
+    const { surfaces, targetContext } = createSurfaceCountingEnvironment();
+    const drawContext = createDrawContext({ enableBitmapBasedCaching: true });
+
+    for (let frame = 0; frame < 4; frame++) {
+      drawContext.executeDrawCallback(
+        scene,
+        targetContext,
+        400,
+        300,
+        frame * 16,
+      );
+    }
+
+    return surfaces.length;
+  };
+
+  it("does not give a plain primitive its own group", async () => {
+    // Three rects at root produce exactly one cached surface -- root's. If
+    // `ownGroup` were ever defaulted on, or the branch inverted, each rect
+    // would acquire its own group and its own surface.
+    const surfaceCount = await countSurfacesForScene((draw) => {
+      for (let index = 0; index < 3; index++) {
+        draw.rect({
+          x: index * 20,
+          y: 0,
+          width: 10,
+          height: 10,
+          fillStyle: "#333",
+          strokeStyle: "transparent",
+        });
+      }
+    });
+
+    expect(surfaceCount).toBe(1);
+  });
+
+  it("still gives an explicit group() its own group", async () => {
+    // The control for the test above. Without it, "one surface" could pass
+    // because the counting never observes nesting at all, rather than because
+    // no nesting occurred.
+    const surfaceCount = await countSurfacesForScene((draw) => {
+      for (let index = 0; index < 3; index++) {
+        draw.group(
+          () => {
+            draw.rect({
+              x: index * 20,
+              y: 0,
+              width: 10,
+              height: 10,
+              fillStyle: "#333",
+              strokeStyle: "transparent",
+            });
+          },
+          { x: index * 20, y: 0, width: 10, height: 10 },
+        );
+      }
+    });
+
+    // Root plus one per group.
+    expect(surfaceCount).toBe(4);
   });
 });

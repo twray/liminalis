@@ -89,6 +89,10 @@ interface QueueAnimatableHooks<TProps> {
   getExtraSignature?: (props: TProps) => string;
   getBounds?: (props: TProps) => Bounds | null;
   getTransformedAABB?: (props: TProps) => Bounds;
+  ownGroup?: {
+    getScope: (props: TProps) => ClipScope;
+    getInvalidationSignature: (props: TProps) => string;
+  };
 }
 
 export const createDrawContext = (
@@ -253,10 +257,26 @@ export const createDrawContext = (
             getExtraSignature?.(props),
           );
 
-          targetGroupHandle.pushPrimitiveOperation({
-            signature,
-            render: (targetContext) => renderFn(targetContext, props),
-          });
+          if (hooks?.ownGroup) {
+            targetGroupHandle.withNestedGroup(
+              {
+                scope: hooks.ownGroup.getScope(props),
+                getInvalidationSignature: () =>
+                  hooks.ownGroup!.getInvalidationSignature(props),
+              },
+              () => {
+                drawGroupManager.pushPrimitiveOperation({
+                  signature,
+                  render: (targetContext) => renderFn(targetContext, props),
+                });
+              },
+            );
+          } else {
+            targetGroupHandle.pushPrimitiveOperation({
+              signature,
+              render: (targetContext) => renderFn(targetContext, props),
+            });
+          }
         },
         {
           primitiveType,
