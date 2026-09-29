@@ -36,6 +36,19 @@ export interface WithBlend {
   blend?: GlobalCompositeOperation;
 }
 
+// Opt-in stable identity for a primitive. Identity is positional (declaration
+// order) by default, which is safe only while that order is stable between
+// frames. Supply a key derived from your own data -- never the array index,
+// which shifts exactly when the position does -- whenever a list can be
+// reordered, prepended to, or have an item removed from anywhere but the end.
+export interface WithIdentityKey {
+  key?: string;
+}
+
+export interface WithFitMode {
+  fit?: "cover" | "contain" | "stretch";
+}
+
 export type PartialDrawStyles = Partial<
   FillStyles & StrokeStyles & TextStyles & WithOpacity & WithBlend
 >;

@@ -1,5 +1,6 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import AnimatableRegistry from "./AnimatableRegistry";
+import type { DrawAPI } from "./types";
 
 describe("AnimatableRegistry", () => {
   describe("getOrCreate", () => {
@@ -567,9 +568,7 @@ describe("AnimatableRegistry", () => {
       const registry = new AnimatableRegistry();
 
       const createKeyed = (key: string, timeInMs: number) =>
-        registry.withScope(key, () =>
-          registry.getOrCreate({ key }, timeInMs),
-        );
+        registry.withScope(key, () => registry.getOrCreate({ key }, timeInMs));
 
       registry.beginFrame(0);
       const animAFrame1 = createKeyed("a", 0);
@@ -665,6 +664,621 @@ describe("AnimatableRegistry", () => {
 
       registry1.endFrame();
       registry2.endFrame();
+    });
+  });
+});
+
+// --------------------------------------------------------------------------
+// Identity for a primitive is POSITIONAL by default: the nth declaration
+// within a scope. That is safe only while declaration order is stable, and
+// the failure is not a crash -- an Animatable's creation time is baked in at
+// construction and never updated when a slot is reused, and `at:` is measured
+// against that creation time, so a primitive inheriting an older slot has its
+// entrance animation evaluated as ALREADY OVER while the one pushed onto a
+// fresh slot RESTARTS. The animations land on the wrong primitives.
+//
+// Two mechanisms address that, and they are orthogonal:
+//   - type-qualified ids, which make a positional slot un-shareable between
+//     two different kinds of primitive (always on, nothing to opt into);
+//   - an opt-in `key`, which pins identity to the caller's own data instead
+//     of to declaration order.
+//
+// Plus a diagnostic for the case that cannot be fixed automatically, because
+// deciding whether two declarations are "the same logical thing" is exactly
+// what a key supplies and there is nothing to compare without one.
+
+const ENTRANCE_MS = 800;
+
+// Drives one frame: declares `count` animated primitives, each with the same
+// entrance animation, and reports the height each one resolved to. A value of
+// 0 means "just started"; ENTRANCE target means "already finished".
+const declareBar = (
+  registry: AnimatableRegistry,
+  label: string,
+  seen: string[],
+  identity?: { primitiveType?: string; key?: string },
+) => {
+  const animatable = registry.queue(
+    { height: 0 },
+    (props: { height: number }) =>
+      seen.push(`${label}=${Math.round(props.height)}`),
+    identity,
+  );
+
+  animatable.animateTo({ height: 100 }, { at: 0, duration: ENTRANCE_MS });
+
+  return animatable;
+};
+
+describe("primitive identity", () => {
+  describe("type-qualified positional identity", () => {
+    it("does not let two different primitive types share one positional slot", () => {
+      const registry = new AnimatableRegistry();
+      const seen: string[] = [];
+
+      // Frame 1: a "rect" occupies slot 0 and finishes its entrance.
+      registry.beginFrame(0);
+      declareBar(registry, "rect", seen, { primitiveType: "rect" });
+      registry.flush();
+      registry.endFrame();
+      seen.length = 0;
+
+      // Frame 2: a "circle" now occupies slot 0, freshly appearing. Its
+      // entrance must start from the beginning -- it is a different thing,
+      // not the rect continuing.
+      registry.beginFrame(1000);
+      declareBar(registry, "circle", seen, { primitiveType: "circle" });
+      registry.flush();
+      registry.endFrame();
+
+      expect(seen).toEqual(["circle=0"]);
+    });
+
+    it("leaves ids unqualified when no primitiveType is supplied", () => {
+      // The legacy shape has to keep working byte-identically, which is what
+      // lets this land without touching every existing call site at once.
+      const registry = new AnimatableRegistry();
+      const seen: string[] = [];
+
+      registry.beginFrame(0);
+      declareBar(registry, "a", seen);
+      registry.flush();
+      registry.endFrame();
+      seen.length = 0;
+
+      registry.beginFrame(1000);
+      declareBar(registry, "b", seen);
+      registry.flush();
+      registry.endFrame();
+
+      // Same slot, no qualification -> the second declaration inherits the
+      // first's already-elapsed creation time. This is the OLD behaviour,
+      // pinned deliberately so a regression in either direction is visible.
+      expect(seen).toEqual(["b=100"]);
+      expect(registry.size).toBe(1);
+    });
+  });
+
+  describe("opt-in key", () => {
+    it("keeps each item's animation with the item when a list is prepended to", () => {
+      const registry = new AnimatableRegistry();
+      const seen: string[] = [];
+
+      // Frame 1 @ t=0: list is [A]. A begins entering.
+      registry.beginFrame(0);
+      declareBar(registry, "A", seen, { primitiveType: "rect", key: "A" });
+      registry.flush();
+      registry.endFrame();
+      seen.length = 0;
+
+      // Frame 2 @ t=1000: A has finished. B is PREPENDED, so declaration
+      // order is now [B, A] and every positional slot has shifted.
+      registry.beginFrame(1000);
+      declareBar(registry, "B", seen, { primitiveType: "rect", key: "B" });
+      declareBar(registry, "A", seen, { primitiveType: "rect", key: "A" });
+      registry.flush();
+      registry.endFrame();
+
+      // B just appeared, so it starts its entrance. A has been on screen for
+      // a second, so it stays finished. Without keys these are inverted.
+      expect(seen).toEqual(["B=0", "A=100"]);
+    });
+
+    it("reuses the same animatable for a key that moved position", () => {
+      const registry = new AnimatableRegistry();
+      const seen: string[] = [];
+
+      registry.beginFrame(0);
+      const first = declareBar(registry, "A", seen, {
+        primitiveType: "rect",
+        key: "A",
+      });
+      registry.flush();
+      registry.endFrame();
+
+      registry.beginFrame(16);
+      declareBar(registry, "B", seen, { primitiveType: "rect", key: "B" });
+      const second = declareBar(registry, "A", seen, {
+        primitiveType: "rect",
+        key: "A",
+      });
+      registry.flush();
+      registry.endFrame();
+
+      // Identity, not just equivalent state: the very same object.
+      expect(second).toBe(first);
+    });
+
+    it("does not consume a positional index, so keying one item cannot shift its unkeyed siblings", () => {
+      const registry = new AnimatableRegistry();
+      const seen: string[] = [];
+
+      // Frame 1: one unkeyed item, which takes positional slot 0.
+      registry.beginFrame(0);
+      const unkeyedFrame1 = declareBar(registry, "plain", seen, {
+        primitiveType: "rect",
+      });
+      registry.flush();
+      registry.endFrame();
+
+      // Frame 2: a KEYED item is declared ahead of it. If keyed declarations
+      // consumed an index, the unkeyed one would shift from slot 0 to slot 1
+      // and lose its identity.
+      registry.beginFrame(16);
+      declareBar(registry, "keyed", seen, {
+        primitiveType: "rect",
+        key: "new",
+      });
+      const unkeyedFrame2 = declareBar(registry, "plain", seen, {
+        primitiveType: "rect",
+      });
+      registry.flush();
+      registry.endFrame();
+
+      expect(unkeyedFrame2).toBe(unkeyedFrame1);
+    });
+  });
+
+  describe("duplicate keys", () => {
+    const declareKeyed = (
+      registry: AnimatableRegistry,
+      key: string,
+      primitiveType = "rect",
+    ) => registry.queue({ height: 0 }, () => {}, { primitiveType, key });
+
+    it("throws when two sibling primitives share a key", () => {
+      const registry = new AnimatableRegistry();
+
+      registry.beginFrame(0);
+      declareKeyed(registry, "bar-1");
+
+      expect(() => declareKeyed(registry, "bar-1")).toThrow(/Duplicate key/);
+    });
+
+    it("names the key and primitive so the collision can be found", () => {
+      const registry = new AnimatableRegistry();
+
+      registry.beginFrame(0);
+      declareKeyed(registry, "bar-1", "circle");
+
+      expect(() => declareKeyed(registry, "bar-1", "circle")).toThrow(
+        /"bar-1".*"circle"/,
+      );
+    });
+
+    it("allows the same key in sibling scopes, because keys are scoped not global", () => {
+      const registry = new AnimatableRegistry();
+
+      registry.beginFrame(0);
+
+      // Two separate groups may each contain an item keyed "a" -- their ids
+      // differ by scope path, so there is no collision to report.
+      expect(() => {
+        registry.withScope("group-a", () => declareKeyed(registry, "a"));
+        registry.withScope("group-b", () => declareKeyed(registry, "a"));
+      }).not.toThrow();
+    });
+
+    it("allows the same key across frames, which is the entire point of a key", () => {
+      const registry = new AnimatableRegistry();
+
+      registry.beginFrame(0);
+      declareKeyed(registry, "bar-1");
+      registry.flush();
+      registry.endFrame();
+
+      registry.beginFrame(16);
+
+      expect(() => declareKeyed(registry, "bar-1")).not.toThrow();
+    });
+
+    it("catches duplicate container keys too", () => {
+      // group({ key }) pins identity through withScope, so two sibling
+      // containers sharing a key give their contents the same scope path --
+      // and the container's own animatable collides inside it.
+      const registry = new AnimatableRegistry();
+
+      registry.beginFrame(0);
+
+      expect(() => {
+        registry.withScope("dup", () =>
+          registry.queue({ height: 0 }, () => {}, { primitiveType: "group" }),
+        );
+        registry.withScope("dup", () =>
+          registry.queue({ height: 0 }, () => {}, { primitiveType: "group" }),
+        );
+      }).toThrow(/Duplicate key/);
+    });
+
+    it("does not throw for unkeyed declarations, whose ids cannot repeat", () => {
+      const registry = new AnimatableRegistry();
+
+      registry.beginFrame(0);
+
+      expect(() => {
+        for (let index = 0; index < 50; index++) {
+          registry.queue({ height: 0 }, () => {}, { primitiveType: "rect" });
+        }
+      }).not.toThrow();
+    });
+  });
+
+  describe("unkeyed-reorder diagnostic", () => {
+    let warnSpy: ReturnType<typeof vi.spyOn>;
+
+    beforeEach(() => {
+      warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    });
+
+    afterEach(() => {
+      warnSpy.mockRestore();
+    });
+
+    // Runs `counts.length` frames, declaring `count` unkeyed animated
+    // primitives on each, all still mid-animation.
+    const runFrames = (
+      registry: AnimatableRegistry,
+      counts: number[],
+      options: { animated?: boolean; keyed?: boolean } = {},
+    ) => {
+      const { animated = true, keyed = false } = options;
+      const seen: string[] = [];
+
+      counts.forEach((count, frame) => {
+        registry.beginFrame(frame * 16);
+
+        for (let index = 0; index < count; index++) {
+          if (animated) {
+            declareBar(registry, `i${index}`, seen, {
+              primitiveType: "rect",
+              ...(keyed ? { key: `item-${index}` } : {}),
+            });
+          } else {
+            registry.queue({ height: 10 }, () => {}, {
+              primitiveType: "rect",
+              ...(keyed ? { key: `item-${index}` } : {}),
+            });
+          }
+        }
+
+        registry.flush();
+        registry.endFrame();
+      });
+    };
+
+    it("warns when the number of unkeyed animated primitives changes", () => {
+      runFrames(new AnimatableRegistry(), [1, 2]);
+
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+      expect(String(warnSpy.mock.calls[0]?.[0])).toContain("key");
+    });
+
+    it("names the offending primitive so the call site can be found", () => {
+      runFrames(new AnimatableRegistry(), [1, 2]);
+
+      // The type is recovered from the id rather than stored per primitive,
+      // so this is the test that catches that parsing breaking.
+      expect(String(warnSpy.mock.calls[0]?.[0])).toContain('"rect"');
+    });
+
+    it("includes the declared props, so the primitive is identifiable in source", () => {
+      const registry = new AnimatableRegistry();
+      const seen: string[] = [];
+
+      registry.beginFrame(0);
+      registry
+        .queue({ height: 0, fillStyle: "#abcdef" }, () => {}, {
+          primitiveType: "rect",
+        })
+        .animateTo({ height: 100 }, { at: 0, duration: ENTRANCE_MS });
+      registry.flush();
+      registry.endFrame();
+
+      registry.beginFrame(16);
+      [0, 1].forEach(() => {
+        registry
+          .queue({ height: 0, fillStyle: "#abcdef" }, () => {}, {
+            primitiveType: "rect",
+          })
+          .animateTo({ height: 100 }, { at: 0, duration: ENTRANCE_MS });
+      });
+      registry.flush();
+      registry.endFrame();
+
+      void seen;
+      expect(String(warnSpy.mock.calls[0]?.[0])).toContain(
+        '"fillStyle":"#abcdef"',
+      );
+    });
+
+    it("bounds the serialised props rather than dumping an unbounded payload", () => {
+      const registry = new AnimatableRegistry();
+      // A polygon-sized payload: enough points that an unbounded dump would
+      // flood the console.
+      const points = Array.from({ length: 400 }, (_value, index) => ({
+        x: index,
+        y: index,
+      }));
+
+      const declare = () =>
+        registry
+          .queue({ height: 0, points }, () => {}, { primitiveType: "polygon" })
+          .animateTo({ height: 100 }, { at: 0, duration: ENTRANCE_MS });
+
+      registry.beginFrame(0);
+      declare();
+      registry.flush();
+      registry.endFrame();
+
+      registry.beginFrame(16);
+      declare();
+      declare();
+      registry.flush();
+      registry.endFrame();
+
+      const message = String(warnSpy.mock.calls[0]?.[0]);
+
+      expect(message).toContain("(truncated)");
+      expect(message.length).toBeLessThan(600);
+    });
+
+    it("does not throw on props JSON cannot represent", () => {
+      const registry = new AnimatableRegistry();
+
+      // A BigInt rather than a circular reference: circular props are already
+      // fatal further upstream, in Animatable's own prop cloning, so they can
+      // never reach this diagnostic. A BigInt survives cloning (it is not an
+      // object) but JSON.stringify throws on it, which is exactly the path
+      // the guard exists for.
+      const declare = () =>
+        registry
+          .queue({ height: 0, weird: 1n }, () => {}, {
+            primitiveType: "rect",
+          })
+          .animateTo({ height: 100 }, { at: 0, duration: ENTRANCE_MS });
+
+      registry.beginFrame(0);
+      declare();
+      registry.flush();
+      registry.endFrame();
+
+      registry.beginFrame(16);
+      declare();
+      declare();
+
+      // The diagnostic must never be the reason a frame fails to render.
+      expect(() => {
+        registry.flush();
+        registry.endFrame();
+      }).not.toThrow();
+
+      expect(String(warnSpy.mock.calls[0]?.[0])).toContain(
+        "could not be serialised",
+      );
+    });
+
+    it("stays silent when the declaration count is stable, even while animating", () => {
+      runFrames(new AnimatableRegistry(), [3, 3, 3]);
+
+      expect(warnSpy).not.toHaveBeenCalled();
+    });
+
+    it("stays silent when the count changes but nothing animates", () => {
+      // Identity has no bearing on output for a primitive with no segments --
+      // getCurrentProps returns the initial props verbatim -- so a static
+      // scene can reorder freely and must not be warned about.
+      runFrames(new AnimatableRegistry(), [1, 2, 3], { animated: false });
+
+      expect(warnSpy).not.toHaveBeenCalled();
+    });
+
+    it("stays silent when the changing list is keyed", () => {
+      runFrames(new AnimatableRegistry(), [1, 2, 3], { keyed: true });
+
+      expect(warnSpy).not.toHaveBeenCalled();
+    });
+
+    it("stays silent when only KEYED declarations in the scope animate", () => {
+      // The shape the bars-animation demo actually hit: an unkeyed list whose
+      // length changes but which does not animate, sharing a scope with a
+      // keyed list that does. Nothing unkeyed is at risk, so the fact that
+      // something keyed is mid-animation must not justify a warning.
+      const registry = new AnimatableRegistry();
+
+      const declareFrame = (count: number, frame: number) => {
+        registry.beginFrame(frame * 16);
+
+        for (let index = 0; index < count; index++) {
+          // Unkeyed, static.
+          registry.queue({ height: 10 }, () => {}, { primitiveType: "rect" });
+        }
+
+        for (let index = 0; index < count; index++) {
+          // Keyed, animated -- already safe.
+          registry
+            .queue({ height: 0 }, () => {}, {
+              primitiveType: "rect",
+              key: `bar-${index}`,
+            })
+            .animateTo({ height: 100 }, { at: 0, duration: ENTRANCE_MS });
+        }
+
+        registry.flush();
+        registry.endFrame();
+      };
+
+      declareFrame(1, 0);
+      declareFrame(2, 1);
+      declareFrame(3, 2);
+
+      expect(warnSpy).not.toHaveBeenCalled();
+    });
+
+    it("still warns when an unkeyed declaration animates alongside keyed ones", () => {
+      // The mirror of the test above: the exclusion must not be so broad that
+      // it silences a genuinely at-risk unkeyed animation just because a
+      // keyed sibling exists.
+      const registry = new AnimatableRegistry();
+
+      const declareFrame = (count: number, frame: number) => {
+        registry.beginFrame(frame * 16);
+
+        for (let index = 0; index < count; index++) {
+          registry
+            .queue({ height: 0 }, () => {}, { primitiveType: "rect" })
+            .animateTo({ height: 100 }, { at: 0, duration: ENTRANCE_MS });
+        }
+
+        registry
+          .queue({ height: 0 }, () => {}, {
+            primitiveType: "rect",
+            key: "safe",
+          })
+          .animateTo({ height: 100 }, { at: 0, duration: ENTRANCE_MS });
+
+        registry.flush();
+        registry.endFrame();
+      };
+
+      declareFrame(1, 0);
+      declareFrame(2, 1);
+
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it("warns once per scope rather than every frame", () => {
+      runFrames(new AnimatableRegistry(), [1, 2, 3, 4, 5]);
+
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe("through the draw API", () => {
+    const createMockContext = () => {
+      const paintedBars: { y: number; height: number }[] = [];
+
+      const context = new Proxy({} as Record<string, unknown>, {
+        get: (_target, property) => {
+          if (property === "roundRect") {
+            return (_x: number, y: number, _width: number, height: number) =>
+              paintedBars.push({ y, height });
+          }
+          if (property === "canvas") {
+            return { width: 800, height: 600, getContext: () => null };
+          }
+          if (property === "measureText") {
+            return () => ({ width: 10 });
+          }
+          return () => undefined;
+        },
+        set: () => true,
+      }) as unknown as CanvasRenderingContext2D;
+
+      return { context, paintedBars };
+    };
+
+    // Bars grow upward from a fixed baseline. Starting a few pixels tall
+    // rather than at zero because a zero-height rect is not painted at all,
+    // which would make the entering bar invisible to this assertion.
+    const BASELINE = 400;
+    const MIN_HEIGHT = 4;
+    const FULL_HEIGHT = 200;
+
+    const prependedBars =
+      (ids: number[], keyed: boolean) =>
+      (draw: DrawAPI): void => {
+        ids.forEach((id, index) => {
+          draw
+            .rect({
+              x: index * 50,
+              y: BASELINE - MIN_HEIGHT,
+              width: 40,
+              height: MIN_HEIGHT,
+              fillStyle: "#333",
+              strokeStyle: "transparent",
+              ...(keyed ? { key: `bar-${id}` } : {}),
+            })
+            .animateTo(
+              { y: BASELINE - FULL_HEIGHT, height: FULL_HEIGHT },
+              { at: 0, duration: ENTRANCE_MS },
+            );
+        });
+      };
+
+    const heightsAfterPrepend = async (keyed: boolean) => {
+      const { createDrawContext } = await import("./index");
+      const drawContext = createDrawContext({
+        enableBitmapBasedCaching: false,
+      });
+      const { context, paintedBars } = createMockContext();
+
+      // [0] enters and settles.
+      drawContext.executeDrawCallback(
+        prependedBars([0], keyed),
+        context,
+        800,
+        600,
+        0,
+      );
+      drawContext.executeDrawCallback(
+        prependedBars([0], keyed),
+        context,
+        800,
+        600,
+        ENTRANCE_MS + 100,
+      );
+
+      paintedBars.length = 0;
+
+      // Bar 1 is prepended, so declaration order becomes [1, 0].
+      drawContext.executeDrawCallback(
+        prependedBars([1, 0], keyed),
+        context,
+        800,
+        600,
+        ENTRANCE_MS + 200,
+      );
+
+      return paintedBars.map((bar) => Math.round(bar.height));
+    };
+
+    it("mis-assigns entrance animations across a prepend when unkeyed", async () => {
+      // Pins the broken behaviour deliberately: bar 1 has only just appeared
+      // yet is already full height, and bar 0 -- on screen and settled --
+      // has collapsed back to the start of the entrance.
+      expect(await heightsAfterPrepend(false)).toEqual([
+        FULL_HEIGHT,
+        MIN_HEIGHT,
+      ]);
+    });
+
+    it("keeps entrance animations with their own bar when keyed", async () => {
+      // Same scene, same animation, one added prop. Bar 1 enters; bar 0
+      // stays where it was.
+      expect(await heightsAfterPrepend(true)).toEqual([
+        MIN_HEIGHT,
+        FULL_HEIGHT,
+      ]);
     });
   });
 });

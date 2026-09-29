@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import DrawGroupBitmapCache from "./DrawGroupBitmapCache";
+import { createDrawContext } from "./index";
 import type { Bounds, ClipScope, DrawAPI } from "./types";
 
 class MockOffscreenCanvas {
@@ -742,5 +743,268 @@ describe("root bitmap cache", () => {
     scene.render(twentyRects(77));
 
     expect(scene.calls).toContain("roundRect");
+  });
+});
+
+// --------------------------------------------------------------------------
+// Three OffscreenCanvas mocks live in this file, deliberately kept apart
+// because they answer different questions: MockOffscreenCanvas above
+// records surface dimensions and transforms, RecordingOffscreenCanvas
+// records which drawing calls reached a surface, and
+// NestedCacheOffscreenCanvas below funnels every surface's roundRect widths
+// into one shared sink so a redraw can be attributed regardless of which
+// surface it landed on. Unifying them behind one configurable factory made
+// each individual test harder to follow than having three named mocks.
+// --------------------------------------------------------------------------
+// A single shared sink so we can tell which primitives actually issued a
+// draw call, regardless of *which* surface it landed on — the real target
+// context, root's own offscreen cache surface, or a nested group's offscreen
+// cache surface. Bitmap caching applies uniformly to every group (including
+// root), so a primitive declared directly under root draws into root's own
+// offscreen surface just as much as nested content draws into its group's.
+let roundRectWidths: number[] = [];
+
+const makeMockContext = (width: number, height: number) =>
+  ({
+    save: vi.fn(),
+    restore: vi.fn(),
+    translate: vi.fn(),
+    rotate: vi.fn(),
+    scale: vi.fn(),
+    setTransform: vi.fn(),
+    clearRect: vi.fn(),
+    beginPath: vi.fn(),
+    closePath: vi.fn(),
+    clip: vi.fn(),
+    rect: vi.fn(),
+    roundRect: (_x: number, _y: number, w: number) => roundRectWidths.push(w),
+    moveTo: vi.fn(),
+    lineTo: vi.fn(),
+    fill: vi.fn(),
+    stroke: vi.fn(),
+    drawImage: vi.fn(),
+    globalAlpha: 1,
+    globalCompositeOperation: "source-over",
+    fillStyle: "",
+    strokeStyle: "",
+    lineWidth: 1,
+    canvas: { width, height },
+  }) as unknown as CanvasRenderingContext2D;
+
+// Reproduces the mock OffscreenCanvas pattern already used in index.test.ts's
+// "(cache enabled)" tests, so DrawGroupBitmapCache's real bitmap-caching path
+// (not the "no canvas.getContext, draw directly" bypass) is actually exercised.
+class NestedCacheOffscreenCanvas {
+  width: number;
+  height: number;
+  context: CanvasRenderingContext2D;
+
+  constructor(width: number, height: number) {
+    this.width = width;
+    this.height = height;
+    this.context = makeMockContext(width, height);
+    // A real OffscreenCanvas's context.canvas points back to the canvas
+    // itself (which has its own getContext) — without this, a group nested
+    // two or more levels deep sees a canvas with no getContext on the way
+    // down and silently bypasses its own cache check.
+    (this.context as unknown as { canvas: unknown }).canvas = this;
+  }
+
+  getContext(kind: string) {
+    return kind === "2d" ? this.context : null;
+  }
+}
+
+const createCacheableContext = (): CanvasRenderingContext2D => {
+  const context = makeMockContext(800, 600);
+  (context as unknown as { canvas: { getContext: () => void } }).canvas = {
+    ...(context.canvas as object),
+    getContext: vi.fn(),
+  } as any;
+  return context;
+};
+
+describe("bitmap caching skips unchanged nested content", () => {
+  const previousOffscreenCanvas = (globalThis as any).OffscreenCanvas;
+
+  beforeEach(() => {
+    roundRectWidths = [];
+    (globalThis as any).OffscreenCanvas = NestedCacheOffscreenCanvas;
+  });
+
+  afterEach(() => {
+    (globalThis as any).OffscreenCanvas = previousOffscreenCanvas;
+  });
+
+  it("does not redraw a static group's content on a frame where nothing in it changed, while a sibling that does change still redraws", () => {
+    const drawContext = createDrawContext();
+    const context = createCacheableContext();
+
+    // Distinguishable widths let us tell which primitives actually issued
+    // draw calls, without depending on call ordering.
+    const STATIC_RECT_WIDTH = 37;
+    const ANIMATING_RECT_WIDTH = 41;
+    const STATIC_RECT_COUNT = 20;
+
+    const renderCallback = (d: DrawAPI, timeInMs: number) => {
+      d.group(
+        () => {
+          for (let i = 0; i < STATIC_RECT_COUNT; i++) {
+            d.rect({
+              x: i * 10,
+              y: 0,
+              width: STATIC_RECT_WIDTH,
+              height: 10,
+              fillStyle: "#333",
+              strokeStyle: "transparent",
+            });
+          }
+        },
+        { x: 0, y: 0, width: 300, height: 50 },
+      );
+
+      // Declared outside the group, and its position changes every frame —
+      // this is what keeps the overall frame (and root's own signature)
+      // genuinely non-static, so this isn't just "the whole canvas never
+      // changes" caching.
+      d.rect({
+        x: timeInMs,
+        y: 100,
+        width: ANIMATING_RECT_WIDTH,
+        height: 10,
+        fillStyle: "#f00",
+        strokeStyle: "transparent",
+      });
+    };
+
+    drawContext.executeDrawCallback(
+      (d) => renderCallback(d, 0),
+      context,
+      800,
+      600,
+      0,
+    );
+
+    const countFrame1Static = roundRectWidths.filter(
+      (w) => w === STATIC_RECT_WIDTH,
+    ).length;
+    const countFrame1Animating = roundRectWidths.filter(
+      (w) => w === ANIMATING_RECT_WIDTH,
+    ).length;
+
+    expect(countFrame1Static).toBe(STATIC_RECT_COUNT);
+    expect(countFrame1Animating).toBe(1);
+
+    roundRectWidths = [];
+
+    // spec/bitmap-cache-strategy-plan.md: a signature's first repeat
+    // promotes the group to a real cached surface, but that promotion
+    // frame still has to render once to populate it -- the actual
+    // skip-the-redraw payoff lands one frame later than it used to.
+    drawContext.executeDrawCallback(
+      (d) => renderCallback(d, 16),
+      context,
+      800,
+      600,
+      16,
+    );
+
+    const countFrame2Static = roundRectWidths.filter(
+      (w) => w === STATIC_RECT_WIDTH,
+    ).length;
+
+    expect(countFrame2Static).toBe(STATIC_RECT_COUNT);
+
+    roundRectWidths = [];
+
+    drawContext.executeDrawCallback(
+      (d) => renderCallback(d, 32),
+      context,
+      800,
+      600,
+      32,
+    );
+
+    const countFrame3Static = roundRectWidths.filter(
+      (w) => w === STATIC_RECT_WIDTH,
+    ).length;
+    const countFrame3Animating = roundRectWidths.filter(
+      (w) => w === ANIMATING_RECT_WIDTH,
+    ).length;
+
+    // The key assertion: the static group's signature has now repeated
+    // twice, so it's a real cache hit -- none of its 20 rects re-issued
+    // their draw calls...
+    expect(countFrame3Static).toBe(0);
+    // ...even though the frame as a whole is not static (root's own cache
+    // still misses because of the animating sibling), so this is genuinely
+    // proving per-group scoping, not "the whole canvas never changes".
+    expect(countFrame3Animating).toBe(1);
+  });
+
+  it("redraws a group's content again once something inside it actually changes", () => {
+    const drawContext = createDrawContext();
+    const context = createCacheableContext();
+    const RECT_WIDTH = 50;
+
+    const renderCallback = (d: DrawAPI, x: number) => {
+      d.group(
+        () => {
+          d.rect({
+            x,
+            y: 0,
+            width: RECT_WIDTH,
+            height: 10,
+            fillStyle: "#333",
+            strokeStyle: "transparent",
+          });
+        },
+        { x: 0, y: 0, width: 300, height: 50 },
+      );
+    };
+
+    drawContext.executeDrawCallback(
+      (d) => renderCallback(d, 0),
+      context,
+      800,
+      600,
+      0,
+    );
+    expect(roundRectWidths.filter((w) => w === RECT_WIDTH)).toHaveLength(1);
+    roundRectWidths = [];
+
+    // Same call, same props, first repeat — spec/bitmap-cache-strategy-plan.md:
+    // this promotes the group to a real cached surface, which still has to
+    // render once to build it.
+    drawContext.executeDrawCallback(
+      (d) => renderCallback(d, 0),
+      context,
+      800,
+      600,
+      16,
+    );
+    expect(roundRectWidths.filter((w) => w === RECT_WIDTH)).toHaveLength(1);
+    roundRectWidths = [];
+
+    // Same call, same props, second repeat — now a real cache hit, skip.
+    drawContext.executeDrawCallback(
+      (d) => renderCallback(d, 0),
+      context,
+      800,
+      600,
+      32,
+    );
+    expect(roundRectWidths.filter((w) => w === RECT_WIDTH)).toHaveLength(0);
+
+    // Now the rect's own x prop changes — the group's content genuinely
+    // changed, so it must redraw.
+    drawContext.executeDrawCallback(
+      (d) => renderCallback(d, 5),
+      context,
+      800,
+      600,
+      48,
+    );
+    expect(roundRectWidths.filter((w) => w === RECT_WIDTH)).toHaveLength(1);
   });
 });

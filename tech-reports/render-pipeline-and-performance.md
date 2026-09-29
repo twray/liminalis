@@ -323,5 +323,6 @@ The scorecard, stated plainly: measurement contradicted expectation in roughly h
 | Surface lifecycle, stability gate                 | `src/render/DrawGroupBitmapCache.ts`      |
 | Clip scopes, path-based clipping                  | `src/render/clipping.ts`                  |
 | `stableSerialize`                                 | `src/util/common.ts`                      |
-| Signature memo behaviour                          | `src/render/signatureMemoisation.test.ts` |
-| Root blit behaviour                               | `src/render/rootBitmapCache.test.ts`      |
+| Signature memo behaviour                          | `src/render/DrawGroupManager.test.ts`     |
+| Root blit behaviour                               | `src/render/DrawGroupBitmapCache.test.ts` |
+| Primitive identity, keys, reorder diagnostic      | `src/render/AnimatableRegistry.test.ts`   |

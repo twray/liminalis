@@ -15,8 +15,11 @@ import type {
   StrokeStyles,
   TextStyles,
   WithBlend,
+  WithFitMode,
+  WithIdentityKey,
   WithOpacity,
   XOR,
+  EventTime,
 } from "../types";
 import type AnimatableRegistry from "./AnimatableRegistry";
 import type DrawGroupManager from "./DrawGroupManager";
@@ -107,8 +110,7 @@ export interface ClipScope {
   // content was just drawn in.
   postProcessLocalSurface?: (
     surfaceContext:
-      | CanvasRenderingContext2D
-      | OffscreenCanvasRenderingContext2D,
+      CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
     bounds: Bounds,
   ) => void;
 }
@@ -136,15 +138,8 @@ export interface CoordinateContextProps {
   useLocalCoordinateContext?: boolean;
 }
 
-export interface ContainerProps {
+export interface ContainerProps extends WithIdentityKey {
   showBounds?: boolean;
-  // Pins this container's animation identity to an explicit value instead of
-  // its positional call order within the enclosing scope. Needed whenever a
-  // container's position among same-shaped siblings can change between
-  // frames (e.g. a conditionally-rendered or list-rendered container) —
-  // without it, identity is call-order-based and a shifted position can
-  // silently pick up another sibling's in-flight animation state.
-  key?: string;
 }
 
 export interface LineProps
@@ -153,7 +148,8 @@ export interface LineProps
     CappableStrokeStyles,
     WithOpacity,
     WithBlend,
-    TransformProps {
+    TransformProps,
+    WithIdentityKey {
   start: Point2D;
   end: Point2D;
 }
@@ -167,7 +163,8 @@ export interface PolygonProps
     WithOpacity,
     WithBlend,
     TransformProps,
-    CoordinateContextProps {
+    CoordinateContextProps,
+    WithIdentityKey {
   points: Point2D[];
   closePath?: boolean;
   strokeAlignment?: StrokeAlignment;
@@ -202,7 +199,8 @@ export interface BezierProps
     WithOpacity,
     WithBlend,
     TransformProps,
-    CoordinateContextProps {
+    CoordinateContextProps,
+    WithIdentityKey {
   segments: BezierSegments;
   closePath?: boolean;
   strokeAlignment?: StrokeAlignment;
@@ -252,15 +250,24 @@ export type ArcProps = {
   JoinableStrokeStyles &
   EllipticalAngleStartAndEnd &
   ArcRadius &
-  CoordinateContextProps;
+  CoordinateContextProps &
+  WithIdentityKey;
 
 export interface CircleProps
-  extends EllipticGeometryProps, CoordinateContextProps, CircularRadius {
+  extends
+    EllipticGeometryProps,
+    CoordinateContextProps,
+    CircularRadius,
+    WithIdentityKey {
   strokeAlignment?: StrokeAlignment;
 }
 
 export interface EllipseProps
-  extends EllipticGeometryProps, CoordinateContextProps, EllipticalRadius {
+  extends
+    EllipticGeometryProps,
+    CoordinateContextProps,
+    EllipticalRadius,
+    WithIdentityKey {
   strokeAlignment?: StrokeAlignment;
 }
 
@@ -274,7 +281,8 @@ export interface RectProps
     WithOpacity,
     WithBlend,
     TransformProps,
-    CoordinateContextProps {
+    CoordinateContextProps,
+    WithIdentityKey {
   cornerRadius?: Corners | number;
   strokeAlignment?: StrokeAlignment;
 }
@@ -288,7 +296,8 @@ export interface TextProps
     WithOpacity,
     WithBlend,
     TransformProps,
-    CoordinateContextProps {}
+    CoordinateContextProps,
+    WithIdentityKey {}
 
 export interface ImageProps
   extends
@@ -296,8 +305,22 @@ export interface ImageProps
     Partial<Dimensions2D>,
     WithOpacity,
     WithBlend,
-    TransformProps {
-  fit?: "cover" | "contain" | "stretch";
+    WithFitMode,
+    TransformProps,
+    WithIdentityKey {}
+
+export interface VideoProps
+  extends
+    Positioned2D,
+    Partial<Dimensions2D>,
+    WithOpacity,
+    WithBlend,
+    WithFitMode,
+    TransformProps,
+    WithIdentityKey {
+  clipStartTime?: number | EventTime;
+  clipEndTime?: number | EventTime;
+  loop?: boolean;
 }
 
 export interface GroupOptions

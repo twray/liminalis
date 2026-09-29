@@ -74,6 +74,15 @@ class Animatable<TProps extends object> implements IAnimatableLike<TProps> {
     this.#currentFrameTimeInMs = firstInvokedTime;
   }
 
+  // The props as DECLARED this frame (after style merging), as opposed to
+  // currentProps, which resolves them against the timeline and so reports
+  // mid-animation values. Used by AnimatableRegistry's unkeyed-reorder
+  // diagnostic: a caller trying to locate the offending call site recognises
+  // what they wrote, not an interpolated float they never typed.
+  get declaredProps(): Readonly<TProps> {
+    return this.#initialProps;
+  }
+
   get currentProps(): Readonly<TProps> {
     return this.getCurrentProps(this.#currentFrameTimeInMs);
   }
@@ -225,6 +234,18 @@ class Animatable<TProps extends object> implements IAnimatableLike<TProps> {
 
   clearSegments(): void {
     this.#segments = [];
+  }
+
+  // Whether this animatable is currently mid-animation, as opposed to having
+  // no segments at all or having segments that have all elapsed. Reads the
+  // settled cache rather than rebuilding the timeline, so it is cheap --
+  // #cacheIfSettled has already nulled that cache if anything is still in
+  // flight (or unscheduled) by the time flush has run for this frame. Used
+  // only by AnimatableRegistry's unkeyed-reorder diagnostic, which needs to
+  // know whether a positional collision could actually have corrupted
+  // anything visible.
+  hasActiveAnimation(): boolean {
+    return this.#segments.length > 0 && this.#settledCache === null;
   }
 
   clearSnapshot(): void {

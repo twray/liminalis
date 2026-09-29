@@ -198,10 +198,16 @@ export const createContainerPrimitive = <
 
       const containerAnimatable = isMeasuringFrameBounds()
         ? createNoopAnimatable(mergedProps)
-        : registry.queue(mergedProps, (animatedProps) => {
-            currentProps = animatedProps;
-            activeBoundsCollector?.includeBounds(resolveReportedBounds());
-          });
+        : registry.queue(
+            mergedProps,
+            (animatedProps) => {
+              currentProps = animatedProps;
+              activeBoundsCollector?.includeBounds(resolveReportedBounds());
+            },
+            // No key here: withScope(options.key) above has already pinned
+            // this container's identity, so the key must not be applied twice.
+            { primitiveType: containerType },
+          );
 
       const resolveCurrentState = (): TState => {
         const state = resolveState({

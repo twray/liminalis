@@ -200,6 +200,9 @@ export const createDrawContext = (
       renderWarningManager.warnIfOverlayPrimitiveInsideIsometric();
 
       const mergedProps = appliedStylesManager.mergeStyles(props);
+      // Opt-in stable identity. Read off the public props rather than the
+      // hooks so every primitive gets it for free.
+      const identityKey = (props as { key?: string }).key;
       const targetGroupHandle = drawGroupManager.captureCurrentGroupHandle();
       const activeBoundsCollector =
         boundsCollectionManager.getActiveCollector();
@@ -233,24 +236,33 @@ export const createDrawContext = (
       // animatable, which queue() returns rather than provides.
       let signatureOwner: object | null = null;
 
-      const queuedAnimatable = registry.queue(mergedProps, (props) => {
-        if (shouldCollectBounds) {
-          // Current bounds collected per-frame of animation
-          activeBoundsCollector?.includeBounds(resolveTransformedBounds(props));
-        }
+      const queuedAnimatable = registry.queue(
+        mergedProps,
+        (props) => {
+          if (shouldCollectBounds) {
+            // Current bounds collected per-frame of animation
+            activeBoundsCollector?.includeBounds(
+              resolveTransformedBounds(props),
+            );
+          }
 
-        const signature = resolveSignature(
-          signatureOwner,
+          const signature = resolveSignature(
+            signatureOwner,
+            primitiveType,
+            props as Record<string, unknown>,
+            getExtraSignature?.(props),
+          );
+
+          targetGroupHandle.pushPrimitiveOperation({
+            signature,
+            render: (targetContext) => renderFn(targetContext, props),
+          });
+        },
+        {
           primitiveType,
-          props as Record<string, unknown>,
-          getExtraSignature?.(props),
-        );
-
-        targetGroupHandle.pushPrimitiveOperation({
-          signature,
-          render: (targetContext) => renderFn(targetContext, props),
-        });
-      });
+          ...(identityKey !== undefined ? { key: identityKey } : {}),
+        },
+      );
 
       signatureOwner = queuedAnimatable;
 
@@ -354,12 +366,21 @@ export const createDrawContext = (
           return createNoopAnimatable(mergedProps);
         }
 
-        const clipAnimatable = registry.queue(mergedProps, (animatedProps) => {
-          currentClipProps = propsFn(animatedProps);
-          activeBoundsCollector?.includeBounds(
-            resolveTransformedAABB(currentClipProps),
-          );
-        });
+        const clipAnimatable = registry.queue(
+          mergedProps,
+          (animatedProps) => {
+            currentClipProps = propsFn(animatedProps);
+            activeBoundsCollector?.includeBounds(
+              resolveTransformedAABB(currentClipProps),
+            );
+          },
+          {
+            primitiveType: `${primitiveType}:frame`,
+            ...((mergedProps as { key?: string }).key !== undefined
+              ? { key: (mergedProps as { key?: string }).key }
+              : {}),
+          },
+        );
 
         const clipScope = createScope(() => currentClipProps);
 
