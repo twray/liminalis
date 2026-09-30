@@ -224,14 +224,12 @@ export default class NoteEventManager {
         return null;
       }
 
-      if (
-        !(
-          noteNumbersOfLastThreeNotesPlayed.toString() ===
-            noteNumbersOfLastThreeNotesPlayed.toSorted().toString() ||
-          noteNumbersOfLastThreeNotesPlayed.toString() ===
-            noteNumbersOfLastThreeNotesPlayed.toSorted().toReversed().toString()
-        )
-      ) {
+      if (!(
+        noteNumbersOfLastThreeNotesPlayed.toString() ===
+          noteNumbersOfLastThreeNotesPlayed.toSorted().toString() ||
+        noteNumbersOfLastThreeNotesPlayed.toString() ===
+          noteNumbersOfLastThreeNotesPlayed.toSorted().toReversed().toString()
+      )) {
         return null;
       }
 

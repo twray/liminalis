@@ -8,6 +8,7 @@ const mockState = {
   midiListeners: {
     noteon: [] as Array<(event: any) => void>,
     noteoff: [] as Array<(event: any) => void>,
+    controlchange: [] as Array<(event: any) => void>,
   },
 };
 
@@ -87,7 +88,10 @@ vi.mock("webmidi", () => {
     id: "mock-input-id",
     name: "Mock Input",
     addListener: vi.fn(
-      (eventType: "noteon" | "noteoff", callback: (event: any) => void) => {
+      (
+        eventType: "noteon" | "noteoff" | "controlchange",
+        callback: (event: any) => void,
+      ) => {
         mockState.midiListeners[eventType].push(callback);
       },
     ),
@@ -406,6 +410,7 @@ describe("VisualisationAnimationLoopHandler note dispatch", () => {
     mockState.latestRenderCallback = null;
     mockState.midiListeners.noteon = [];
     mockState.midiListeners.noteoff = [];
+    mockState.midiListeners.controlchange = [];
     canvasRendererMockState.instances = [];
     videoRecorderMockState.instances = [];
     snapshotExporterMockState.instances = [];
@@ -637,6 +642,344 @@ describe("VisualisationAnimationLoopHandler note dispatch", () => {
     noteOn!({ note: { identifier: "D4", number: 62, attack: 0.9 } });
 
     expect(receivedEvents).toEqual(["down:C4", "up:C4", "down:D4"]);
+  });
+
+  describe("damper pedal state, observed through note-release timing", () => {
+    it("registers a CC at or above the midpoint as the pedal going down", async () => {
+      const { default: VisualisationAnimationLoopHandler } =
+        await import("./VisualisationAnimationLoopHandler");
+
+      const received: string[] = [];
+
+      const handler = new VisualisationAnimationLoopHandler()
+        .withSettings({ computerKeyboardDebugEnabled: false, fps: 5 })
+        .setup(({ onNoteReleased }) => {
+          onNoteReleased(({ note }) => received.push(note));
+        });
+
+      handler.render();
+      await flushPromises();
+
+      const [noteOn] = mockState.midiListeners.noteon;
+      const [noteOff] = mockState.midiListeners.noteoff;
+      const [controlChange] = mockState.midiListeners.controlchange;
+
+      controlChange!({
+        subtype: "damperpedal",
+        value: 1,
+        controller: { number: 64, name: "damperpedal" },
+      });
+
+      noteOn!({ note: { identifier: "C4", number: 60, attack: 0.7 } });
+      noteOff!({ note: { identifier: "C4", number: 60 } });
+
+      // If the CC had not registered as the pedal going down, this would
+      // already have fired -- its absence IS the assertion that the pedal is
+      // considered down.
+      expect(received).toEqual([]);
+    });
+
+    it("treats a half-pedal position below the midpoint as up, not down", async () => {
+      // The conventional MIDI on/off threshold for a damper pedal is the
+      // midpoint of its 0-1 range, not "any nonzero value" -- hardware that
+      // reports continuous half-pedal positions would otherwise register as
+      // "down" the moment it leaves fully released.
+      const { default: VisualisationAnimationLoopHandler } =
+        await import("./VisualisationAnimationLoopHandler");
+
+      const received: string[] = [];
+
+      const handler = new VisualisationAnimationLoopHandler()
+        .withSettings({ computerKeyboardDebugEnabled: false, fps: 5 })
+        .setup(({ onNoteReleased }) => {
+          onNoteReleased(({ note }) => received.push(note));
+        });
+
+      handler.render();
+      await flushPromises();
+
+      const [noteOn] = mockState.midiListeners.noteon;
+      const [noteOff] = mockState.midiListeners.noteoff;
+      const [controlChange] = mockState.midiListeners.controlchange;
+
+      controlChange!({
+        subtype: "damperpedal",
+        value: 0.3,
+        controller: { number: 64, name: "damperpedal" },
+      });
+
+      noteOn!({ note: { identifier: "C4", number: 60, attack: 0.7 } });
+      noteOff!({ note: { identifier: "C4", number: 60 } });
+
+      expect(received).toEqual(["C4"]);
+    });
+
+    it("does not treat a different controller's message as the damper pedal", async () => {
+      // Every CC message arrives on this same listener, not just CC64 -- a
+      // modulation wheel or volume pedal must not gate a note release.
+      const { default: VisualisationAnimationLoopHandler } =
+        await import("./VisualisationAnimationLoopHandler");
+
+      const received: string[] = [];
+
+      const handler = new VisualisationAnimationLoopHandler()
+        .withSettings({ computerKeyboardDebugEnabled: false, fps: 5 })
+        .setup(({ onNoteReleased }) => {
+          onNoteReleased(({ note }) => received.push(note));
+        });
+
+      handler.render();
+      await flushPromises();
+
+      const [noteOn] = mockState.midiListeners.noteon;
+      const [noteOff] = mockState.midiListeners.noteoff;
+      const [controlChange] = mockState.midiListeners.controlchange;
+
+      // A value of 1 would register as "down" if this were mistaken for the
+      // damper pedal -- the point of the test is that it isn't.
+      controlChange!({
+        subtype: "modulationwheel",
+        value: 1,
+        controller: { number: 1, name: "modulationwheel" },
+      });
+
+      noteOn!({ note: { identifier: "C4", number: 60, attack: 0.7 } });
+      noteOff!({ note: { identifier: "C4", number: 60 } });
+
+      expect(received).toEqual(["C4"]);
+    });
+  });
+
+  describe("onNoteAttacked / onNoteReleased", () => {
+    it("fires onNoteAttacked exactly when onNoteDown fires", async () => {
+      const { default: VisualisationAnimationLoopHandler } =
+        await import("./VisualisationAnimationLoopHandler");
+
+      const received: string[] = [];
+
+      const handler = new VisualisationAnimationLoopHandler()
+        .withSettings({ computerKeyboardDebugEnabled: false, fps: 5 })
+        .setup(({ onNoteDown, onNoteAttacked }) => {
+          onNoteDown(({ note }) => received.push(`down:${note}`));
+          onNoteAttacked(({ note }) => received.push(`attacked:${note}`));
+        });
+
+      handler.render();
+      await flushPromises();
+
+      const [noteOn] = mockState.midiListeners.noteon;
+      noteOn!({ note: { identifier: "C4", number: 60, attack: 0.7 } });
+
+      expect(received).toEqual(["down:C4", "attacked:C4"]);
+    });
+
+    it("fires onNoteReleased immediately when the pedal is up, same as onNoteUp", async () => {
+      const { default: VisualisationAnimationLoopHandler } =
+        await import("./VisualisationAnimationLoopHandler");
+
+      const received: string[] = [];
+
+      const handler = new VisualisationAnimationLoopHandler()
+        .withSettings({ computerKeyboardDebugEnabled: false, fps: 5 })
+        .setup(({ onNoteUp, onNoteReleased }) => {
+          onNoteUp(({ note }) => received.push(`up:${note}`));
+          onNoteReleased(({ note }) => received.push(`released:${note}`));
+        });
+
+      handler.render();
+      await flushPromises();
+
+      const [noteOn] = mockState.midiListeners.noteon;
+      const [noteOff] = mockState.midiListeners.noteoff;
+
+      noteOn!({ note: { identifier: "C4", number: 60, attack: 0.7 } });
+      noteOff!({ note: { identifier: "C4", number: 60 } });
+
+      expect(received).toEqual(["up:C4", "released:C4"]);
+    });
+
+    it("defers onNoteReleased until the pedal lifts, when the key came up while the pedal was down", async () => {
+      const { default: VisualisationAnimationLoopHandler } =
+        await import("./VisualisationAnimationLoopHandler");
+
+      const received: string[] = [];
+
+      const handler = new VisualisationAnimationLoopHandler()
+        .withSettings({ computerKeyboardDebugEnabled: false, fps: 5 })
+        .setup(({ onNoteUp, onNoteReleased }) => {
+          onNoteUp(({ note }) => received.push(`up:${note}`));
+          onNoteReleased(({ note }) => received.push(`released:${note}`));
+        });
+
+      handler.render();
+      await flushPromises();
+
+      const [noteOn] = mockState.midiListeners.noteon;
+      const [noteOff] = mockState.midiListeners.noteoff;
+      const [controlChange] = mockState.midiListeners.controlchange;
+
+      controlChange!({
+        subtype: "damperpedal",
+        value: 1,
+        controller: { number: 64, name: "damperpedal" },
+      });
+
+      noteOn!({ note: { identifier: "C4", number: 60, attack: 0.7 } });
+      noteOff!({ note: { identifier: "C4", number: 60 } });
+
+      // onNoteUp is unaffected by the pedal -- fires right away. onNoteReleased
+      // does not, because the key came up while the pedal was still down.
+      expect(received).toEqual(["up:C4"]);
+
+      controlChange!({
+        subtype: "damperpedal",
+        value: 0,
+        controller: { number: 64, name: "damperpedal" },
+      });
+
+      expect(received).toEqual(["up:C4", "released:C4"]);
+    });
+
+    it("fires every deferred release, in the order the keys were lifted, when the pedal lifts", async () => {
+      // The chord case: several notes can come up while the pedal is held,
+      // all waiting on the same eventual pedal release.
+      const { default: VisualisationAnimationLoopHandler } =
+        await import("./VisualisationAnimationLoopHandler");
+
+      const released: string[] = [];
+
+      const handler = new VisualisationAnimationLoopHandler()
+        .withSettings({ computerKeyboardDebugEnabled: false, fps: 5 })
+        .setup(({ onNoteReleased }) => {
+          onNoteReleased(({ note }) => released.push(note));
+        });
+
+      handler.render();
+      await flushPromises();
+
+      const [noteOn] = mockState.midiListeners.noteon;
+      const [noteOff] = mockState.midiListeners.noteoff;
+      const [controlChange] = mockState.midiListeners.controlchange;
+
+      controlChange!({
+        subtype: "damperpedal",
+        value: 1,
+        controller: { number: 64, name: "damperpedal" },
+      });
+
+      noteOn!({ note: { identifier: "C4", number: 60, attack: 0.7 } });
+      noteOn!({ note: { identifier: "E4", number: 64, attack: 0.7 } });
+      noteOn!({ note: { identifier: "G4", number: 67, attack: 0.7 } });
+
+      noteOff!({ note: { identifier: "E4", number: 64 } });
+      noteOff!({ note: { identifier: "C4", number: 60 } });
+      noteOff!({ note: { identifier: "G4", number: 67 } });
+
+      expect(released).toEqual([]);
+
+      controlChange!({
+        subtype: "damperpedal",
+        value: 0,
+        controller: { number: 64, name: "damperpedal" },
+      });
+
+      expect(released).toEqual(["E4", "C4", "G4"]);
+    });
+
+    it("does not fire a deferred release for a note re-struck before the pedal lifts", async () => {
+      // The re-strike case: the key comes up while sustaining, then is
+      // pressed again before the pedal releases. The note is live again, so
+      // the stale pending release must not fire once the pedal lifts.
+      const { default: VisualisationAnimationLoopHandler } =
+        await import("./VisualisationAnimationLoopHandler");
+
+      const received: string[] = [];
+
+      const handler = new VisualisationAnimationLoopHandler()
+        .withSettings({ computerKeyboardDebugEnabled: false, fps: 5 })
+        .setup(({ onNoteReleased }) => {
+          onNoteReleased(({ note, event }) =>
+            received.push(`${event}:${note}`),
+          );
+        });
+
+      handler.render();
+      await flushPromises();
+
+      const [noteOn] = mockState.midiListeners.noteon;
+      const [noteOff] = mockState.midiListeners.noteoff;
+      const [controlChange] = mockState.midiListeners.controlchange;
+
+      controlChange!({
+        subtype: "damperpedal",
+        value: 1,
+        controller: { number: 64, name: "damperpedal" },
+      });
+
+      noteOn!({ note: { identifier: "C4", number: 60, attack: 0.7 } });
+      noteOff!({ note: { identifier: "C4", number: 60 } });
+
+      // Re-struck while still sustaining, and NOT released again before the
+      // pedal lifts -- it is still being held at that point.
+      noteOn!({ note: { identifier: "C4", number: 60, attack: 0.9 } });
+
+      controlChange!({
+        subtype: "damperpedal",
+        value: 0,
+        controller: { number: 64, name: "damperpedal" },
+      });
+
+      expect(received).toEqual([]);
+    });
+
+    it("does not re-fire a release on a second pedal cycle with nothing new pending", async () => {
+      // The flush has to actually CLEAR what it fires, not just iterate it --
+      // otherwise a later press-and-release of the pedal, with no new note
+      // released in between, would replay the same release a second time.
+      const { default: VisualisationAnimationLoopHandler } =
+        await import("./VisualisationAnimationLoopHandler");
+
+      const released: string[] = [];
+
+      const handler = new VisualisationAnimationLoopHandler()
+        .withSettings({ computerKeyboardDebugEnabled: false, fps: 5 })
+        .setup(({ onNoteReleased }) => {
+          onNoteReleased(({ note }) => released.push(note));
+        });
+
+      handler.render();
+      await flushPromises();
+
+      const [noteOn] = mockState.midiListeners.noteon;
+      const [noteOff] = mockState.midiListeners.noteoff;
+      const [controlChange] = mockState.midiListeners.controlchange;
+
+      const pedalDown = () =>
+        controlChange!({
+          subtype: "damperpedal",
+          value: 1,
+          controller: { number: 64, name: "damperpedal" },
+        });
+      const pedalUp = () =>
+        controlChange!({
+          subtype: "damperpedal",
+          value: 0,
+          controller: { number: 64, name: "damperpedal" },
+        });
+
+      pedalDown();
+      noteOn!({ note: { identifier: "C4", number: 60, attack: 0.7 } });
+      noteOff!({ note: { identifier: "C4", number: 60 } });
+      pedalUp();
+
+      expect(released).toEqual(["C4"]);
+
+      // A second full pedal cycle, with nothing released during it.
+      pedalDown();
+      pedalUp();
+
+      expect(released).toEqual(["C4"]);
+    });
   });
 
   it("does not replay note callbacks during frame rendering", async () => {
@@ -892,8 +1235,7 @@ describe("VisualisationAnimationLoopHandler note dispatch", () => {
     );
 
     let resolveStopAndEncode:
-      | ((result: { blob: Blob; fileName: string }) => void)
-      | null = null;
+      ((result: { blob: Blob; fileName: string }) => void) | null = null;
 
     recorderMock.stopAndEncode.mockImplementation(
       () =>
