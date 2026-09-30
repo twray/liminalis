@@ -397,6 +397,7 @@ export interface DrawPrimitives {
   ) => IAnimatableLike<TextProps>;
   getTextBounds: (text: string, props?: TextProps) => Bounds;
   image: (imageSrc: string, props?: ImageProps) => IAnimatableLike<ImageProps>;
+  video: (videoSrc: string, props?: VideoProps) => IAnimatableLike<VideoProps>;
 }
 
 export interface DrawPrimitivePropHelpers {

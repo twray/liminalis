@@ -1,6 +1,10 @@
 import type {
   Dimensions2D,
   FillStyles,
+  Positioned2D,
+  WithBlend,
+  WithFitMode,
+  WithOpacity,
   IAnimatableLike,
   PartialDrawStyles,
   PartialIsometricStyles,
@@ -406,6 +410,121 @@ export const renderWithTransform = (
   renderShape();
 
   context.restore();
+};
+
+// Shared by image() and video(). Both composite a CanvasImageSource into a
+// frame with the same three fit modes and the same transform/globals
+// handling; the only difference between them is where the source comes from
+// -- a decoded bitmap versus a live HTMLVideoElement, both of which satisfy
+// CanvasImageSource. Extracted so the cover/contain/stretch geometry exists
+// once rather than being duplicated per primitive.
+//
+// naturalWidth/naturalHeight are the source's own intrinsic dimensions, used
+// both as the fallback frame size when width/height are omitted and as the
+// aspect reference for cover/contain.
+export const drawImageSourceWithFit = (
+  context: CanvasRenderingContext2D,
+  source: CanvasImageSource,
+  naturalWidth: number,
+  naturalHeight: number,
+  props: Positioned2D &
+    Partial<Dimensions2D> &
+    WithOpacity &
+    WithBlend &
+    WithFitMode &
+    TransformProps,
+): void => {
+  const {
+    x = 0,
+    y = 0,
+    opacity = 1,
+    blend = DEFAULT_BLEND_MODE,
+    width,
+    height,
+    fit = "cover",
+  } = props;
+
+  const hasScaledDimensions = width !== undefined && height !== undefined;
+
+  if (hasScaledDimensions && (width <= 0 || height <= 0)) {
+    return;
+  }
+
+  const renderedFrameWidth = hasScaledDimensions ? width : naturalWidth;
+  const renderedFrameHeight = hasScaledDimensions ? height : naturalHeight;
+
+  const bounds = {
+    x,
+    y,
+    width: renderedFrameWidth,
+    height: renderedFrameHeight,
+  };
+
+  renderWithTransform(context, props, bounds, () => {
+    context.save();
+
+    setContextGlobals(context, { opacity, blend });
+
+    if (!hasScaledDimensions) {
+      context.drawImage(source, x, y);
+      context.restore();
+      return;
+    }
+
+    switch (fit) {
+      case "stretch": {
+        context.drawImage(source, x, y, width, height);
+        context.restore();
+        return;
+      }
+      case "contain": {
+        const containScale = Math.min(
+          width / naturalWidth,
+          height / naturalHeight,
+        );
+        const containedWidth = naturalWidth * containScale;
+        const containedHeight = naturalHeight * containScale;
+        const dx = x + (width - containedWidth) / 2;
+        const dy = y + (height - containedHeight) / 2;
+
+        context.drawImage(source, dx, dy, containedWidth, containedHeight);
+        context.restore();
+        return;
+      }
+      default:
+      case "cover": {
+        const frameAspect = width / height;
+        const sourceAspect = naturalWidth / naturalHeight;
+
+        let sx = 0;
+        let sy = 0;
+        let sourceWidth = naturalWidth;
+        let sourceHeight = naturalHeight;
+
+        if (sourceAspect > frameAspect) {
+          sourceWidth = naturalHeight * frameAspect;
+          sx = (naturalWidth - sourceWidth) / 2;
+        } else if (sourceAspect < frameAspect) {
+          sourceHeight = naturalWidth / frameAspect;
+          sy = (naturalHeight - sourceHeight) / 2;
+        }
+
+        context.drawImage(
+          source,
+          sx,
+          sy,
+          sourceWidth,
+          sourceHeight,
+          x,
+          y,
+          width,
+          height,
+        );
+
+        context.restore();
+      }
+    }
+  });
 };
 
 export const setContextGlobals = (

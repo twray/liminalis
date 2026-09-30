@@ -1784,6 +1784,122 @@ image("https://picsum.photos/1200/800?id=10", {
 });
 ```
 
+#### `video(url, { x?, y?, width?, height?, fit?, clipStartTime?, clipEndTime?, loop?, opacity?, blend?, rotate?, rotateOrigin?, scale?, scaleX?, scaleY?, scaleOrigin?, key? })`
+
+Composites a live video into the scene. It is **decoration** — a muted loop or
+a trimmed segment to support a visualisation — not a media player.
+
+```typescript
+video("https://example.com/clip.mp4", {
+  x: 90,
+  y: 90,
+  width: 900,
+  height: 520,
+  fit: "cover",
+});
+```
+
+Geometry (`x`, `y`, `width`, `height`, `fit`, `opacity`, `blend`, transforms)
+behaves exactly as it does for `image()`, including the same three fit modes.
+
+Playback is described by three props, all declarative:
+
+- `clipStartTime` (default `0`) — where in the **source footage** to begin.
+- `clipEndTime` (default: the video's own end) — where to stop or loop back.
+- `loop` (default `true`) — whether to repeat that segment.
+
+Both times accept milliseconds or a `"M:SS"` string, the same as `animateTo`'s
+`at`. They trim the _source_, not the scene's timeline — `clipStartTime: "0:02"`
+means "start two seconds into the file", not "start when the scene reaches two
+seconds".
+
+```typescript
+// Loop just the third second of the source, forever.
+video("https://example.com/clip.mp4", {
+  x: 40,
+  y: 40,
+  width: 420,
+  height: 250,
+  clipStartTime: "0:02",
+  clipEndTime: "0:03",
+});
+
+// Play a segment once and hold on its last frame.
+video("https://example.com/clip.mp4", {
+  x: 40,
+  y: 340,
+  width: 420,
+  height: 250,
+  clipEndTime: 4000,
+  loop: false,
+});
+```
+
+Like every other primitive, `video()` returns an animatable, so its **frame**
+can be moved, resized or faded:
+
+```typescript
+video("https://example.com/clip.mp4", {
+  x: 0,
+  y: 0,
+  width: 200,
+  height: 120,
+}).animateTo({ x: 400, opacity: 0.4 }, { at: 0, duration: 1200 });
+```
+
+Note what that animates: the container. `animateTo` never scrubs the footage —
+which segment plays is governed by the props above, and nothing else.
+
+**No audio, ever.** The element is muted unconditionally and cannot be
+unmuted. Liminalis exists to visualise music, so a video's own audio track is
+never what you want competing with it — and unmuted autoplay would require a
+user gesture the framework has no business chasing.
+
+**Identity is per declaration site.** Two `video()` calls pointing at the same
+URL get independent elements and independent playback positions, so the same
+source can appear twice at different points in the footage. In a list that can
+reorder, pass a stable `key` — the same rule as any other primitive, and here
+it keeps each item's _playback head_ with its item, not just its geometry.
+
+##### Preloading
+
+`load({ video })` awaits **metadata only** — dimensions and duration — so the
+first frame can size a video frame from real values:
+
+```typescript
+.setup(({ onRender, load }) => {
+  load(({ video }) => {
+    video("https://example.com/clip.mp4");
+  });
+
+  onRender((draw) => { /* ... */ });
+})
+```
+
+It deliberately does not wait for the file to buffer: that would block first
+render on network conditions, for no benefit.
+
+##### Caching, and what a playing video costs
+
+A `video()` gets its own cache boundary automatically — no wrapper `group()`
+needed. Once it stops advancing (a non-looping segment that has ended, or a
+held single frame) its own region is blitted from a cached surface instead of
+being recomposited, even while unrelated content around it keeps animating.
+
+While it _is_ playing, though, its pixels genuinely differ every frame, so
+neither it nor any ancestor can be served from cache — including the canvas
+root. A scene containing a playing video therefore never collapses to the
+single full-canvas blit a fully static scene does. That is inherent to live
+content rather than a tuning problem: a cached frame would show moving footage
+frozen. Keep unrelated static content in sibling `group()`s and it will still
+cache independently.
+
+**Cross-origin sources** must send CORS headers (`Access-Control-Allow-Origin`).
+The element is always flagged `crossOrigin="anonymous"`, because an un-flagged
+cross-origin video taints the canvas and would silently break PNG export and
+video capture. A host without those headers will fail to load rather than
+render untainted.
+
 ### Styling & Transformations
 
 #### `withStyles(styles, callback)`

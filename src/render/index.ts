@@ -7,9 +7,14 @@ import DrawGroupBitmapCache from "./DrawGroupBitmapCache";
 import DrawGroupManager from "./DrawGroupManager";
 import FrameMeasurementPassManager from "./FrameMeasurementPassManager";
 import RenderWarningManager from "./RenderWarningManager";
+import VideoTransportRegistry from "./VideoTransportRegistry";
 import { createIsometricPrimitive } from "./primitives/isometric";
 
-import { createClipScope, withClipScopedGroup } from "./clipping";
+import {
+  createClipScope,
+  createGroupScope,
+  withClipScopedGroup,
+} from "./clipping";
 
 import type {
   IAnimatableLike,
@@ -22,6 +27,7 @@ import {
   DEFAULT_BLEND_MODE,
   DEFAULT_STROKE_STYLE,
   DEFAULT_STROKE_WIDTH,
+  EMPTY_BOUNDS,
   centerOf,
   computeTransformedRectangularAABB,
   createNoopAnimatable,
@@ -61,6 +67,7 @@ import {
   rectPathDescriptor,
   resolveTextProps,
   text,
+  video,
 } from "./primitives";
 
 import type {
@@ -83,6 +90,7 @@ import type {
   RectProps,
   TextProps,
   TransformProps,
+  VideoProps,
 } from "./types";
 
 interface QueueAnimatableHooks<TProps> {
@@ -152,6 +160,11 @@ export const createDrawContext = (
   };
 
   const registry = new AnimatableRegistry();
+  // Holds one <video> element per declaration site for this scene's lifetime.
+  // Runs alongside the animatable registry rather than through it: playback
+  // state is reconciled synchronously at declare time, while the container's
+  // geometry still goes through queueAnimatable so it can be animated.
+  const videoTransportRegistry = new VideoTransportRegistry();
   const drawGroupBitmapCache = new DrawGroupBitmapCache({
     enabled: enableBitmapBasedCaching,
   });
@@ -165,6 +178,7 @@ export const createDrawContext = (
     timeInMs: number,
   ): void => {
     registry.beginFrame(timeInMs);
+    videoTransportRegistry.beginFrame();
     drawGroupBitmapCache.beginFrame({ width, height, devicePixelRatio });
     renderWarningManager.beginFrame();
 
@@ -574,6 +588,52 @@ export const createDrawContext = (
             getBounds: (p) => getImageBounds(imageSrc, p),
           },
         ),
+      video: (videoSrc: string, props: VideoProps = {}) => {
+        const identity = {
+          primitiveType: `video:${videoSrc}`,
+          ...(props.key !== undefined ? { key: props.key } : {}),
+        };
+
+        const transport = videoTransportRegistry.getOrCreate(
+          videoSrc,
+          props,
+          identity,
+        );
+
+        return queueAnimatable(
+          `video:${videoSrc}`,
+          props,
+          (currentContext, animatedProps) => {
+            const {
+              rotate: _rotate,
+              rotateOrigin: _rotateOrigin,
+              scale: _scale,
+              scaleX: _scaleX,
+              scaleY: _scaleY,
+              scaleOrigin: _scaleOrigin,
+              ...untransformed
+            } = animatedProps;
+
+            video(currentContext, transport, untransformed);
+          },
+          {
+            getExtraSignature: () => transport.getExtraSignature(),
+            getBounds: (p) => transport.getBounds(p),
+            // Its own cache boundary, so a paused or ended video can be
+            // blitted from a cached surface the moment IT stabilises, rather
+            // than being redrawn every frame because an unrelated sibling is
+            // still animating.
+            ownGroup: {
+              getScope: (p) =>
+                createGroupScope(
+                  () => ({ ...p, ...(transport.getBounds(p) ?? EMPTY_BOUNDS) }),
+                  rectPathDescriptor,
+                ),
+              getInvalidationSignature: () => transport.getExtraSignature(),
+            },
+          },
+        );
+      },
     };
 
     const drawPrimitivePropHelpers = {
@@ -606,6 +666,7 @@ export const createDrawContext = (
 
     registry.flush();
     registry.endFrame();
+    videoTransportRegistry.endFrame();
 
     drawGroupManager.renderToContext({
       cache: drawGroupBitmapCache,

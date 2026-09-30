@@ -15,6 +15,7 @@ import CanvasRenderer from "./CanvasRenderer";
 import { fontAssetCache, type FontAssetDefinition } from "./FontAssetCache";
 import { imageAssetCache } from "./ImageAssetCache";
 import SnapshotExporter from "./SnapshotExporter";
+import { videoMetadataLoader } from "./VideoMetadataLoader";
 import VideoRecorder from "./VideoRecorder";
 
 import type {
@@ -37,9 +38,9 @@ import NoteEventManager from "./NoteEventManager";
 
 import keyMappings from "../data/keyMappings.json";
 import { createNoopAnimatable } from "../render/common";
+import { adaptToLayerComponent } from "./adapters/adaptToLayerComponent";
 import ReactiveLayerEnvelope from "./ReactiveLayerEnvelope";
 import ReactiveLayerRegistry from "./ReactiveLayerRegistry";
-import { adaptToLayerComponent } from "./adapters/adaptToLayerComponent";
 
 type VideoFormatPreference = "auto" | "webm" | "mp4";
 
@@ -107,6 +108,9 @@ interface SetupFunctionProps<TState> {
 interface SetupAssetLoaders {
   image: (imageUrl: string | string[]) => void;
   font: (font: FontAssetDefinition | FontAssetDefinition[]) => void;
+  // Awaits metadata only -- dimensions and duration -- not full buffering.
+  // See videoMetadataLoader for why.
+  video: (videoUrl: string | string[]) => void;
 }
 
 interface SetupAssetLoadOptions {
@@ -314,6 +318,13 @@ class VisualisationAnimationLoopHandler<TState> {
                 `image:${imageSrc}`,
               ),
             );
+          }
+        },
+        video: (videoUrl: string | string[]) => {
+          const videoUrls = Array.isArray(videoUrl) ? videoUrl : [videoUrl];
+
+          for (const videoSrc of videoUrls) {
+            batchPromises.push(videoMetadataLoader.awaitMetadata(videoSrc));
           }
         },
         font: (font: FontAssetDefinition | FontAssetDefinition[]) => {
