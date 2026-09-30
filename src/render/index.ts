@@ -93,6 +93,23 @@ import type {
   VideoProps,
 } from "./types";
 
+// A primitive needs the real backdrop beneath it whenever it composites with
+// anything other than source-over. Read off the already-merged props, so a
+// blend arriving via withStyles({ blend }) counts exactly as one declared on
+// the primitive -- mergeStyles seeds `blend` for every primitive, so this is
+// total for anything declared through the draw API.
+//
+// It does NOT see a blend set by mutating the context directly (which scene
+// code can reach via RenderProps.context on the onRender callback). That
+// state is left on the target context, so it is still live when a promoted
+// group's surface is blitted -- the blit then carries the user's blend and
+// the whole group composites through it, rather than the individual
+// primitive. Whether the group was promoted therefore changes the result.
+// Known gap, deliberately not handled here: see the note in
+// DrawGroupBitmapCache.renderGroup.
+const blendsWithBackdrop = (props: { blend?: GlobalCompositeOperation }) =>
+  props.blend !== undefined && props.blend !== DEFAULT_BLEND_MODE;
+
 interface QueueAnimatableHooks<TProps> {
   getExtraSignature?: (props: TProps) => string;
   getBounds?: (props: TProps) => Bounds | null;
@@ -187,11 +204,74 @@ export const createDrawContext = (
     const boundsCollectionManager = new BoundsCollectionManager();
     const activeMeasurementsManager = new ActiveMeasurementsManager();
 
+    // blend is deliberately NOT seeded here. Seeding it made every primitive
+    // arrive with blend: "source-over" already set, which is indistinguishable
+    // from a caller explicitly asking for source-over -- and inheriting the
+    // canvas's own composite operation requires telling those two apart.
+    // Primitives still fall back to DEFAULT_BLEND_MODE in their own
+    // destructuring, so an undeclared blend with an untouched context behaves
+    // exactly as before.
     const appliedStylesManager = new AppliedStylesManager({
       strokeStyle: DEFAULT_STROKE_STYLE,
       strokeWidth: DEFAULT_STROKE_WIDTH,
-      blend: DEFAULT_BLEND_MODE,
     });
+
+    // Resolves a primitive's effective context globals at DECLARE time, so a
+    // blend or alpha the caller set straight on the canvas (reachable via
+    // RenderProps.context) is carried into primitives that declare none of
+    // their own. Precedence: the primitive's own prop, then withStyles, then
+    // whatever is live on the context, then the primitive's default.
+    //
+    // Snapshotting into props rather than inheriting ambiently at paint time
+    // is what keeps this safe. The value lands in the signature, so changing
+    // it invalidates the cache instead of blitting a surface rendered under
+    // the old one; it lands where blendsWithBackdrop reads it, so a group
+    // containing an inherited blend correctly refuses promotion; and the
+    // primitive applies it explicitly, so promoted and unpromoted groups
+    // composite identically.
+    //
+    // Only non-default ambient values are written. That keeps the common case
+    // -- nobody touching the context -- byte-identical in props, and
+    // therefore identical in signature and serialisation cost, so bitmap
+    // caching stays exactly as cheap as it was.
+    const withInheritedContextGlobals = <T extends PartialDrawStyles>(
+      merged: T,
+    ): T => {
+      const declared = merged as T & {
+        blend?: GlobalCompositeOperation;
+        opacity?: number;
+      };
+      let inherited: typeof declared | null = null;
+
+      if (declared.blend === undefined) {
+        const ambientBlend = context.globalCompositeOperation;
+
+        // Type-checked, not just compared. A partially-stubbed context (the
+        // framework's own test doubles among them) can return anything at all
+        // for these, and writing a non-value into props would poison both the
+        // signature and the blend veto that reads it.
+        if (
+          typeof ambientBlend === "string" &&
+          ambientBlend !== DEFAULT_BLEND_MODE
+        ) {
+          inherited = { ...declared, blend: ambientBlend };
+        }
+      }
+
+      if (declared.opacity === undefined) {
+        const ambientAlpha = context.globalAlpha;
+
+        if (
+          typeof ambientAlpha === "number" &&
+          Number.isFinite(ambientAlpha) &&
+          ambientAlpha !== 1
+        ) {
+          inherited = { ...(inherited ?? declared), opacity: ambientAlpha };
+        }
+      }
+
+      return (inherited ?? declared) as T;
+    };
 
     // Queues a standard animatable draw operation.
     // Use for primitives that only need deferred animation + style resolution.
@@ -217,7 +297,9 @@ export const createDrawContext = (
 
       renderWarningManager.warnIfOverlayPrimitiveInsideIsometric();
 
-      const mergedProps = appliedStylesManager.mergeStyles(props);
+      const mergedProps = withInheritedContextGlobals(
+        appliedStylesManager.mergeStyles(props),
+      );
       // Opt-in stable identity. Read off the public props rather than the
       // hooks so every primitive gets it for free.
       const identityKey = (props as { key?: string }).key;
@@ -287,6 +369,7 @@ export const createDrawContext = (
                 drawGroupManager.pushPrimitiveOperation({
                   signature,
                   render: (targetContext) => renderFn(targetContext, props),
+                  blendsWithBackdrop: blendsWithBackdrop(props),
                 });
               },
             );
@@ -294,6 +377,7 @@ export const createDrawContext = (
             targetGroupHandle.pushPrimitiveOperation({
               signature,
               render: (targetContext) => renderFn(targetContext, props),
+              blendsWithBackdrop: blendsWithBackdrop(props),
             });
           }
         },
@@ -367,7 +451,9 @@ export const createDrawContext = (
           );
         }
 
-        const mergedProps = appliedStylesManager.mergeStyles(props);
+        const mergedProps = withInheritedContextGlobals(
+          appliedStylesManager.mergeStyles(props),
+        );
         const lifecycleProps = propsFn(mergedProps);
         const frameBounds = getFrameBounds(lifecycleProps);
 
@@ -496,7 +582,19 @@ export const createDrawContext = (
         activeMeasurementsManager,
       }),
       withStyles: appliedStylesManager.withStyles.bind(appliedStylesManager),
-      background: (props: BackgroundProps) => background(context, props),
+      background: (props: BackgroundProps) => {
+        if (frameMeasurementPassManager.isMeasuringFrameBounds()) {
+          return;
+        }
+
+        drawGroupManager.pushPrimitiveOperation({
+          signature: DrawGroupManager.createPrimitiveSignature("background", {
+            ...props,
+          }),
+          render: (targetContext) => background(targetContext, props),
+          blendsWithBackdrop: false,
+        });
+      },
       centerOf,
       line: (props: LineProps) =>
         queueAnimatable(

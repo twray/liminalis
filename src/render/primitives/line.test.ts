@@ -144,7 +144,37 @@ describe("line rendering", () => {
     expect(mockContext.globalAlpha).toBe(0.5);
   });
 
-  it("defaults blend mode to source-over when blend is omitted", async () => {
+  it("uses source-over when blend is omitted and the context is untouched", async () => {
+    const { createDrawContext } = await import("../index");
+    const drawContext = createDrawContext();
+
+    drawContext.executeDrawCallback(
+      (d) => {
+        d.line({
+          start: { x: 0, y: 0 },
+          end: { x: 100, y: 100 },
+        });
+      },
+      mockContext,
+      800,
+      600,
+      0,
+    );
+
+    expect(mockContext.globalCompositeOperation).toBe("source-over");
+  });
+
+  it("inherits the context's own composite operation when blend is omitted", async () => {
+    // CONTRACT CHANGE. This assertion was previously the reverse: a primitive
+    // declaring no blend reset the context to source-over, discarding whatever
+    // the caller had set on the canvas directly. It now inherits it, so that
+    // manipulating the canvas by hand (via RenderProps.context) carries
+    // through to subsequent primitives that express no opinion of their own.
+    //
+    // The inherited value is snapshotted into the primitive's props at
+    // declare time, not read ambiently at paint time -- so it still reaches
+    // the group signature and the promotion veto. See
+    // withInheritedContextGlobals in render/index.ts.
     const { createDrawContext } = await import("../index");
     const drawContext = createDrawContext();
 
@@ -163,7 +193,30 @@ describe("line rendering", () => {
       0,
     );
 
-    expect(mockContext.globalCompositeOperation).toBe("source-over");
+    expect(mockContext.globalCompositeOperation).toBe("multiply");
+  });
+
+  it("lets an explicit blend win over the context's own", async () => {
+    const { createDrawContext } = await import("../index");
+    const drawContext = createDrawContext();
+
+    mockContext.globalCompositeOperation = "multiply";
+
+    drawContext.executeDrawCallback(
+      (d) => {
+        d.line({
+          start: { x: 0, y: 0 },
+          end: { x: 100, y: 100 },
+          blend: "screen",
+        });
+      },
+      mockContext,
+      800,
+      600,
+      0,
+    );
+
+    expect(mockContext.globalCompositeOperation).toBe("screen");
   });
 
   it("applies blend mode when specified", async () => {

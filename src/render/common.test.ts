@@ -758,7 +758,12 @@ describe("setContextGlobals", () => {
 
     setContextGlobals(context, {});
 
-    expect(context.globalAlpha).toBe(0);
+    // Fully opaque, not fully transparent. An omitted opacity means "no
+    // opacity requested", and defaulting that to 0 rendered nothing at all --
+    // harmless only for as long as every caller pre-defaulted it to 1 before
+    // getting here, which stopped being true once a primitive could omit it
+    // and inherit the context's own globalAlpha instead.
+    expect(context.globalAlpha).toBe(1);
     expect(context.globalCompositeOperation).toBe(DEFAULT_BLEND_MODE);
   });
 

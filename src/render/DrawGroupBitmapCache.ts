@@ -13,6 +13,11 @@ interface RenderGroupParams {
   bounds: Bounds;
   useLocalCoordinateContext: boolean;
   scope: ClipScope | null;
+  // Set when a descendant composites with a non-source-over blend and so
+  // needs the real backdrop rather than an isolated surface. A correctness
+  // veto, the mirror image of the masking requirement below, which forces a
+  // surface for correctness where this one forbids it.
+  forbidLocalSurface?: boolean;
   draw: (
     context: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
   ) => void;
@@ -205,6 +210,7 @@ class DrawGroupBitmapCache {
     bounds,
     useLocalCoordinateContext,
     scope,
+    forbidLocalSurface = false,
     draw,
   }: RenderGroupParams): void {
     const { x: boundsX, y: boundsY, width, height } = bounds;
@@ -244,10 +250,27 @@ class DrawGroupBitmapCache {
     // of whether this group's signature has ever repeated.
     const needsImmediateSurfaceForMasking = !!scope?.postProcessLocalSurface;
 
-    const requiresLocalSurface =
-      canUseBitmapCaching || needsImmediateSurfaceForMasking;
+    // Two known gaps in the veto, both recorded here because this is where a
+    // reader will look for them:
+    //
+    //   - A blend set by mutating the target context directly (reachable via
+    //     RenderProps.context) is not visible to forbidLocalSurface. It stays
+    //     live on the target, so a promoted group's blit inherits it and the
+    //     whole surface composites through that blend instead of the intended
+    //     primitive. Normalising globalCompositeOperation before painting the
+    //     group tree would make promoted and unpromoted behave the same.
+    //   - Masking still wins over the blend veto: it needs an isolated surface or
+    //     it erases unrelated content from the shared target, which is a
+    //     worse failure than a blend losing its backdrop. A blended primitive
+    //     inside a masking scope therefore still loses its blend.
+    const requiresLocalSurface = needsImmediateSurfaceForMasking
+      ? true
+      : canUseBitmapCaching && !forbidLocalSurface;
 
     if (!requiresLocalSurface) {
+      // No cache entry is recorded on this path. Writing one would let the
+      // next frame read it as a stable repeat and promote the group anyway,
+      // reinstating the isolation this veto exists to prevent.
       draw(targetContext);
       return;
     }

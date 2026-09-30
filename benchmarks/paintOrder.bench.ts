@@ -2,13 +2,13 @@ import { afterEach, beforeEach, describe, it } from "vitest";
 
 import type { DrawAPI } from "../src/render/types";
 
-// Benchmark for the declaration-order fix in DrawGroupManager: every primitive
-// now reserves its slot in its group's operation list at declare time and
-// fills it at flush time, instead of appending at flush time.
+// Per-frame framework cost at scale, used to check that render-pipeline
+// changes which add per-primitive work do not regress large scenes. Two
+// changes have been measured through it so far; both result blocks are kept
+// below, because the value of a benchmark like this is the trend line.
 //
-// That adds one array push plus one object mutation per primitive per frame,
-// so the thing worth measuring is total per-frame framework cost at scale --
-// NOT the ordering itself, which is a correctness property covered by tests.
+// It measures total cost, NOT the correctness properties those changes were
+// made for -- those are covered by tests.
 //
 // Method notes, following tech-reports/render-pipeline-and-performance.md §8:
 //
@@ -39,6 +39,35 @@ import type { DrawAPI } from "../src/render/types";
 // -- a genuine per-primitive cost would show up more at 4096 than at 1024,
 // and it shows up less. That matches theory: one array push plus one property
 // write per primitive per frame is ~0.4% of a 4096-primitive frame.
+//
+// ---------------------------------------------------------------------------
+//
+// Inherited context globals (withInheritedContextGlobals in render/index.ts):
+// a primitive declaring no blend/opacity now inherits whatever the caller left
+// on the canvas, snapshotted into its props at declare time. That is two
+// context property reads per primitive per frame. Min of 3 interleaved A/B
+// runs:
+//
+//                      before    after    delta
+//   1024 static        2.74ms    2.72ms   -0.7%
+//   1024 animating     8.65ms    8.74ms   +1.0%
+//   4096 static       16.41ms   15.12ms   -7.9%
+//   4096 animating    41.56ms   40.00ms   -3.8%
+//   16384 static      70.28ms   68.40ms   -2.7%
+//
+// Equal or slightly faster everywhere, which is not what adding per-primitive
+// work predicts. The likely mechanism is that the same change stopped seeding
+// `blend: "source-over"` into every primitive's applied styles -- so with an
+// untouched context there is now one FEWER field per primitive flowing through
+// stableSerialize, and that path is hot enough to have been optimised
+// deliberately in an earlier round. Two reads added, one serialised field
+// removed, netting out at or just under break-even.
+//
+// Stated conservatively: no measurable cost. The deltas are inside the same
+// 7-9% noise band as before, so the apparent speedup is not claimed as one --
+// only that the per-primitive reads did not show up, including at 16384
+// primitives, which was added for this change precisely because the cost
+// scales with primitive count.
 
 const WARMUP_FRAMES = 30;
 const MEASURED_FRAMES = 120;
@@ -185,6 +214,13 @@ describe("render pipeline: per-frame cost", () => {
       buildScene(1024, { animate: false }),
     );
     await measure("1024 animating", buildScene(1024, { animate: true }));
+  });
+
+  it("16384 primitives", async () => {
+    await measure(
+      "16384 static (8192 grouped / 8192 root)",
+      buildScene(16384, { animate: false }),
+    );
   });
 
   it("4096 primitives", async () => {

@@ -531,7 +531,12 @@ export const setContextGlobals = (
   context: CanvasRenderingContext2D,
   props: ContextGlobalProps,
 ): void => {
-  const { opacity = 0, blend = DEFAULT_BLEND_MODE } = props;
+  // Defaults to fully opaque, not fully transparent. Every caller currently
+  // pre-defaults opacity to 1 before calling, which masked this -- but an
+  // undefined opacity arriving here used to silently render nothing, and
+  // opacity is now legitimately absent when a primitive declares none and
+  // inherits the context's own globalAlpha instead.
+  const { opacity = 1, blend = DEFAULT_BLEND_MODE } = props;
 
   context.globalAlpha = opacity;
   context.globalCompositeOperation = blend;

@@ -103,6 +103,9 @@ export const createIsometricPrimitive = ({
       },
       (queuedIsometricProps) => {
         targetGroupHandle.pushPrimitiveOperation({
+          // An isometric view composites its own contents; the viewport
+          // itself is always source-over onto whatever sits beneath it.
+          blendsWithBackdrop: false,
           signature: DrawGroupManager.createPrimitiveSignature(
             "isometric",
             queuedIsometricProps,

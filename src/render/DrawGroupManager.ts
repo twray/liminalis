@@ -20,6 +20,7 @@ interface DrawGroupOperation {
   signature?: string;
   render?: (context: CanvasRenderingContext2D) => void;
   group?: DrawGroupNode;
+  blendsWithBackdrop?: boolean;
 }
 
 interface DrawGroupNode {
@@ -68,6 +69,7 @@ export interface DrawGroupHandle {
   pushPrimitiveOperation: (params: {
     signature: string;
     render: (context: CanvasRenderingContext2D) => void;
+    blendsWithBackdrop?: boolean;
   }) => void;
   withNestedGroup: (params: NestedGroupParams, callbackFn: () => void) => void;
 }
@@ -153,22 +155,26 @@ class DrawGroupManager {
   pushPrimitiveOperation(params: {
     signature: string;
     render: (context: CanvasRenderingContext2D) => void;
+    blendsWithBackdrop?: boolean;
   }): void {
     this.#getCurrentGroup().operations.push({
       type: "primitive",
       signature: params.signature,
       render: params.render,
+      blendsWithBackdrop: params.blendsWithBackdrop ?? false,
     });
   }
 
   pushOverlayOperation(params: {
     signature: string;
     render: (context: CanvasRenderingContext2D) => void;
+    blendsWithBackdrop?: boolean;
   }): void {
     this.#getCurrentGroup().overlayOperations.push({
       type: "primitive",
       signature: params.signature,
       render: params.render,
+      blendsWithBackdrop: params.blendsWithBackdrop ?? false,
     });
   }
 
@@ -184,6 +190,7 @@ class DrawGroupManager {
         slot.type = "primitive";
         slot.signature = params.signature;
         slot.render = params.render;
+        slot.blendsWithBackdrop = params.blendsWithBackdrop ?? false;
       },
       withNestedGroup: (params: NestedGroupParams, callbackFn: () => void) => {
         this.#fillReservedSlotWithNestedGroup(slot, params, callbackFn);
@@ -201,6 +208,46 @@ class DrawGroupManager {
   // groups, and SVG <g> nesting use).
   renderToContext({ cache, targetContext, width, height }: RenderGroupsParams) {
     const groupSignatures = new Map<string, string>();
+    const groupBlendResults = new Map<string, boolean>();
+
+    // Does anything inside this group (at any depth) composite with something
+    // other than source-over?
+    //
+    // Resolved bottom-up from the finished tree rather than propagated upward
+    // as operations are pushed, for two reasons. There is no parent pointer on
+    // a node, so upward propagation would mean adding and maintaining one; and
+    // more importantly, mutating ancestors during declare/flush is the same
+    // timing-sensitive coupling that produced the paint-order bug this file
+    // already carries a note about. Reading the completed tree cannot care
+    // about when anything was set.
+    //
+    // Memoised per group id, mirroring buildGroupSignature above, so a deep
+    // tree stays linear rather than re-walking shared subtrees.
+    const groupBlendsWithBackdrop = (group: DrawGroupNode): boolean => {
+      const cached = groupBlendResults.get(group.id);
+
+      if (cached !== undefined) {
+        return cached;
+      }
+
+      const result = [...group.operations, ...group.overlayOperations].some(
+        (operation) => {
+          if (operation.type === "primitive") {
+            return operation.blendsWithBackdrop === true;
+          }
+
+          if (operation.type === "group" && operation.group) {
+            return groupBlendsWithBackdrop(operation.group);
+          }
+
+          return false;
+        },
+      );
+
+      groupBlendResults.set(group.id, result);
+
+      return result;
+    };
 
     const buildGroupSignature = (group: DrawGroupNode): string => {
       const cachedSignature = groupSignatures.get(group.id);
@@ -264,6 +311,14 @@ class DrawGroupManager {
         // Root: identity scope, full-canvas bounds — the degenerate case of
         // the cacheable branch below, not a bypass (preserves "root is also
         // bitmap-cached").
+        //
+        // Deliberately NOT subject to the blend veto below. Root's surface
+        // holds the whole scene, background() included (background is a queued
+        // operation in this tree, not a direct paint on the target), so a
+        // blended primitive at root has everything it should blend against
+        // already inside this surface -- there is no isolation to undo.
+        // Vetoing here would instead cost every blend-containing scene the
+        // single-blit steady state, for no correctness gain.
         cache.renderGroup({
           groupId: group.id,
           signature: buildGroupSignature(group),
@@ -309,6 +364,10 @@ class DrawGroupManager {
           bounds,
           useLocalCoordinateContext,
           scope: group.scope,
+          // An isolated surface would cut a blended descendant off from the
+          // backdrop it needs. Promotion is refused for the whole subtree
+          // between that descendant and the real target context.
+          forbidLocalSurface: groupBlendsWithBackdrop(group),
           draw: (surfaceContext) =>
             runOperationsDirectly(
               group,
