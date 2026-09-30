@@ -124,8 +124,8 @@ interface SceneRenderProps extends RenderProps, DrawAPI {
   activeNotes: NoteDownEvent[];
   placeInScene: (
     component: ReactiveLayerComponent<any>,
-    options: PlaceOptions,
     id: string,
+    options?: PlaceOptions,
   ) => IAnimatableLike<LayerOptions>;
 }
 
@@ -457,7 +457,7 @@ class VisualisationAnimationLoopHandler<TState> {
                 afterTime,
                 duringTimeInterval,
                 activeNotes: activeNotesForFrame,
-                placeInScene: (component, options, id) =>
+                placeInScene: (component, id, options) =>
                   this.#placeReactiveLayer(
                     drawApi,
                     component,

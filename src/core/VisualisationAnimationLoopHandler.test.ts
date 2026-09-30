@@ -1448,11 +1448,12 @@ describe("VisualisationAnimationLoopHandler note dispatch", () => {
         .withSettings({ computerKeyboardDebugEnabled: false })
         .setup(({ onRender }) => {
           onRender(({ placeInScene }) => {
-            placeInScene(
-              badge({ fillStyle: "orange" }),
-              { x: 10, y: 20, width: 50, height: 50 },
-              "badge-1",
-            );
+            placeInScene(badge({ fillStyle: "orange" }), "badge-1", {
+              x: 10,
+              y: 20,
+              width: 50,
+              height: 50,
+            });
           });
         });
 
@@ -1500,16 +1501,18 @@ describe("VisualisationAnimationLoopHandler note dispatch", () => {
         .withSettings({ computerKeyboardDebugEnabled: false })
         .setup(({ onRender }) => {
           onRender(({ placeInScene }) => {
-            placeInScene(
-              marker({ label: "a" }),
-              { x: 0, y: 0, width: 10, height: 10 },
-              "marker-a",
-            );
-            placeInScene(
-              marker({ label: "b" }),
-              { x: 10, y: 0, width: 10, height: 10 },
-              "marker-b",
-            );
+            placeInScene(marker({ label: "a" }), "marker-a", {
+              x: 0,
+              y: 0,
+              width: 10,
+              height: 10,
+            });
+            placeInScene(marker({ label: "b" }), "marker-b", {
+              x: 10,
+              y: 0,
+              width: 10,
+              height: 10,
+            });
           });
         });
 
@@ -1579,11 +1582,12 @@ describe("VisualisationAnimationLoopHandler note dispatch", () => {
         .withSettings({ computerKeyboardDebugEnabled: false })
         .setup(({ onRender }) => {
           onRender(({ placeInScene }) => {
-            placeInScene(
-              marker(),
-              { x: 0, y: 0, width: 10, height: 10 },
-              "note-42",
-            );
+            placeInScene(marker(), "note-42", {
+              x: 0,
+              y: 0,
+              width: 10,
+              height: 10,
+            });
           });
         });
 
@@ -1671,16 +1675,18 @@ describe("VisualisationAnimationLoopHandler note dispatch", () => {
           });
 
           onRender(({ placeInScene }) => {
-            placeInScene(
-              marker({ id: "note-first" }),
-              { x: 0, y: 0, width: 10, height: 10 },
-              "note-first",
-            );
-            placeInScene(
-              marker({ id: "render-first" }),
-              { x: 10, y: 0, width: 10, height: 10 },
-              "render-first",
-            );
+            placeInScene(marker({ id: "note-first" }), "note-first", {
+              x: 0,
+              y: 0,
+              width: 10,
+              height: 10,
+            });
+            placeInScene(marker({ id: "render-first" }), "render-first", {
+              x: 10,
+              y: 0,
+              width: 10,
+              height: 10,
+            });
           });
         });
 
@@ -1737,11 +1743,12 @@ describe("VisualisationAnimationLoopHandler note dispatch", () => {
           });
 
           onRender(({ placeInScene }) => {
-            placeInScene(
-              badge(),
-              { x: 0, y: 0, width: 10, height: 10 },
-              "badge-1",
-            );
+            placeInScene(badge(), "badge-1", {
+              x: 0,
+              y: 0,
+              width: 10,
+              height: 10,
+            });
           });
         });
 
@@ -1794,11 +1801,12 @@ describe("VisualisationAnimationLoopHandler note dispatch", () => {
             });
 
             onRender(({ placeInScene }) => {
-              placeInScene(
-                pulse(),
-                { x: 0, y: 0, width: 10, height: 10 },
-                "pulse-1",
-              );
+              placeInScene(pulse(), "pulse-1", {
+                x: 0,
+                y: 0,
+                width: 10,
+                height: 10,
+              });
             });
           });
 
@@ -2082,11 +2090,12 @@ describe("VisualisationAnimationLoopHandler note dispatch", () => {
             });
 
             onRender(({ placeInScene }) => {
-              placeInScene(
-                pulse(),
-                { x: 0, y: 0, width: 10, height: 10 },
-                "pulse-1",
-              );
+              placeInScene(pulse(), "pulse-1", {
+                x: 0,
+                y: 0,
+                width: 10,
+                height: 10,
+              });
             });
           });
 
