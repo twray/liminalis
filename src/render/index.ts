@@ -221,7 +221,6 @@ export const createDrawContext = (
       // Opt-in stable identity. Read off the public props rather than the
       // hooks so every primitive gets it for free.
       const identityKey = (props as { key?: string }).key;
-      const targetGroupHandle = drawGroupManager.captureCurrentGroupHandle();
       const activeBoundsCollector =
         boundsCollectionManager.getActiveCollector();
       const shouldCollectBounds = boundsCollectionManager.shouldCollectBounds();
@@ -248,6 +247,12 @@ export const createDrawContext = (
       if (frameMeasurementPassManager.isMeasuringFrameBounds()) {
         return createNoopAnimatable(mergedProps);
       }
+
+      // Captured AFTER the measurement-pass guard above, deliberately:
+      // capturing a handle reserves a slot in the current group's operation
+      // list, and a measurement pass never renders, so reserving there would
+      // leave an unfillable slot behind on every pass.
+      const targetGroupHandle = drawGroupManager.captureCurrentGroupHandle();
 
       // Assigned immediately below; the closure only runs at flush time, by
       // which point it is set. Needed because the memo is keyed on the

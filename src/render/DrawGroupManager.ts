@@ -3,8 +3,20 @@ import DrawGroupBitmapCache from "./DrawGroupBitmapCache";
 
 import type { ClipScope } from "./types";
 
+// "reserved" is a slot whose position in the list has been claimed at declare
+// time but whose content is not known yet -- see captureCurrentGroupHandle.
+//
+// Both consumers below skip a slot left in this state. That is a guard on a
+// cross-file invariant rather than a live code path: every current caller
+// (queueAnimatable, isometric) always goes on to fill the slot it reserved,
+// and instrumenting the whole test suite plus the benchmarks found zero
+// unfilled slots. It is kept because the invariant spans callers -- any
+// future primitive that captures a handle and then returns early would
+// otherwise reach buildGroupSignature with no group and crash on it -- and
+// because the check costs one string comparison. It is deliberately NOT
+// claimed to be covered by a test, because it is not reachable to test.
 interface DrawGroupOperation {
-  type: "primitive" | "group";
+  type: "primitive" | "group" | "reserved";
   signature?: string;
   render?: (context: CanvasRenderingContext2D) => void;
   group?: DrawGroupNode;
@@ -35,7 +47,7 @@ interface NestedGroupParams {
 }
 
 // A capability, bound to whichever group is current at the moment it's
-// captured, for pushing a primitive operation into *that* group later —
+// captured, for filling in a primitive operation in *that* group later —
 // even after the group stack has moved on. Primitives that defer their
 // actual pushPrimitiveOperation call (via AnimatableRegistry.queue, which
 // only runs at flush time, after the whole synchronous render tree —
@@ -43,6 +55,15 @@ interface NestedGroupParams {
 // need this: without it, a deferred push always lands wherever the stack
 // happens to be *then* (root), not where the primitive was actually
 // declared, and per-group bitmap caching has nothing real to skip.
+//
+// Capturing the handle also RESERVES this declaration's position in the
+// group's operation list, which is what keeps paint order equal to
+// declaration order. Position has to be claimed at declare time because that
+// is the only moment it is known: containers push their group node while the
+// callback is still running, whereas primitives resolve at flush. Appending
+// at flush instead put every container beneath every sibling primitive
+// regardless of source order — a rect declared before a group painted on top
+// of it, and a full-canvas video declared before a group hid it entirely.
 export interface DrawGroupHandle {
   pushPrimitiveOperation: (params: {
     signature: string;
@@ -65,20 +86,48 @@ class DrawGroupManager {
     this.#pushNestedGroup(this.#getCurrentGroup(), params, callbackFn);
   }
 
+  // Declare-time nesting (group/layer/place): the node is appended as it is
+  // created, which is already in declaration order because the callback is
+  // still running.
   #pushNestedGroup(
     parentGroup: DrawGroupNode,
     params: NestedGroupParams,
     callbackFn: () => void,
   ) {
-    const { scope, getInvalidationSignature } = params;
-    const nestedGroup = this.#createDrawGroup(scope, getInvalidationSignature);
+    const nestedGroup = this.#createNestedGroup(params);
 
     parentGroup.operations.push({
       type: "group",
       group: nestedGroup,
     });
 
-    this.#groupStack.push(nestedGroup);
+    this.#runWithGroupOnStack(nestedGroup, callbackFn);
+  }
+
+  // Flush-time nesting (a primitive with its own group, i.e. video): the node
+  // goes into the slot this declaration reserved earlier, rather than being
+  // appended where the list has since grown to.
+  #fillReservedSlotWithNestedGroup(
+    slot: DrawGroupOperation,
+    params: NestedGroupParams,
+    callbackFn: () => void,
+  ) {
+    const nestedGroup = this.#createNestedGroup(params);
+
+    slot.type = "group";
+    slot.group = nestedGroup;
+
+    this.#runWithGroupOnStack(nestedGroup, callbackFn);
+  }
+
+  #createNestedGroup(params: NestedGroupParams): DrawGroupNode {
+    const { scope, getInvalidationSignature } = params;
+
+    return this.#createDrawGroup(scope, getInvalidationSignature);
+  }
+
+  #runWithGroupOnStack(group: DrawGroupNode, callbackFn: () => void): void {
+    this.#groupStack.push(group);
 
     try {
       callbackFn();
@@ -126,16 +175,18 @@ class DrawGroupManager {
   captureCurrentGroupHandle(): DrawGroupHandle {
     const group = this.#getCurrentGroup();
 
+    // Claimed now, filled later. See the ordering note on DrawGroupHandle.
+    const slot: DrawGroupOperation = { type: "reserved" };
+    group.operations.push(slot);
+
     return {
       pushPrimitiveOperation: (params) => {
-        group.operations.push({
-          type: "primitive",
-          signature: params.signature,
-          render: params.render,
-        });
+        slot.type = "primitive";
+        slot.signature = params.signature;
+        slot.render = params.render;
       },
       withNestedGroup: (params: NestedGroupParams, callbackFn: () => void) => {
-        this.#pushNestedGroup(group, params, callbackFn);
+        this.#fillReservedSlotWithNestedGroup(slot, params, callbackFn);
       },
     };
   }
@@ -161,13 +212,18 @@ class DrawGroupManager {
       const operationSignatures = [
         ...group.operations,
         ...group.overlayOperations,
-      ].map((operation) => {
-        if (operation.type === "primitive") {
-          return `primitive:${operation.signature ?? ""}`;
-        }
+      ]
+        // Unreachable today -- see the note on DrawGroupOperation. Skipping
+        // rather than mapping matters because the group branch below would
+        // dereference a group this slot does not have.
+        .filter((operation) => operation.type !== "reserved")
+        .map((operation) => {
+          if (operation.type === "primitive") {
+            return `primitive:${operation.signature ?? ""}`;
+          }
 
-        return `group:${buildGroupSignature(operation.group!)}`;
-      });
+          return `group:${buildGroupSignature(operation.group!)}`;
+        });
 
       const signature = [
         `id:${group.id}`,
@@ -185,6 +241,10 @@ class DrawGroupManager {
       context: CanvasRenderingContext2D,
     ): void => {
       [...group.operations, ...group.overlayOperations].forEach((operation) => {
+        if (operation.type === "reserved") {
+          return;
+        }
+
         if (operation.type === "primitive") {
           operation.render?.(context);
           return;

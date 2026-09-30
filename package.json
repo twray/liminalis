@@ -126,7 +126,8 @@
     "test:create": "node scripts/create-test-project.js",
     "test:all-templates": "node scripts/test-all-templates.js",
     "test:dev": "npm run build && npm run test:create",
-    "prepare": "husky"
+    "prepare": "husky",
+    "bench": "vitest run --config vitest.bench.config.ts"
   },
   "devDependencies": {
     "@types/node": "^24.9.1",
