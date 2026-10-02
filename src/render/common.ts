@@ -547,6 +547,21 @@ export const centerOf = (dimensions: Dimensions2D): Point2D => {
   return { x: width / 2, y: height / 2 };
 };
 
+// The smallest rect containing both. Used to widen a container's PAINT extent
+// to cover content that overflows its declared frame, without touching the
+// frame itself -- see resolveLayerBoundsState.
+export const unionBounds = (a: Bounds, b: Bounds): Bounds => {
+  const x = Math.min(a.x, b.x);
+  const y = Math.min(a.y, b.y);
+
+  return {
+    x,
+    y,
+    width: Math.max(a.x + a.width, b.x + b.width) - x,
+    height: Math.max(a.y + a.height, b.y + b.height) - y,
+  };
+};
+
 export const hasBounds = (
   props: Record<string, number>,
 ): props is Record<string, number> & Bounds =>
@@ -556,39 +571,56 @@ export const hasBounds = (
   typeof props.height === "number";
 
 export const createBoundsCollector = (): BoundsCollector => {
-  let minX = Number.POSITIVE_INFINITY;
-  let minY = Number.POSITIVE_INFINITY;
-  let maxX = Number.NEGATIVE_INFINITY;
-  let maxY = Number.NEGATIVE_INFINITY;
+  // Two independent unions over the same stream of reports. See the note on
+  // BoundsCollector for why paint extent is tracked apart from layout bounds.
+  const createUnion = () => {
+    let minX = Number.POSITIVE_INFINITY;
+    let minY = Number.POSITIVE_INFINITY;
+    let maxX = Number.NEGATIVE_INFINITY;
+    let maxY = Number.NEGATIVE_INFINITY;
+
+    return {
+      include: (bounds: Bounds | null): void => {
+        if (!bounds || bounds.width <= 0 || bounds.height <= 0) {
+          return;
+        }
+
+        minX = Math.min(minX, bounds.x);
+        minY = Math.min(minY, bounds.y);
+        maxX = Math.max(maxX, bounds.x + bounds.width);
+        maxY = Math.max(maxY, bounds.y + bounds.height);
+      },
+      get: (): Bounds | null => {
+        if (
+          !Number.isFinite(minX) ||
+          !Number.isFinite(minY) ||
+          !Number.isFinite(maxX) ||
+          !Number.isFinite(maxY)
+        ) {
+          return null;
+        }
+
+        return {
+          x: minX,
+          y: minY,
+          width: maxX - minX,
+          height: maxY - minY,
+        };
+      },
+    };
+  };
+
+  const layout = createUnion();
+  const paint = createUnion();
+  const untransformed = createUnion();
 
   return {
-    includeBounds: (bounds: Bounds | null): void => {
-      if (!bounds || bounds.width <= 0 || bounds.height <= 0) {
-        return;
-      }
-
-      minX = Math.min(minX, bounds.x);
-      minY = Math.min(minY, bounds.y);
-      maxX = Math.max(maxX, bounds.x + bounds.width);
-      maxY = Math.max(maxY, bounds.y + bounds.height);
-    },
-    getBounds: (): Bounds | null => {
-      if (
-        !Number.isFinite(minX) ||
-        !Number.isFinite(minY) ||
-        !Number.isFinite(maxX) ||
-        !Number.isFinite(maxY)
-      ) {
-        return null;
-      }
-
-      return {
-        x: minX,
-        y: minY,
-        width: maxX - minX,
-        height: maxY - minY,
-      };
-    },
+    includeBounds: layout.include,
+    getBounds: layout.get,
+    includePaintBounds: paint.include,
+    getPaintBounds: paint.get,
+    includeUntransformedBounds: untransformed.include,
+    getUntransformedBounds: untransformed.get,
   };
 };
 

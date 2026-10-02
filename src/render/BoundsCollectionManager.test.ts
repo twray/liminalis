@@ -6,6 +6,10 @@ import BoundsCollectionManager from "./BoundsCollectionManager";
 const createMockCollector = (): BoundsCollector => ({
   includeBounds: vi.fn(),
   getBounds: vi.fn(),
+  includePaintBounds: vi.fn(),
+  getPaintBounds: vi.fn(),
+  includeUntransformedBounds: vi.fn(),
+  getUntransformedBounds: vi.fn(),
 });
 
 describe("BoundsCollectionManager", () => {

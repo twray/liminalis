@@ -321,8 +321,17 @@ export const createDrawContext = (
       };
 
       if (shouldCollectBounds) {
-        activeBoundsCollector?.includeBounds(
-          resolveTransformedBounds(mergedProps),
+        const declaredBounds = resolveTransformedBounds(mergedProps);
+
+        // A plain primitive's layout bounds and painted extent are the same
+        // rect -- only containers can diverge, by having a frame narrower than
+        // what their descendants paint.
+        activeBoundsCollector?.includeBounds(declaredBounds);
+        activeBoundsCollector?.includePaintBounds(declaredBounds);
+        // Pre-transform, for positioning. Falls back to the transformed rect
+        // for a primitive that only reports a transformed AABB.
+        activeBoundsCollector?.includeUntransformedBounds(
+          getBounds?.(mergedProps) ?? declaredBounds,
         );
       }
 
@@ -346,8 +355,12 @@ export const createDrawContext = (
         (props) => {
           if (shouldCollectBounds) {
             // Current bounds collected per-frame of animation
-            activeBoundsCollector?.includeBounds(
-              resolveTransformedBounds(props),
+            const animatedBounds = resolveTransformedBounds(props);
+
+            activeBoundsCollector?.includeBounds(animatedBounds);
+            activeBoundsCollector?.includePaintBounds(animatedBounds);
+            activeBoundsCollector?.includeUntransformedBounds(
+              getBounds?.(props) ?? animatedBounds,
             );
           }
 

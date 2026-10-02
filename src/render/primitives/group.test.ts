@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import type { DrawAPI } from "../types";
 import { createSpyMockContext } from "./testMockCanvasContext";
 
@@ -52,7 +52,7 @@ describe("sceneMeasurements", () => {
           () => {
             seenSceneMeasurements = d.sceneMeasurements;
           },
-          { x: 10, y: 20, width: 200, height: 120 },
+          { x: 10, y: 20 },
         );
       },
       mockContext,
@@ -66,5 +66,26 @@ describe("sceneMeasurements", () => {
       height: 600,
       center: { x: 400, y: 300 },
     });
+  });
+
+  it("does not accept explicit dimensions", () => {
+    // A type-level guard, which is the only kind available: group() having no
+    // width/height is a property of GroupOptions, so nothing at runtime can
+    // observe its absence. Without this, the option could be reintroduced by
+    // adding Dimensions2D back and no test would notice.
+    //
+    // group() derives its frame from its children; a container that needs a
+    // declared size is layer() or place().
+    const accepts = (draw: DrawAPI) => {
+      // @ts-expect-error -- width is not part of GroupOptions
+      draw.group(() => {}, { width: 100 });
+      // @ts-expect-error -- height is not part of GroupOptions
+      draw.group(() => {}, { height: 100 });
+
+      // x/y, transforms and container props remain valid.
+      draw.group(() => {}, { x: 10, y: 20, rotate: 45, showBounds: true });
+    };
+
+    expect(typeof accepts).toBe("function");
   });
 });

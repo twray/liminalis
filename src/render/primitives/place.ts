@@ -28,16 +28,23 @@ export const place = (
     containerType: "layer",
     frameSignatureType: "place:frame",
     ...params,
-    resolveState: ({ currentProps, derivedBounds, collectedBounds }) =>
+    resolveState: ({
+      currentProps,
+      derivedBounds,
+      collectedBounds,
+      collectedPaintBounds,
+    }) =>
       resolveLayerBoundsState({
         currentLayerProps: currentProps,
         derivedLayerBounds: derivedBounds,
         collectedBounds,
+        collectedPaintBounds,
       }),
     buildScopeProps: ({ currentProps, state }) => ({
       ...currentProps,
       ...state.frameBounds,
       useLocalCoordinateContext: true,
+      paintBounds: state.paintLocalBounds,
     }),
     buildShowBoundsRect: buildLayerShowBoundsRect,
     pathDescriptor: layerPathDescriptor,

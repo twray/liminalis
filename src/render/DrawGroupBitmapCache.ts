@@ -18,6 +18,10 @@ interface RenderGroupParams {
   // veto, the mirror image of the masking requirement below, which forces a
   // surface for correctness where this one forbids it.
   forbidLocalSurface?: boolean;
+  // See ClipScopeCompositeInfo.paintBounds. Passed through from the scope that
+  // already resolved it, rather than re-derived here, so the surface is sized
+  // from exactly the extent compositeGroup measured.
+  paintBounds?: Bounds;
   draw: (
     context: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
   ) => void;
@@ -135,7 +139,6 @@ class DrawGroupBitmapCache {
     backingWidth,
     backingHeight,
     pixelRatio,
-    useLocalCoordinateContext,
     drawImageX,
     drawImageY,
     width,
@@ -150,13 +153,11 @@ class DrawGroupBitmapCache {
     backingWidth: number;
     backingHeight: number;
     pixelRatio: number;
-    useLocalCoordinateContext: boolean;
     drawImageX: number;
     drawImageY: number;
     width: number;
     height: number;
   }): void {
-    const { x: boundsX, y: boundsY } = bounds;
     const existingSurface = this.#cachedGroups.get(groupId)?.surface;
     const surface =
       existingSurface ?? createSurface(backingWidth, backingHeight);
@@ -191,8 +192,18 @@ class DrawGroupBitmapCache {
       surfaceContext.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
     }
 
-    if (!useLocalCoordinateContext) {
-      surfaceContext.translate?.(-boundsX, -boundsY);
+    // One rule for both coordinate conventions: shift the surface's origin to
+    // the top-left of the extent being painted. A canvas has no negative
+    // pixels, so content overflowing above/left of the frame is only
+    // capturable by moving the origin and compensating in the blit below.
+    //
+    // This subsumes what used to be a mode-specific branch. For a group
+    // (parent-space authoring) the extent defaults to `bounds`, giving the
+    // previous translate(-boundsX, -boundsY). For a layer/place (local-space
+    // authoring) with nothing overflowing, the extent is {0, 0, w, h}, giving
+    // translate(0, 0) -- previously expressed as skipping the translate.
+    if (drawImageX !== 0 || drawImageY !== 0) {
+      surfaceContext.translate?.(-drawImageX, -drawImageY);
     }
 
     draw(surfaceContext);
@@ -211,9 +222,21 @@ class DrawGroupBitmapCache {
     useLocalCoordinateContext,
     scope,
     forbidLocalSurface = false,
+    paintBounds: requestedPaintBounds,
     draw,
   }: RenderGroupParams): void {
-    const { x: boundsX, y: boundsY, width, height } = bounds;
+    // The extent actually painted, which the frame alone does not always
+    // describe -- a rotated or scaled child can reach outside it. Defaults
+    // differ per coordinate convention: a layer/place's descendants author
+    // from the frame origin, so its frame is {0, 0, w, h} to them, whereas a
+    // group's author in the parent's space, where the frame is `bounds`.
+    const paintBounds =
+      requestedPaintBounds ??
+      (useLocalCoordinateContext
+        ? { x: 0, y: 0, width: bounds.width, height: bounds.height }
+        : bounds);
+
+    const { x: paintX, y: paintY, width, height } = paintBounds;
     const pixelRatio = Math.max(1, this.#environment.devicePixelRatio || 1);
     const backingWidth = Math.max(1, Math.round(width * pixelRatio));
     const backingHeight = Math.max(1, Math.round(height * pixelRatio));
@@ -228,8 +251,8 @@ class DrawGroupBitmapCache {
     // parent's origin was never shifted. Both are sign-agnostic: a negative
     // boundsX just becomes a positive internal translate and a negative
     // blit target x, both valid canvas operations.
-    const drawImageX = useLocalCoordinateContext ? 0 : boundsX;
-    const drawImageY = useLocalCoordinateContext ? 0 : boundsY;
+    const drawImageX = paintX;
+    const drawImageY = paintY;
 
     const targetCanvas = (targetContext as { canvas?: unknown }).canvas as
       | { getContext?: unknown }
@@ -313,7 +336,6 @@ class DrawGroupBitmapCache {
       backingWidth,
       backingHeight,
       pixelRatio,
-      useLocalCoordinateContext,
       drawImageX,
       drawImageY,
       width,

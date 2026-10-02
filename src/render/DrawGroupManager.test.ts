@@ -17,7 +17,12 @@ vi.mock("../core/ImageAssetCache", () => ({
 
 // `source` is what the image primitive hands to drawImage, which is how a
 // real image draw is told apart from a cache blit.
-const IMAGE_SOURCE = { marker: "image-source" };
+// A sentinel standing in for a decoded image. Typed as the thing it
+// substitutes for so it can be compared against recorded drawImage arguments
+// by identity, which is the whole point of using a sentinel.
+const IMAGE_SOURCE = {
+  marker: "image-source",
+} as unknown as CanvasImageSource;
 let readyAsset: { source: unknown; width: number; height: number } | null =
   null;
 
@@ -844,8 +849,16 @@ describe("signature memoisation", () => {
   // nothing about what is rendered -- no render-based assertion can detect
   // one. Counting serialisations is the only way to observe the
   // optimisation actually happening.
-  const countRectSerialisations = (spy: ReturnType<typeof vi.spyOn>): number =>
-    spy.mock.calls.filter((call) => call[0] === "rect").length;
+  // Typed structurally rather than as ReturnType<typeof vi.spyOn>: that
+  // resolves to the most general instantiation of a generic type, which a spy
+  // over a concrete signature is not assignable to. All this reads is the
+  // first recorded argument, so asking for exactly that accepts any spy.
+  const countRectSerialisations = (spy: {
+    mock: { calls: readonly unknown[][] };
+  }): number =>
+    spy.mock.calls.filter(
+      (call) => typeof call[0] === "string" && call[0] === "rect",
+    ).length;
 
   it("stops serialising a primitive whose props are unchanged", async () => {
     const { createDrawContext } = await import("./index");

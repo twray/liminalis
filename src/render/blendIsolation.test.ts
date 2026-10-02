@@ -286,7 +286,8 @@ describe("blend modes across a group boundary", () => {
     const ops = await renderSettled((draw) => {
       draw.video(VIDEO_SRC, { x: 0, y: 0, width: 800, height: 600 });
       draw.group(() => {
-        draw.rect({ ...BLENDED_RECT, blend: undefined });
+        const { blend: _blend, ...withoutBlend } = BLENDED_RECT;
+        draw.rect(withoutBlend);
       });
     });
 
@@ -415,19 +416,16 @@ describe("background() inside the group tree", () => {
     // frame and puts a stray full-canvas fill in the parent.
     const ops = await renderSettled(
       (draw) => {
-        draw.group(
-          () => {
-            draw.background({ color: BACKGROUND });
-            draw.rect({
-              x: 20,
-              y: 20,
-              width: 30,
-              height: 30,
-              fillStyle: "#abcdef",
-            });
-          },
-          { padding: 5 },
-        );
+        draw.group(() => {
+          draw.background({ color: BACKGROUND });
+          draw.rect({
+            x: 20,
+            y: 20,
+            width: 30,
+            height: 30,
+            fillStyle: "#abcdef",
+          });
+        }, {});
       },
       { caching: false },
     );

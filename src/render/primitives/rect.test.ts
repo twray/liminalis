@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { IAnimatableLike } from "../../types";
 import { createSpyMockContext } from "./testMockCanvasContext";
 import { getRectTransformedAABB } from "./rect";
-import type { Bounds, DrawAPI, RectProps } from "../types";
+import type { DrawAPI, RectProps } from "../types";
 
 let mockContext: CanvasRenderingContext2D;
 
@@ -2512,12 +2512,16 @@ describe("framed clipping for rect", () => {
       MockOffscreenCanvas.instances.reduce((count, surface) => {
         const rectCalls = vi
           .mocked(surface.context.rect)
+          // Matched by approximate size, not exact args: showBounds reports
+          // the PAINTED extent, which is stroke-inflated by half a line width
+          // beyond the declared 250x100. This test's subject is how many times
+          // the rect is redrawn, not its geometry.
           .mock.calls.filter(
             (call) =>
-              call[0] === 0 &&
-              call[1] === 0 &&
-              call[2] === 250 &&
-              call[3] === 100,
+              Math.abs(Number(call[0])) <= 1 &&
+              Math.abs(Number(call[1])) <= 1 &&
+              Math.abs(Number(call[2]) - 250) <= 2 &&
+              Math.abs(Number(call[3]) - 100) <= 2,
           ).length;
 
         return count + rectCalls;
@@ -2700,12 +2704,16 @@ describe("framed clipping for rect", () => {
       MockOffscreenCanvas.instances.reduce((count, surface) => {
         const rectCalls = vi
           .mocked(surface.context.rect)
+          // Matched by approximate size, not exact args: showBounds reports
+          // the PAINTED extent, which is stroke-inflated by half a line width
+          // beyond the declared 250x100. This test's subject is how many times
+          // the rect is redrawn, not its geometry.
           .mock.calls.filter(
             (call) =>
-              call[0] === 0 &&
-              call[1] === 0 &&
-              call[2] === 250 &&
-              call[3] === 100,
+              Math.abs(Number(call[0])) <= 1 &&
+              Math.abs(Number(call[1])) <= 1 &&
+              Math.abs(Number(call[2]) - 250) <= 2 &&
+              Math.abs(Number(call[3]) - 100) <= 2,
           ).length;
 
         return count + rectCalls;

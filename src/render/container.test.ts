@@ -3,7 +3,7 @@ import type {
   Bounds,
   ClosedPathDescriptor,
   FrameContext,
-  GroupOptions,
+  LayerOptions,
 } from "./types";
 
 import ActiveMeasurementsManager from "./ActiveMeasurementsManager";
@@ -217,9 +217,9 @@ describe("createContainerPrimitive", () => {
 
   const makeGroupPrimitive = (commonParams: ContainerPrimitiveCommonParams) =>
     createContainerPrimitive<
-      GroupOptions,
+      LayerOptions,
       TestState,
-      GroupOptions & Bounds & { groupOffsetX: number; groupOffsetY: number }
+      LayerOptions & Bounds & { groupOffsetX: number; groupOffsetY: number }
     >({
       containerType: "group",
       frameSignatureType: "group:frame",
@@ -334,6 +334,10 @@ describe("createContainerPrimitive", () => {
     const ancestorCollector = {
       includeBounds: vi.fn(),
       getBounds: () => null,
+      includePaintBounds: vi.fn(),
+      getPaintBounds: () => null,
+      includeUntransformedBounds: vi.fn(),
+      getUntransformedBounds: () => null,
     };
 
     // The outer group has no explicit position/size, so it must derive its
@@ -401,9 +405,9 @@ describe("createContainerPrimitive", () => {
     );
 
     const group = createContainerPrimitive<
-      GroupOptions,
+      LayerOptions,
       TestState,
-      GroupOptions & Bounds & { groupOffsetX: number; groupOffsetY: number }
+      LayerOptions & Bounds & { groupOffsetX: number; groupOffsetY: number }
     >({
       containerType: "group",
       frameSignatureType: "group:frame",

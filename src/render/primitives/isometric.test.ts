@@ -235,7 +235,11 @@ describe("isometric() default viewport sizing", () => {
       (d) => {
         d.layer(
           () => {
-            d.group(
+            // A layer, not a group: the innermost container here exists to
+            // give its descendants a sized coordinate space, which is
+            // layer()'s role. group() derives its frame from its children and
+            // has no dimensions to declare.
+            d.layer(
               () => {
                 d.isometric(() => {});
               },

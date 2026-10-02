@@ -355,7 +355,8 @@ class DrawGroupManager {
           return;
         }
 
-        const { bounds, useLocalCoordinateContext } = compositeInfo;
+        const { bounds, useLocalCoordinateContext, paintBounds } =
+          compositeInfo;
 
         cache.renderGroup({
           groupId: group.id,
@@ -368,6 +369,10 @@ class DrawGroupManager {
           // backdrop it needs. Promotion is refused for the whole subtree
           // between that descendant and the real target context.
           forbidLocalSurface: groupBlendsWithBackdrop(group),
+          // The frame fixes where descendants draw; this is how much of what
+          // they drew has to fit on the surface. See
+          // ClipScopeCompositeInfo.paintBounds.
+          ...(paintBounds ? { paintBounds } : {}),
           draw: (surfaceContext) =>
             runOperationsDirectly(
               group,

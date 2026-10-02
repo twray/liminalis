@@ -138,6 +138,12 @@ export const createClipScope = <
   };
 };
 
+// Read off the scope props the same way groupOffsetX/Y is: these are internal
+// fields a container's buildScopeProps attaches, not part of the public prop
+// surface, so they are not on T.
+const readPaintBounds = (props: unknown): Bounds | undefined =>
+  (props as { paintBounds?: Bounds }).paintBounds;
+
 export const createGroupScope = <
   T extends TransformProps & CoordinateContextProps,
 >(
@@ -153,17 +159,25 @@ export const createGroupScope = <
         "group",
         `props:${stableSerialize(props)}`,
         `bounds:${stableSerialize(descriptor.bounds)}`,
+        // The paint extent is part of the signature because it sizes the
+        // cached surface. Content that grows past the frame changes this
+        // without necessarily changing anything else here, and reusing a
+        // surface built at the old, smaller extent is exactly the cropping
+        // this value exists to prevent.
+        `paint:${stableSerialize(readPaintBounds(props) ?? {})}`,
         `valid:${descriptor.isValid ? 1 : 0}`,
       ].join("|");
     },
     getCompositeInfo: () => {
       const props = getProps();
       const descriptor = getPathDescriptor(props);
+      const paintBounds = readPaintBounds(props);
 
       return {
         bounds: descriptor.bounds,
         isValid: descriptor.isValid,
         useLocalCoordinateContext: !!props.useLocalCoordinateContext,
+        ...(paintBounds ? { paintBounds } : {}),
       };
     },
     apply: (context: CanvasRenderingContext2D): void => {

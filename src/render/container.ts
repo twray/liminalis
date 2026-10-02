@@ -89,6 +89,15 @@ interface ContainerBoundsState {
   derivedBounds: Bounds;
   frameBounds: Bounds;
   frameCenter: { x: number; y: number };
+  // This container's painted extent expressed in its PARENT's space, for
+  // reporting upward. Optional: a container type that cannot overflow its own
+  // frame has nothing extra to report and omits it.
+  paintParentBounds?: Bounds;
+  // This container's own position and size with its descendants' transforms
+  // left out, for an ancestor that POSITIONS by bounding box. Reporting the
+  // transformed frame here instead would reintroduce drift one level up: the
+  // ancestor's placement offset would move whenever a grandchild rotated.
+  untransformedBounds?: Bounds;
 }
 
 interface ResolveContainerStateParams<TOptions> {
@@ -96,6 +105,13 @@ interface ResolveContainerStateParams<TOptions> {
   mergedProps: TOptions;
   derivedBounds: Bounds;
   collectedBounds: Bounds | null;
+  // How far descendants actually paint, which a container unions into its own
+  // paint extent so overflow reaches every ancestor's surface, not just the
+  // nearest one. Distinct from collectedBounds -- see BoundsCollector.
+  collectedPaintBounds: Bounds | null;
+  // Children's bounds before their own transforms -- the stable reference a
+  // container positions its content against. See BoundsCollector.
+  collectedUntransformedBounds: Bounds | null;
   animatable: IAnimatableLike<TOptions>;
 }
 
@@ -202,7 +218,7 @@ export const createContainerPrimitive = <
             mergedProps,
             (animatedProps) => {
               currentProps = animatedProps;
-              activeBoundsCollector?.includeBounds(resolveReportedBounds());
+              reportBoundsUpward();
             },
             // No key here: withScope(options.key) above has already pinned
             // this container's identity, so the key must not be applied twice.
@@ -215,6 +231,9 @@ export const createContainerPrimitive = <
           mergedProps,
           derivedBounds,
           collectedBounds: contentBoundsCollector.getBounds(),
+          collectedPaintBounds: contentBoundsCollector.getPaintBounds(),
+          collectedUntransformedBounds:
+            contentBoundsCollector.getUntransformedBounds(),
           animatable: containerAnimatable,
         });
 
@@ -228,6 +247,32 @@ export const createContainerPrimitive = <
 
       const resolveReportedBounds = (): Bounds =>
         computeTransformedRectangularAABB(resolveFrameBounds(), currentProps);
+
+      // What this container paints, in its PARENT's space, so an ancestor's
+      // own paint extent can cover it. Falls back to the reported layout
+      // bounds for a container type that does not compute an extent.
+      const resolveReportedPaintBounds = (): Bounds => {
+        const state = resolveCurrentState();
+
+        if (!state.paintParentBounds) {
+          return resolveReportedBounds();
+        }
+
+        return computeTransformedRectangularAABB(
+          state.paintParentBounds,
+          currentProps,
+        );
+      };
+
+      const reportBoundsUpward = (): void => {
+        activeBoundsCollector?.includeBounds(resolveReportedBounds());
+        activeBoundsCollector?.includePaintBounds(resolveReportedPaintBounds());
+        // A reference that holds still as descendants transform, so an
+        // ancestor positioning by bounding box is not dragged around by them.
+        activeBoundsCollector?.includeUntransformedBounds(
+          resolveCurrentState().untransformedBounds ?? resolveFrameBounds(),
+        );
+      };
 
       const toScopeProps = () => {
         const state = resolveCurrentState();
@@ -257,7 +302,12 @@ export const createContainerPrimitive = <
 
       const runOwnImplicitMeasurementPass = (): void => {
         withImplicitMeasurementPass({
-          options: mergedProps,
+          // Cast because GroupOptions no longer declares width/height at all,
+          // so it has no keys in common with Partial<Dimensions2D>. Reading
+          // them off a group yields undefined, which is the right answer: a
+          // group has no dimensions of its own to declare, so it always runs
+          // this pass to derive its frame from its children.
+          options: mergedProps as Partial<Dimensions2D>,
           onMeasurePass: () => {
             withFrameBoundsMeasurementPass(() => {
               boundsCollectionManager.withCollector(
@@ -285,7 +335,7 @@ export const createContainerPrimitive = <
       // callback for real) would duplicate both.
       if (isMeasuringFrameBounds()) {
         runOwnImplicitMeasurementPass();
-        activeBoundsCollector?.includeBounds(resolveReportedBounds());
+        reportBoundsUpward();
 
         return containerAnimatable;
       }
@@ -348,7 +398,7 @@ export const createContainerPrimitive = <
 
           renderShowBounds();
 
-          activeBoundsCollector?.includeBounds(resolveReportedBounds());
+          reportBoundsUpward();
         },
       });
 

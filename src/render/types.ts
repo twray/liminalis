@@ -34,6 +34,28 @@ export interface Bounds {
 export interface BoundsCollector {
   includeBounds: (bounds: Bounds | null) => void;
   getBounds: () => Bounds | null;
+  // A second, parallel union tracking how far descendants actually PAINT,
+  // which for a container is wider than the bounds it reports for layout.
+  //
+  // Deliberately separate rather than folded into includeBounds: the layout
+  // union drives implicit sizing, and letting overflow grow a container's SIZE
+  // would feed back into the measurements its children size themselves from --
+  // a rotated frame-filling child would grow the parent, which grows the
+  // child, frame after frame, without settling. Paint extent propagates; size
+  // does not.
+  includePaintBounds: (bounds: Bounds | null) => void;
+  getPaintBounds: () => Bounds | null;
+  // A third union, of children's bounds BEFORE their own transforms are
+  // applied. Used only for positioning: group() places its content by its
+  // bounding box, and if that box were the transformed one, rotating or
+  // scaling a child would move every sibling -- the box grows, and the
+  // content shifts to keep its edge on the declared x. Untransformed bounds
+  // do not move when a child transforms, so the placement offset stays put.
+  //
+  // So: untransformed positions, transformed sizes (layout), transformed plus
+  // overflow paints.
+  includeUntransformedBounds: (bounds: Bounds | null) => void;
+  getUntransformedBounds: () => Bounds | null;
 }
 
 export interface ClosedPathDescriptor {
@@ -89,6 +111,18 @@ export interface ClipScopeCompositeInfo {
   bounds: Bounds;
   isValid: boolean;
   useLocalCoordinateContext: boolean;
+  // The extent that must actually be PAINTED, which is not always the same as
+  // `bounds`. `bounds` is the declared frame: it fixes the coordinate origin
+  // descendants author against, and the size getMeasurements() reports, so it
+  // must never be widened. paintBounds is the union of that frame with
+  // anything overflowing it (a rotated or scaled child's AABB), expressed in
+  // the same space descendants author in, and is what the group's cached
+  // surface is sized and positioned from.
+  //
+  // Omitted means "same as the frame" -- see renderGroup for the per-mode
+  // default, which differs because layer/place author in local coordinates
+  // while group authors in its parent's.
+  paintBounds?: Bounds;
 }
 
 export interface ClipScope {
@@ -323,8 +357,17 @@ export interface VideoProps
   loop?: boolean;
 }
 
+// Deliberately WITHOUT Dimensions2D, unlike LayerOptions/PlaceOptions below.
+// group() wraps content that is already positioned in the surrounding
+// coordinate space -- for caching, transforms, or opacity -- so its frame is
+// always the union of what its children occupy. It is not a sizeable surface
+// to build new content inside; that is what layer() and place() are for.
+//
+// A consequence worth knowing: because the frame is derived, a group's content
+// can never overflow it, so none of the paint-extent machinery layer/place
+// carry applies here.
 export interface GroupOptions
-  extends Positioned2D, Partial<Dimensions2D>, TransformProps, ContainerProps {}
+  extends Positioned2D, TransformProps, ContainerProps {}
 
 export interface LayerOptions
   extends Positioned2D, Partial<Dimensions2D>, TransformProps, ContainerProps {}
