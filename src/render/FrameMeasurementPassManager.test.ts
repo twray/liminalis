@@ -74,8 +74,8 @@ describe("FrameMeasurementPassManager", () => {
           true,
         );
 
-        dynamicContext.getMeasurements();
-        dynamicContext.getMeasurements();
+        dynamicContext.util.getMeasurements();
+        dynamicContext.util.getMeasurements();
 
         expect(warnSpy).toHaveBeenCalledTimes(1);
       } finally {
@@ -98,7 +98,7 @@ describe("FrameMeasurementPassManager", () => {
           false,
         );
 
-        dynamicContext.getMeasurements();
+        dynamicContext.util.getMeasurements();
 
         expect(warnSpy).not.toHaveBeenCalled();
       } finally {

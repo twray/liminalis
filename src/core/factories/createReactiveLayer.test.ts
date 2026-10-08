@@ -1,7 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import type { ContainerDrawAPI } from "../../render/types";
-import type { ReactiveProps } from "../../types";
+import type { ReactiveContainerDrawAPI } from "../../render/types";
 import { createReactiveLayer } from "./createReactiveLayer";
 
 describe("createReactiveLayer", () => {
@@ -41,24 +40,18 @@ describe("createReactiveLayer", () => {
     const ambientCircle = vi.fn();
 
     const ambient = {
-      circle: ambientCircle,
-      status: "idle",
-      attackValue: 0,
-      releasePeriod: 0,
-      timeAttacked: null,
-      timeReleased: null,
-    } as unknown as ContainerDrawAPI & ReactiveProps;
+      render: { circle: ambientCircle },
+      current: { status: "idle", attackValue: 0, releasePeriod: 0 },
+      timeOf: { attack: null, release: null },
+    } as unknown as ReactiveContainerDrawAPI;
 
     component.render(ambient);
 
     expect(renderer).toHaveBeenCalledTimes(1);
     expect(renderer).toHaveBeenCalledWith({
-      circle: ambientCircle,
-      status: "idle",
-      attackValue: 0,
-      releasePeriod: 0,
-      timeAttacked: null,
-      timeReleased: null,
+      render: { circle: ambientCircle },
+      current: { status: "idle", attackValue: 0, releasePeriod: 0 },
+      timeOf: { attack: null, release: null },
       props: { fillStyle: "red" },
     });
   });
@@ -66,14 +59,15 @@ describe("createReactiveLayer", () => {
   it("lets the render function call ambient primitives passed in", () => {
     const ambientCircle = vi.fn();
     const logo = createReactiveLayer<{ fillStyle: string }>(
-      ({ props, circle }) => {
+      ({ props, render: { circle } }) => {
         circle({ cx: 0, cy: 0, radius: 10, fillStyle: props.fillStyle });
       },
     );
     const component = logo({ fillStyle: "blue" });
 
-    component.render({ circle: ambientCircle } as unknown as ContainerDrawAPI &
-      ReactiveProps);
+    component.render({
+      render: { circle: ambientCircle },
+    } as unknown as ReactiveContainerDrawAPI);
 
     expect(ambientCircle).toHaveBeenCalledWith({
       cx: 0,
@@ -88,20 +82,22 @@ describe("createReactiveLayer", () => {
     const logo = createReactiveLayer<{ fillStyle: string }>(renderer);
     const component = logo({ fillStyle: "red" });
 
-    component.render({ status: "idle" } as unknown as ContainerDrawAPI &
-      ReactiveProps);
-    component.render({ status: "sustained" } as unknown as ContainerDrawAPI &
-      ReactiveProps);
+    component.render({
+      current: { status: "idle" },
+    } as unknown as ReactiveContainerDrawAPI);
+    component.render({
+      current: { status: "sustained" },
+    } as unknown as ReactiveContainerDrawAPI);
 
     expect(renderer).toHaveBeenCalledTimes(2);
 
     expect(renderer).toHaveBeenNthCalledWith(
       1,
-      expect.objectContaining({ status: "idle" }),
+      expect.objectContaining({ current: { status: "idle" } }),
     );
     expect(renderer).toHaveBeenNthCalledWith(
       2,
-      expect.objectContaining({ status: "sustained" }),
+      expect.objectContaining({ current: { status: "sustained" } }),
     );
   });
 
@@ -110,7 +106,7 @@ describe("createReactiveLayer", () => {
     const logo = createReactiveLayer<{ fillStyle?: string }>(renderer);
     const component = logo();
 
-    component.render({} as ContainerDrawAPI & ReactiveProps);
+    component.render({} as ReactiveContainerDrawAPI);
 
     expect(renderer).toHaveBeenCalledWith({
       props: {},

@@ -14,14 +14,14 @@ import { cuboid, tile } from "./isometricPrimitives/";
 
 import type {
   DrawPrimitives,
-  DrawProperties,
+  DrawUtilities,
   IsometricOptions,
   RenderCollaborators,
 } from "../types";
 
 interface CreateIsometricPrimitiveParams extends RenderCollaborators {
   timeInMs: number;
-  drawProperties: DrawProperties;
+  drawUtilities: DrawUtilities;
   appliedStylesManager: AppliedStylesManager;
   renderWarningManager: RenderWarningManager;
   activeMeasurementsManager: ActiveMeasurementsManager;
@@ -61,7 +61,7 @@ export const createIsometricPrimitive = ({
   timeInMs,
   registry,
   drawGroupManager,
-  drawProperties,
+  drawUtilities: drawProperties,
   appliedStylesManager,
   renderWarningManager,
   activeMeasurementsManager,

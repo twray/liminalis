@@ -25,22 +25,24 @@ class FrameMeasurementPassManager {
     let hasWarnedOnMeasureRead = false;
 
     const context: DynamicMeasurementContext = {
-      hasMeasurements,
-      getMeasurements: () => {
-        if (
-          !hasMeasurements &&
-          warnOnUnavailableRead &&
-          !hasWarnedOnMeasureRead
-        ) {
-          hasWarnedOnMeasureRead = true;
-          console.warn(
-            "getMeasurements() was called while dimensions are unknown, as liminalis " +
-              "needs to know how big a frame is before measurements can be derived. " +
-              "Use the hasMeasurements guard to check if measurements are available.",
-          );
-        }
+      util: {
+        hasMeasurements,
+        getMeasurements: () => {
+          if (
+            !hasMeasurements &&
+            warnOnUnavailableRead &&
+            !hasWarnedOnMeasureRead
+          ) {
+            hasWarnedOnMeasureRead = true;
+            console.warn(
+              "getMeasurements() was called while dimensions are unknown, as liminalis " +
+                "needs to know how big a frame is before measurements can be derived. " +
+                "Use the hasMeasurements guard to check if measurements are available.",
+            );
+          }
 
-        return getMeasurements();
+          return getMeasurements();
+        },
       },
     };
 

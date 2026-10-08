@@ -16,7 +16,7 @@ describe("polygon rendering", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.polygon({
+        d.render.polygon({
           points: [
             { x: 100, y: 100 },
             { x: 140, y: 100 },
@@ -43,7 +43,7 @@ describe("polygon rendering", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.polygon({
+        d.render.polygon({
           points: [
             { x: 100, y: 100 },
             { x: 150, y: 100 },
@@ -68,7 +68,7 @@ describe("polygon rendering", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.polygon({
+        d.render.polygon({
           points: [
             { x: 100, y: 100 },
             { x: 150, y: 100 },
@@ -93,7 +93,7 @@ describe("polygon rendering", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.polygon({
+        d.render.polygon({
           points: [
             { x: 100, y: 100 },
             { x: 150, y: 100 },
@@ -132,7 +132,7 @@ describe("polygon rendering", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.polygon({
+        d.render.polygon({
           points: [
             { x: 100, y: 100 },
             { x: 150, y: 100 },
@@ -157,7 +157,7 @@ describe("polygon rendering", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.polygon({
+        d.render.polygon({
           points: [
             { x: 100, y: 100 },
             { x: 150, y: 100 },
@@ -185,7 +185,7 @@ describe("polygon rendering", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.polygon({
+        d.render.polygon({
           points: [
             { x: 100, y: 100 },
             { x: 150, y: 100 },
@@ -217,7 +217,7 @@ describe("polygon rendering", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.polygon({
+        d.render.polygon({
           points: [
             { x: 100, y: 100 },
             { x: 150, y: 100 },
@@ -260,7 +260,7 @@ describe("polygon rendering", () => {
     const drawAnimatedPolygon = () => {
       drawContext.executeDrawCallback(
         (d) => {
-          d.polygon({
+          d.render.polygon({
             points: initialPoints,
             closePath: true,
             strokeStyle: "#333",
@@ -279,7 +279,7 @@ describe("polygon rendering", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.polygon({
+        d.render.polygon({
           points: initialPoints,
           closePath: true,
           strokeStyle: "#333",
@@ -315,7 +315,7 @@ describe("polygon rendering", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.polygon({
+        d.render.polygon({
           points: [
             { x: 100, y: 100 },
             { x: 140, y: 100 },
@@ -342,7 +342,7 @@ describe("polygon rendering", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.polygon({
+        d.render.polygon({
           points: [
             { x: 100, y: 100 },
             { x: 140, y: 100 },
@@ -370,7 +370,7 @@ describe("polygon rendering", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.polygon({
+        d.render.polygon({
           points: [
             { x: 100, y: 100 },
             { x: 140, y: 100 },
@@ -395,7 +395,7 @@ describe("polygon rendering", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.polygon({
+        d.render.polygon({
           points: [
             { x: 100, y: 100 },
             { x: 140, y: 100 },
@@ -421,7 +421,7 @@ describe("framed clipping for polygon", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.polygon(
+        d.render.polygon(
           {
             points: [
               { x: 100, y: 100 },
@@ -431,7 +431,7 @@ describe("framed clipping for polygon", () => {
             closePath: true,
           },
           () => {
-            d.circle({ cx: 200, cy: 150, radius: 120, fillStyle: "#00f" });
+            d.render.circle({ cx: 200, cy: 150, radius: 120, fillStyle: "#00f" });
           },
         );
       },
@@ -451,7 +451,7 @@ describe("framed clipping for polygon", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.polygon(
+        d.render.polygon(
           {
             points: [
               { x: 100, y: 100 },
@@ -461,7 +461,7 @@ describe("framed clipping for polygon", () => {
             closePath: false,
           },
           () => {
-            d.circle({ cx: 200, cy: 150, radius: 120, fillStyle: "#00f" });
+            d.render.circle({ cx: 200, cy: 150, radius: 120, fillStyle: "#00f" });
           },
         );
       },

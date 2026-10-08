@@ -13,11 +13,8 @@ export const adaptToLayerComponent = (
     render: (ambient) =>
       reactiveComponent.render({
         ...ambient,
-        status,
-        attackValue,
-        releasePeriod,
-        timeAttacked,
-        timeReleased,
+        current: { status, attackValue, releasePeriod },
+        timeOf: { attack: timeAttacked, release: timeReleased },
       }),
   };
 };

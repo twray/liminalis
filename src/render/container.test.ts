@@ -258,7 +258,7 @@ describe("createContainerPrimitive", () => {
     const measurementCalls: boolean[] = [];
 
     group((frameContext: FrameContext) => {
-      measurementCalls.push(frameContext.hasMeasurements);
+      measurementCalls.push(frameContext.util.hasMeasurements);
     });
 
     // Once during the implicit measurement pass (hasMeasurements: false),
@@ -273,7 +273,7 @@ describe("createContainerPrimitive", () => {
 
     group(
       (frameContext) => {
-        measurementCalls.push(frameContext.hasMeasurements);
+        measurementCalls.push(frameContext.util.hasMeasurements);
       },
       { width: 100, height: 50 },
     );

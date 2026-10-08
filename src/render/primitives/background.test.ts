@@ -14,7 +14,7 @@ describe("background rendering", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.background({
+        d.render.background({
           color: "#faf0e6",
         });
       },

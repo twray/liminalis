@@ -830,9 +830,9 @@ describe("signature memoisation", () => {
   const groupedScene =
     (width: number) =>
     (d: DrawAPI): void => {
-      d.group(
+      d.render.group(
         () => {
-          d.rect({
+          d.render.rect({
             x: 10,
             y: 10,
             width,
@@ -1033,7 +1033,7 @@ describe("signature memoisation", () => {
     const context = createCanvasMockContext();
 
     const imageScene = (d: DrawAPI): void => {
-      d.image("https://example.test/asset.png", {
+      d.render.image("https://example.test/asset.png", {
         x: 0,
         y: 0,
         width: 100,
@@ -1157,7 +1157,7 @@ describe("queueAnimatable group boundaries (no ownGroup hook)", () => {
     // would acquire its own group and its own surface.
     const surfaceCount = await countSurfacesForScene((draw) => {
       for (let index = 0; index < 3; index++) {
-        draw.rect({
+        draw.render.rect({
           x: index * 20,
           y: 0,
           width: 10,
@@ -1177,9 +1177,9 @@ describe("queueAnimatable group boundaries (no ownGroup hook)", () => {
     // no nesting occurred.
     const surfaceCount = await countSurfacesForScene((draw) => {
       for (let index = 0; index < 3; index++) {
-        draw.group(
+        draw.render.group(
           () => {
-            draw.rect({
+            draw.render.rect({
               x: index * 20,
               y: 0,
               width: 10,

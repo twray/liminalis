@@ -23,7 +23,7 @@ import {
 export const place = (
   params: ContainerPrimitiveCommonParams,
   getAmbientDrawApi: () => DrawAPI,
-): DrawPrimitives["place"] => {
+): DrawPrimitives["component"] => {
   const placeContainer = createContainerPrimitive({
     containerType: "layer",
     frameSignatureType: "place:frame",
@@ -52,6 +52,13 @@ export const place = (
 
   return (component: LayerComponent<any>, options: PlaceOptions = {}) =>
     placeContainer((frameContext: FrameContext) => {
-      component.render({ ...getAmbientDrawApi(), ...frameContext });
+      const ambientDrawApi = getAmbientDrawApi();
+
+      // Both slices contribute to `util`, so it is merged member-wise; a
+      // plain spread of the two would replace one's members with the other's.
+      component.render({
+        ...ambientDrawApi,
+        util: { ...ambientDrawApi.util, ...frameContext.util },
+      });
     }, options);
 };

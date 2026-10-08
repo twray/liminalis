@@ -12,7 +12,7 @@ describe("place()", () => {
     let sawMeasurements: { width: number; height: number } | null = null;
 
     const logo = createLayer<{ fillStyle: string }>(
-      ({ props, circle, getMeasurements }) => {
+      ({ props, render: { circle }, util: { getMeasurements } }) => {
         const measurements = getMeasurements();
         sawMeasurements = {
           width: measurements.width,
@@ -25,7 +25,7 @@ describe("place()", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.place(logo({ fillStyle: "red" }), {
+        d.render.component(logo({ fillStyle: "red" }), {
           x: 0,
           y: 0,
           width: 50,
@@ -52,13 +52,13 @@ describe("place()", () => {
     // Clip scopes are applied lazily, when a leaf primitive inside the
     // container is actually rendered — an empty component has nothing to
     // position, so this needs real content to observe the translate.
-    const marker = createLayer(({ rect }) => {
+    const marker = createLayer(({ render: { rect } }) => {
       rect({ x: 0, y: 0, width: 5, height: 5, fillStyle: "red" });
     });
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.place(marker(), { x: 100, y: 50, width: 10, height: 10 });
+        d.render.component(marker(), { x: 100, y: 50, width: 10, height: 10 });
       },
       mockContext,
       800,
@@ -76,7 +76,7 @@ describe("place()", () => {
       innerRenderOrder.push(props.label);
     });
 
-    const outer = createLayer(({ place }) => {
+    const outer = createLayer(({ render: { component: place } }) => {
       place(inner({ label: "child-a" }), { x: 0, y: 0, width: 10, height: 10 });
       place(inner({ label: "child-b" }), {
         x: 10,
@@ -89,7 +89,7 @@ describe("place()", () => {
     const drawContext = createDrawContext();
     drawContext.executeDrawCallback(
       (d) => {
-        d.place(outer(), { x: 0, y: 0, width: 20, height: 10 });
+        d.render.component(outer(), { x: 0, y: 0, width: 20, height: 10 });
       },
       createMockContext(),
       800,
@@ -111,7 +111,7 @@ describe("place()", () => {
       drawContext.executeDrawCallback(
         (d) => {
           for (const label of labels) {
-            captured[label] = d.place(marker({ label }), {
+            captured[label] = d.render.component(marker({ label }), {
               x: 0,
               y: 0,
               width: 10,
@@ -148,7 +148,7 @@ describe("place()", () => {
       drawContext.executeDrawCallback(
         (d) => {
           for (const label of labels) {
-            captured[label] = d.place(marker({ label }), {
+            captured[label] = d.render.component(marker({ label }), {
               x: 0,
               y: 0,
               width: 10,
@@ -180,15 +180,15 @@ describe("sceneMeasurements", () => {
   it("flows through to a place()'d LayerComponent's ambient props", () => {
     const mockContext = createMockContext();
     const drawContext = createDrawContext();
-    let seenSceneMeasurements: DrawAPI["sceneMeasurements"] | null = null;
+    let seenSceneMeasurements: DrawAPI["util"]["sceneMeasurements"] | null = null;
 
-    const logo = createLayer(({ sceneMeasurements }) => {
+    const logo = createLayer(({ util: { sceneMeasurements } }) => {
       seenSceneMeasurements = sceneMeasurements;
     });
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.place(logo(), { x: 0, y: 0, width: 50, height: 50 });
+        d.render.component(logo(), { x: 0, y: 0, width: 50, height: 50 });
       },
       mockContext,
       800,

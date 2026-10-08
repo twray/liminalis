@@ -20,7 +20,7 @@ describe("rect rendering", () => {
 
     executeDrawCallback(
       (d) => {
-        d.rect({
+        d.render.rect({
           x: 100,
           y: 100,
           width: 200,
@@ -48,7 +48,7 @@ describe("rect rendering", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.rect({
+        d.render.rect({
           x: 100,
           y: 100,
           width: 200,
@@ -75,7 +75,7 @@ describe("rect rendering", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.rect({
+        d.render.rect({
           x: 200,
           y: 200,
           width: 200,
@@ -102,7 +102,7 @@ describe("rect rendering", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.rect({
+        d.render.rect({
           x: 200,
           y: 200,
           width: 200,
@@ -128,7 +128,7 @@ describe("rect rendering", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.rect({
+        d.render.rect({
           x: 0,
           y: 0,
           width: 100,
@@ -154,7 +154,7 @@ describe("rect rendering", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.rect({
+        d.render.rect({
           x: 0,
           y: 0,
           width: 100,
@@ -178,7 +178,7 @@ describe("rect rendering", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.rect({
+        d.render.rect({
           x: 0,
           y: 0,
           width: 100,
@@ -204,7 +204,7 @@ describe("rect rendering", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.rect({
+        d.render.rect({
           x: 0,
           y: 0,
           width: 100,
@@ -231,7 +231,7 @@ describe("rect rendering", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.rect({
+        d.render.rect({
           x: 0,
           y: 0,
           width: 100,
@@ -262,7 +262,7 @@ describe("rect rendering", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.rect({
+        d.render.rect({
           x: 100,
           y: 100,
           width: 200,
@@ -287,7 +287,7 @@ describe("rect rendering", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.rect({
+        d.render.rect({
           x: 100,
           y: 100,
           width: 200,
@@ -317,7 +317,7 @@ describe("rect rendering", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.rect({
+        d.render.rect({
           x: 100,
           y: 100,
           width: 200,
@@ -347,7 +347,7 @@ describe("rect rendering", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.rect({
+        d.render.rect({
           x: 0,
           y: 0,
           width: 100,
@@ -371,7 +371,7 @@ describe("rect rendering", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.rect({
+        d.render.rect({
           x: 0,
           y: 0,
           width: 100,
@@ -409,7 +409,7 @@ describe("rect rendering", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.rect({ x: 0, y: 0, width: 0.4, height: 50, fillStyle: "#333" });
+        d.render.rect({ x: 0, y: 0, width: 0.4, height: 50, fillStyle: "#333" });
       },
       mockContext,
       800,
@@ -426,7 +426,7 @@ describe("rect rendering", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.rect({ x: 0, y: 0, width: 100, height: 0.4, fillStyle: "#333" });
+        d.render.rect({ x: 0, y: 0, width: 100, height: 0.4, fillStyle: "#333" });
       },
       mockContext,
       800,
@@ -443,7 +443,7 @@ describe("rect rendering", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.rect({
+        d.render.rect({
           x: 0,
           y: 0,
           width: 100,
@@ -473,7 +473,7 @@ describe("rect rendering", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.rect({
+        d.render.rect({
           x: 0,
           y: 0,
           width: 100,
@@ -499,7 +499,7 @@ describe("rect rendering", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.rect({ x: 0, y: 0, width: 100, height: 50, strokeStyle: "#333" });
+        d.render.rect({ x: 0, y: 0, width: 100, height: 50, strokeStyle: "#333" });
       },
       mockContext,
       800,
@@ -686,10 +686,10 @@ describe("framed clipping for rect", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        clipMaskRef.current = d.rect(
+        clipMaskRef.current = d.render.rect(
           { x: 100, y: 100, width: 200, height: 200 },
           () => {
-            d.circle({ cx: 100, cy: 100, radius: 50, fillStyle: "red" });
+            d.render.circle({ cx: 100, cy: 100, radius: 50, fillStyle: "red" });
           },
         );
       },
@@ -714,7 +714,7 @@ describe("framed clipping for rect", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.rect(
+        d.render.rect(
           {
             x: 100,
             y: 100,
@@ -725,7 +725,7 @@ describe("framed clipping for rect", () => {
             strokeWidth: 4,
           },
           () => {
-            d.circle({
+            d.render.circle({
               cx: 100,
               cy: 100,
               radius: 50,
@@ -755,9 +755,9 @@ describe("framed clipping for rect", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.rect({ x: 100, y: 100, width: 240, height: 240 }, () => {
-          d.rect({ x: 140, y: 140, width: 160, height: 160 }, () => {
-            d.circle({
+        d.render.rect({ x: 100, y: 100, width: 240, height: 240 }, () => {
+          d.render.rect({ x: 140, y: 140, width: 160, height: 160 }, () => {
+            d.render.circle({
               cx: 140,
               cy: 140,
               radius: 90,
@@ -784,8 +784,8 @@ describe("framed clipping for rect", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.rect({ x: 100, y: 100, width: 200, height: 200 }, () => {
-          d.circle({
+        d.render.rect({ x: 100, y: 100, width: 200, height: 200 }, () => {
+          d.render.circle({
             cx: 100,
             cy: 100,
             radius: 50,
@@ -805,8 +805,8 @@ describe("framed clipping for rect", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.rect({ x: 100, y: 100, width: 200, height: 200 }, () => {
-          d.circle({
+        d.render.rect({ x: 100, y: 100, width: 200, height: 200 }, () => {
+          d.render.circle({
             cx: 100,
             cy: 100,
             radius: 50,
@@ -832,8 +832,8 @@ describe("framed clipping for rect", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.rect({ x: 100, y: 100, width: 200, height: 200 }, () => {
-          d.circle({ cx: 50, cy: 50, radius: 30, fillStyle: "red" });
+        d.render.rect({ x: 100, y: 100, width: 200, height: 200 }, () => {
+          d.render.circle({ cx: 50, cy: 50, radius: 30, fillStyle: "red" });
         });
       },
       mockContext,
@@ -859,7 +859,7 @@ describe("framed clipping for rect", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.rect(
+        d.render.rect(
           {
             x: 100,
             y: 100,
@@ -868,7 +868,7 @@ describe("framed clipping for rect", () => {
             useLocalCoordinateContext: true,
           },
           () => {
-            d.circle({ cx: 50, cy: 50, radius: 30, fillStyle: "red" });
+            d.render.circle({ cx: 50, cy: 50, radius: 30, fillStyle: "red" });
           },
         );
       },
@@ -902,7 +902,7 @@ describe("framed clipping for rect", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.rect(
+        d.render.rect(
           {
             x: 100,
             y: 120,
@@ -910,7 +910,7 @@ describe("framed clipping for rect", () => {
             height: 160,
             useLocalCoordinateContext: true,
           },
-          ({ getMeasurements }) => {
+          ({ util: { getMeasurements } }) => {
             const {
               width: frameWidth,
               height: frameHeight,
@@ -949,14 +949,14 @@ describe("framed clipping for rect", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.rect(
+        d.render.rect(
           {
             x: 50,
             y: 50,
             width: 100,
             height: 100,
           },
-          ({ getMeasurements }) => {
+          ({ util: { getMeasurements } }) => {
             const {
               width: frameWidth,
               height: frameHeight,
@@ -989,7 +989,7 @@ describe("framed clipping for rect", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.rect(
+        d.render.rect(
           {
             x: 100,
             y: 100,
@@ -998,7 +998,7 @@ describe("framed clipping for rect", () => {
             useLocalCoordinateContext: true,
           },
           () => {
-            d.circle({ cx: 50, cy: 50, radius: 20, fillStyle: "red" });
+            d.render.circle({ cx: 50, cy: 50, radius: 20, fillStyle: "red" });
           },
         ).animateTo({ x: 300 }, { duration: 1000 });
       },
@@ -1023,7 +1023,7 @@ describe("framed clipping for rect", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.rect(
+        d.render.rect(
           {
             x: 100,
             y: 100,
@@ -1032,7 +1032,7 @@ describe("framed clipping for rect", () => {
             useLocalCoordinateContext: true,
           },
           () => {
-            d.circle({ cx: 50, cy: 50, radius: 20, fillStyle: "red" });
+            d.render.circle({ cx: 50, cy: 50, radius: 20, fillStyle: "red" });
           },
         ).animateTo({ x: 300 }, { duration: 1000 });
       },
@@ -1060,7 +1060,7 @@ describe("framed clipping for rect", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.rect(
+        d.render.rect(
           {
             x: 100,
             y: 100,
@@ -1069,7 +1069,7 @@ describe("framed clipping for rect", () => {
             useLocalCoordinateContext: true,
           },
           () => {
-            d.circle({ cx: 50, cy: 50, radius: 30, fillStyle: "red" });
+            d.render.circle({ cx: 50, cy: 50, radius: 30, fillStyle: "red" });
           },
         );
       },
@@ -1105,7 +1105,7 @@ describe("framed clipping for rect", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.rect(
+        d.render.rect(
           {
             x: 50,
             y: 50,
@@ -1113,7 +1113,7 @@ describe("framed clipping for rect", () => {
             height: 100,
             useLocalCoordinateContext: true,
           },
-          ({ getMeasurements }) => {
+          ({ util: { getMeasurements } }) => {
             const {
               width: frameWidth,
               height: frameHeight,
@@ -1152,8 +1152,8 @@ describe("framed clipping for rect", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.group((frameContext) => {
-          d.rect({
+        d.render.group((frameContext) => {
+          d.render.rect({
             x: 100,
             y: 200,
             width: 40,
@@ -1162,11 +1162,11 @@ describe("framed clipping for rect", () => {
             strokeStyle: "transparent",
           });
 
-          if (frameContext.hasMeasurements) {
-            frameValues.width = frameContext.getMeasurements().width;
-            frameValues.height = frameContext.getMeasurements().height;
-            frameValues.centerX = frameContext.getMeasurements().center.x;
-            frameValues.centerY = frameContext.getMeasurements().center.y;
+          if (frameContext.util.hasMeasurements) {
+            frameValues.width = frameContext.util.getMeasurements().width;
+            frameValues.height = frameContext.util.getMeasurements().height;
+            frameValues.centerX = frameContext.util.getMeasurements().center.x;
+            frameValues.centerY = frameContext.util.getMeasurements().center.y;
           }
         }, {});
       },
@@ -1196,8 +1196,8 @@ describe("framed clipping for rect", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.group((frameContext) => {
-          d.rect({
+        d.render.group((frameContext) => {
+          d.render.rect({
             x: 100,
             y: 200,
             width: 40,
@@ -1206,11 +1206,11 @@ describe("framed clipping for rect", () => {
             strokeStyle: "transparent",
           });
 
-          if (frameContext.hasMeasurements) {
-            frameValues.width = frameContext.getMeasurements().width;
-            frameValues.height = frameContext.getMeasurements().height;
-            frameValues.centerX = frameContext.getMeasurements().center.x;
-            frameValues.centerY = frameContext.getMeasurements().center.y;
+          if (frameContext.util.hasMeasurements) {
+            frameValues.width = frameContext.util.getMeasurements().width;
+            frameValues.height = frameContext.util.getMeasurements().height;
+            frameValues.centerX = frameContext.util.getMeasurements().center.x;
+            frameValues.centerY = frameContext.util.getMeasurements().center.y;
           }
         }, {});
       },
@@ -1240,8 +1240,8 @@ describe("framed clipping for rect", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.group((groupContext) => {
-          d.rect(
+        d.render.group((groupContext) => {
+          d.render.rect(
             {
               x: 528,
               y: 108,
@@ -1251,7 +1251,7 @@ describe("framed clipping for rect", () => {
               strokeStyle: "transparent",
             },
             () => {
-              d.rect({
+              d.render.rect({
                 x: -300,
                 y: -200,
                 width: 1000,
@@ -1262,11 +1262,11 @@ describe("framed clipping for rect", () => {
             },
           );
 
-          if (groupContext.hasMeasurements) {
-            frameValues.width = groupContext.getMeasurements().width;
-            frameValues.height = groupContext.getMeasurements().height;
-            frameValues.centerX = groupContext.getMeasurements().center.x;
-            frameValues.centerY = groupContext.getMeasurements().center.y;
+          if (groupContext.util.hasMeasurements) {
+            frameValues.width = groupContext.util.getMeasurements().width;
+            frameValues.height = groupContext.util.getMeasurements().height;
+            frameValues.centerX = groupContext.util.getMeasurements().center.x;
+            frameValues.centerY = groupContext.util.getMeasurements().center.y;
           }
         }, {});
       },
@@ -1296,8 +1296,8 @@ describe("framed clipping for rect", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.group((frameContext) => {
-          d.circle({
+        d.render.group((frameContext) => {
+          d.render.circle({
             cx: 500,
             cy: 500,
             radius: 40,
@@ -1305,11 +1305,11 @@ describe("framed clipping for rect", () => {
             strokeStyle: "transparent",
           });
 
-          if (frameContext.hasMeasurements) {
-            frameValues.width = frameContext.getMeasurements().width;
-            frameValues.height = frameContext.getMeasurements().height;
-            frameValues.centerX = frameContext.getMeasurements().center.x;
-            frameValues.centerY = frameContext.getMeasurements().center.y;
+          if (frameContext.util.hasMeasurements) {
+            frameValues.width = frameContext.util.getMeasurements().width;
+            frameValues.height = frameContext.util.getMeasurements().height;
+            frameValues.centerX = frameContext.util.getMeasurements().center.x;
+            frameValues.centerY = frameContext.util.getMeasurements().center.y;
           }
         }, {});
       },
@@ -1339,7 +1339,7 @@ describe("framed clipping for rect", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.group(({ getMeasurements, hasMeasurements }) => {
+        d.render.group(({ util: { getMeasurements, hasMeasurements } }) => {
           if (hasMeasurements) {
             const {
               width: frameWidth,
@@ -1353,7 +1353,7 @@ describe("framed clipping for rect", () => {
             frameValues.centerY = frameCenter.y;
           }
 
-          d.rect({
+          d.render.rect({
             x: 100,
             y: 200,
             width: 40,
@@ -1389,7 +1389,7 @@ describe("framed clipping for rect", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.layer(({ getMeasurements, hasMeasurements }) => {
+        d.render.layer(({ util: { getMeasurements, hasMeasurements } }) => {
           if (hasMeasurements) {
             const {
               width: frameWidth,
@@ -1403,7 +1403,7 @@ describe("framed clipping for rect", () => {
             frameValues.centerY = frameCenter.y;
           }
 
-          d.rect({
+          d.render.rect({
             x: 0,
             y: 0,
             width: 40,
@@ -1434,9 +1434,9 @@ describe("framed clipping for rect", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.group(({ hasMeasurements }) => {
+        d.render.group(({ util: { hasMeasurements } }) => {
           passes.push(hasMeasurements ? "render" : "measure");
-          d.rect({ x: 10, y: 20, width: 40, height: 20, fillStyle: "red" });
+          d.render.rect({ x: 10, y: 20, width: 40, height: 20, fillStyle: "red" });
         });
       },
       mockContext,
@@ -1455,9 +1455,9 @@ describe("framed clipping for rect", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.layer(({ hasMeasurements }) => {
+        d.render.layer(({ util: { hasMeasurements } }) => {
           passes.push(hasMeasurements ? "render" : "measure");
-          d.rect({ x: 0, y: 0, width: 40, height: 20, fillStyle: "red" });
+          d.render.rect({ x: 0, y: 0, width: 40, height: 20, fillStyle: "red" });
         });
       },
       mockContext,
@@ -1476,8 +1476,8 @@ describe("framed clipping for rect", () => {
     drawContext.executeDrawCallback(
       (d) => {
         // Absolute-positioned baseline group (green repro)
-        d.group(() => {
-          d.rect({
+        d.render.group(() => {
+          d.render.rect({
             x: 100,
             y: 100,
             width: 50,
@@ -1485,7 +1485,7 @@ describe("framed clipping for rect", () => {
             fillStyle: "green",
             strokeStyle: "transparent",
           });
-          d.rect({
+          d.render.rect({
             x: 250,
             y: 100,
             width: 50,
@@ -1496,9 +1496,9 @@ describe("framed clipping for rect", () => {
         });
 
         // Local-coordinate layer with explicit x/y offset (blue repro)
-        d.layer(
+        d.render.layer(
           () => {
-            d.rect({
+            d.render.rect({
               x: 0,
               y: 0,
               width: 50,
@@ -1506,7 +1506,7 @@ describe("framed clipping for rect", () => {
               fillStyle: "blue",
               strokeStyle: "transparent",
             });
-            d.rect({
+            d.render.rect({
               x: 150,
               y: 0,
               width: 50,
@@ -1550,9 +1550,9 @@ describe("framed clipping for rect", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.group(
+        d.render.group(
           () => {
-            d.rect({
+            d.render.rect({
               x: 100,
               y: 200,
               width: 40,
@@ -1579,9 +1579,9 @@ describe("framed clipping for rect", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.group(
+        d.render.group(
           () => {
-            d.rect({
+            d.render.rect({
               x: 100,
               y: 200,
               width: 40,
@@ -1607,9 +1607,9 @@ describe("framed clipping for rect", () => {
     const drawContext = createDrawContext();
 
     const render = (d: DrawAPI) => {
-      d.group(
+      d.render.group(
         () => {
-          d.rect({
+          d.render.rect({
             x: 100,
             y: 200,
             width: 40,
@@ -1645,9 +1645,9 @@ describe("framed clipping for rect", () => {
     const drawContext = createDrawContext();
 
     const render = (d: DrawAPI) => {
-      d.layer(
+      d.render.layer(
         () => {
-          d.rect({
+          d.render.rect({
             x: 50,
             y: 0,
             width: 50,
@@ -1655,7 +1655,7 @@ describe("framed clipping for rect", () => {
             fillStyle: "blue",
             strokeStyle: "transparent",
           });
-          d.rect({
+          d.render.rect({
             x: 200,
             y: 0,
             width: 50,
@@ -1696,9 +1696,9 @@ describe("framed clipping for rect", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.layer(
+        d.render.layer(
           () => {
-            d.rect({
+            d.render.rect({
               x: 100,
               y: 100,
               width: 100,
@@ -1706,7 +1706,7 @@ describe("framed clipping for rect", () => {
               fillStyle: "blue",
               strokeStyle: "transparent",
             });
-            d.rect({
+            d.render.rect({
               x: 250,
               y: 100,
               width: 100,
@@ -1738,9 +1738,9 @@ describe("framed clipping for rect", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.layer(
+        d.render.layer(
           () => {
-            d.rect({
+            d.render.rect({
               x: 50,
               y: 30,
               width: 40,
@@ -1776,9 +1776,9 @@ describe("framed clipping for rect", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.layer(
+        d.render.layer(
           () => {
-            d.rect({
+            d.render.rect({
               x: 0,
               y: 0,
               width: 50,
@@ -1817,9 +1817,9 @@ describe("framed clipping for rect", () => {
     const drawContext = createDrawContext();
 
     const render = (d: DrawAPI) => {
-      d.layer(
+      d.render.layer(
         () => {
-          d.rect({
+          d.render.rect({
             x: 0,
             y: 0,
             width: 50,
@@ -1827,7 +1827,7 @@ describe("framed clipping for rect", () => {
             fillStyle: "blue",
             strokeStyle: "transparent",
           });
-          d.rect({
+          d.render.rect({
             x: 100,
             y: 0,
             width: 50,
@@ -1875,9 +1875,9 @@ describe("framed clipping for rect", () => {
     const drawContext = createDrawContext();
 
     const render = (d: DrawAPI) => {
-      d.layer(
+      d.render.layer(
         () => {
-          d.rect({
+          d.render.rect({
             x: 100,
             y: 100,
             width: 100,
@@ -1885,7 +1885,7 @@ describe("framed clipping for rect", () => {
             fillStyle: "blue",
             strokeStyle: "transparent",
           });
-          d.rect({
+          d.render.rect({
             x: 250,
             y: 100,
             width: 100,
@@ -1923,9 +1923,9 @@ describe("framed clipping for rect", () => {
     const drawContext = createDrawContext();
 
     const render = (d: DrawAPI) => {
-      d.group(
+      d.render.group(
         () => {
-          d.rect({
+          d.render.rect({
             x: 860,
             y: 440,
             width: 200,
@@ -1981,9 +1981,9 @@ describe("framed clipping for rect", () => {
     const drawContext = createDrawContext();
 
     const render = (d: DrawAPI) => {
-      d.group(
+      d.render.group(
         () => {
-          d.rect({
+          d.render.rect({
             x: 860,
             y: 440,
             width: 200,
@@ -2048,9 +2048,9 @@ describe("framed clipping for rect", () => {
     const drawContext = createDrawContext();
 
     const render = (d: DrawAPI) => {
-      d.group(
+      d.render.group(
         () => {
-          d.rect({
+          d.render.rect({
             x: 100,
             y: 200,
             width: 40,
@@ -2093,9 +2093,9 @@ describe("framed clipping for rect", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.layer(
+        d.render.layer(
           () => {
-            d.rect({
+            d.render.rect({
               x: 100,
               y: 100,
               width: 100,
@@ -2103,7 +2103,7 @@ describe("framed clipping for rect", () => {
               fillStyle: "blue",
               strokeStyle: "transparent",
             });
-            d.rect({
+            d.render.rect({
               x: 250,
               y: 100,
               width: 100,
@@ -2136,9 +2136,9 @@ describe("framed clipping for rect", () => {
     const drawContext = createDrawContext();
 
     const render = (d: DrawAPI) => {
-      d.group(
+      d.render.group(
         () => {
-          d.rect({ x: 100, y: 200, width: 40, height: 20, fillStyle: "red" });
+          d.render.rect({ x: 100, y: 200, width: 40, height: 20, fillStyle: "red" });
         },
         { rotate: 0 },
       ).animateTo({ rotate: 45 }, { at: 0, duration: 1000 });
@@ -2161,8 +2161,8 @@ describe("framed clipping for rect", () => {
     const drawContext = createDrawContext();
 
     const render = (d: DrawAPI) => {
-      d.group(() => {
-        d.rect({
+      d.render.group(() => {
+        d.render.rect({
           x: 100,
           y: 200,
           width: 40,
@@ -2200,7 +2200,7 @@ describe("framed clipping for rect", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.rect(
+        d.render.rect(
           {
             x: 100,
             y: 100,
@@ -2210,7 +2210,7 @@ describe("framed clipping for rect", () => {
             useLocalCoordinateContext: true,
           },
           () => {
-            d.circle({ cx: 50, cy: 50, radius: 30, fillStyle: "red" });
+            d.render.circle({ cx: 50, cy: 50, radius: 30, fillStyle: "red" });
           },
         );
       },
@@ -2240,8 +2240,8 @@ describe("framed clipping for rect", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.group(() => {
-          d.circle({ cx: 500, cy: 500, radius: 40, fillStyle: "red" });
+        d.render.group(() => {
+          d.render.circle({ cx: 500, cy: 500, radius: 40, fillStyle: "red" });
         }, {});
       },
       mockContext,
@@ -2259,8 +2259,8 @@ describe("framed clipping for rect", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.group(() => {
-          d.circle({ cx: 500, cy: 500, radius: 40, fillStyle: "red" });
+        d.render.group(() => {
+          d.render.circle({ cx: 500, cy: 500, radius: 40, fillStyle: "red" });
         }, {});
       },
       mockContext,
@@ -2350,8 +2350,8 @@ describe("framed clipping for rect", () => {
     } as unknown as CanvasRenderingContext2D;
 
     const renderCallback = (d: DrawAPI) => {
-      d.group(() => {
-        d.circle({ cx: 50, cy: 50, radius: 30, fillStyle: "red" });
+      d.render.group(() => {
+        d.render.circle({ cx: 50, cy: 50, radius: 30, fillStyle: "red" });
       }, {});
     };
 
@@ -2479,9 +2479,9 @@ describe("framed clipping for rect", () => {
     } as unknown as CanvasRenderingContext2D;
 
     const renderCallback = (d: DrawAPI) => {
-      d.layer(
+      d.render.layer(
         () => {
-          d.layer(() => {}, {
+          d.render.layer(() => {}, {
             x: 200,
             y: 200,
             width: 250,
@@ -2672,15 +2672,15 @@ describe("framed clipping for rect", () => {
     } as unknown as CanvasRenderingContext2D;
 
     const renderCallback = (d: DrawAPI) => {
-      d.layer(
+      d.render.layer(
         () => {
-          d.rect({ x: 0, y: 0, width: 100, height: 100 });
-          d.rect({ x: 150, y: 0, width: 100, height: 100 });
+          d.render.rect({ x: 0, y: 0, width: 100, height: 100 });
+          d.render.rect({ x: 150, y: 0, width: 100, height: 100 });
 
-          d.layer(
+          d.render.layer(
             () => {
-              d.rect({ x: 0, y: 0, width: 100, height: 100 });
-              d.rect({ x: 150, y: 0, width: 100, height: 100 });
+              d.render.rect({ x: 0, y: 0, width: 100, height: 100 });
+              d.render.rect({ x: 150, y: 0, width: 100, height: 100 });
             },
             {
               x: 200,
@@ -2869,10 +2869,10 @@ describe("framed clipping for rect", () => {
     // still works regardless of what rotated ancestor it's nested inside.
     drawContext.executeDrawCallback(
       (d) => {
-        d.group(
+        d.render.group(
           () => {
-            d.text("Mask", { x: 20, y: 20, fontSize: "24px" }, () => {
-              d.circle({ cx: 30, cy: 30, radius: 15, fillStyle: "red" });
+            d.render.text("Mask", { x: 20, y: 20, fontSize: "24px" }, () => {
+              d.render.circle({ cx: 30, cy: 30, radius: 15, fillStyle: "red" });
             });
           },
           { x: 0, y: 0, width: 100, height: 100, rotate: 30 },

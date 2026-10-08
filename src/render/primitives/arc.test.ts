@@ -23,7 +23,7 @@ describe("arc rendering", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.arc({
+        d.render.arc({
           cx: 100,
           cy: 100,
           radius: 50,
@@ -57,7 +57,7 @@ describe("arc rendering", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.arc({
+        d.render.arc({
           cx: 100,
           cy: 100,
           radius: 50,
@@ -89,7 +89,7 @@ describe("arc rendering", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.arc({
+        d.render.arc({
           cx: 100,
           cy: 100,
           radius: 50,
@@ -121,7 +121,7 @@ describe("arc rendering", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.arc({
+        d.render.arc({
           cx: 150,
           cy: 120,
           radiusX: 90,
@@ -154,7 +154,7 @@ describe("arc rendering", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.arc({
+        d.render.arc({
           cx: 100,
           cy: 100,
           radius: 50,
@@ -181,7 +181,7 @@ describe("arc rendering", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.arc({
+        d.render.arc({
           cx: 100,
           cy: 100,
           radius: 50,
@@ -205,7 +205,7 @@ describe("arc rendering", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.arc({
+        d.render.arc({
           cx: 100,
           cy: 100,
           radius: 50,
@@ -229,7 +229,7 @@ describe("arc rendering", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.arc({
+        d.render.arc({
           cx: 100,
           cy: 100,
           radius: 50,
@@ -254,7 +254,7 @@ describe("arc rendering", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.arc({
+        d.render.arc({
           cx: 100,
           cy: 100,
           radius: 50,
@@ -309,7 +309,7 @@ describe("arc rendering", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.arc({
+        d.render.arc({
           cx: 100,
           cy: 100,
           radius: 50,
@@ -337,7 +337,7 @@ describe("arc rendering", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.arc({
+        d.render.arc({
           cx: 100,
           cy: 100,
           radius: 50,
@@ -366,7 +366,7 @@ describe("arc rendering", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.arc({
+        d.render.arc({
           cx: 100,
           cy: 100,
           radius: 50,
@@ -391,7 +391,7 @@ describe("arc rendering", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.arc({
+        d.render.arc({
           cx: 100,
           cy: 100,
           radius: 50,
@@ -417,7 +417,7 @@ describe("framed clipping for arc", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.arc(
+        d.render.arc(
           {
             cx: 240,
             cy: 240,
@@ -427,7 +427,7 @@ describe("framed clipping for arc", () => {
             closePath: true,
           },
           () => {
-            d.line({
+            d.render.line({
               start: { x: 80, y: 240 },
               end: { x: 400, y: 240 },
               strokeStyle: "#0a0",
@@ -466,7 +466,7 @@ describe("framed clipping for arc", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.arc(
+        d.render.arc(
           {
             cx: 240,
             cy: 240,
@@ -476,7 +476,7 @@ describe("framed clipping for arc", () => {
             closePath: false,
           },
           () => {
-            d.circle({ cx: 240, cy: 240, radius: 80, fillStyle: "#f80" });
+            d.render.circle({ cx: 240, cy: 240, radius: 80, fillStyle: "#f80" });
           },
         );
       },

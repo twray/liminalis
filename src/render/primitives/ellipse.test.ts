@@ -15,7 +15,7 @@ describe("ellipse rendering", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.ellipse({
+        d.render.ellipse({
           cx: 150,
           cy: 120,
           radiusX: 90,
@@ -46,7 +46,7 @@ describe("ellipse rendering", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.ellipse({
+        d.render.ellipse({
           cx: 150,
           cy: 120,
           radiusX: 90,
@@ -69,7 +69,7 @@ describe("ellipse rendering", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.ellipse({
+        d.render.ellipse({
           cx: 150,
           cy: 120,
           radiusX: 90,
@@ -94,7 +94,7 @@ describe("ellipse rendering", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.ellipse({
+        d.render.ellipse({
           cx: 300,
           cy: 200,
           radiusX: 80,
@@ -127,7 +127,7 @@ describe("ellipse rendering", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.ellipse({
+        d.render.ellipse({
           cx: 300,
           cy: 200,
           radiusX: 80,
@@ -173,7 +173,7 @@ describe("ellipse rendering", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.ellipse({
+        d.render.ellipse({
           cx: 300,
           cy: 200,
           radiusX: 80,
@@ -219,7 +219,7 @@ describe("ellipse rendering", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.ellipse({
+        d.render.ellipse({
           cx: 150,
           cy: 120,
           radiusX: 90,
@@ -245,7 +245,7 @@ describe("ellipse rendering", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.ellipse({
+        d.render.ellipse({
           cx: 150,
           cy: 120,
           radiusX: 90,
@@ -268,7 +268,7 @@ describe("ellipse rendering", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.ellipse({
+        d.render.ellipse({
           cx: 150,
           cy: 120,
           radiusX: 90,
@@ -299,8 +299,8 @@ describe("framed clipping for ellipse", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.ellipse({ cx: 250, cy: 220, radiusX: 120, radiusY: 80 }, () => {
-          d.line({
+        d.render.ellipse({ cx: 250, cy: 220, radiusX: 120, radiusY: 80 }, () => {
+          d.render.line({
             start: { x: 0, y: 220 },
             end: { x: 500, y: 220 },
             strokeStyle: "#0f0",

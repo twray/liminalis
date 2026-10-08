@@ -157,7 +157,7 @@ const createScene = async (enableBitmapBasedCaching = false) => {
 const videoScene =
   (props: Record<string, unknown> = {}) =>
   (draw: DrawAPI): void => {
-    draw.video(SRC, { x: 10, y: 20, width: 200, height: 100, ...props });
+    draw.render.video(SRC, { x: 10, y: 20, width: 200, height: 100, ...props });
   };
 
 describe("video() through the draw API", () => {
@@ -251,7 +251,7 @@ describe("video() through the draw API", () => {
     // container moves like any other primitive's.
     scene.render((draw) => {
       draw
-        .video(SRC, { x: 0, y: 0, width: 100, height: 100 })
+        .render.video(SRC, { x: 0, y: 0, width: 100, height: 100 })
         .animateTo({ x: 400 }, { at: 0, duration: 1000 });
     });
 
@@ -315,7 +315,7 @@ describe("video() through the draw API", () => {
 
       const animatedScene = (draw: DrawAPI) => {
         draw
-          .video(SRC, { x: 0, y: 0, width: 50, height: 50 })
+          .render.video(SRC, { x: 0, y: 0, width: 50, height: 50 })
           .animateTo({ width: 300, height: 300 }, { at: 0, duration: 100 });
       };
 
@@ -383,7 +383,7 @@ describe("video() through the draw API", () => {
 
       const list = (ids: string[]) => (draw: DrawAPI) => {
         ids.forEach((id) =>
-          draw.video(`${id}.mp4`, {
+          draw.render.video(`${id}.mp4`, {
             key: id,
             x: 0,
             y: 0,
@@ -411,8 +411,8 @@ describe("video() through the draw API", () => {
 
       expect(() =>
         scene.render((draw) => {
-          draw.video(SRC, { key: "dup", x: 0, y: 0, width: 10, height: 10 });
-          draw.video(SRC, { key: "dup", x: 0, y: 0, width: 10, height: 10 });
+          draw.render.video(SRC, { key: "dup", x: 0, y: 0, width: 10, height: 10 });
+          draw.render.video(SRC, { key: "dup", x: 0, y: 0, width: 10, height: 10 });
         }),
       ).toThrow(/Duplicate key/);
     });

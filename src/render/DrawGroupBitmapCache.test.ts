@@ -691,7 +691,7 @@ const twentyRects =
   (firstRectX: number) =>
   (d: DrawAPI): void => {
     for (let index = 0; index < 20; index++) {
-      d.rect({
+      d.render.rect({
         x: index === 0 ? firstRectX : index * 10,
         y: 5,
         width: 8,
@@ -847,10 +847,10 @@ describe("bitmap caching skips unchanged nested content", () => {
     const STATIC_RECT_COUNT = 20;
 
     const renderCallback = (d: DrawAPI, timeInMs: number) => {
-      d.group(
+      d.render.group(
         () => {
           for (let i = 0; i < STATIC_RECT_COUNT; i++) {
-            d.rect({
+            d.render.rect({
               x: i * 10,
               y: 0,
               width: STATIC_RECT_WIDTH,
@@ -867,7 +867,7 @@ describe("bitmap caching skips unchanged nested content", () => {
       // this is what keeps the overall frame (and root's own signature)
       // genuinely non-static, so this isn't just "the whole canvas never
       // changes" caching.
-      d.rect({
+      d.render.rect({
         x: timeInMs,
         y: 100,
         width: ANIMATING_RECT_WIDTH,
@@ -948,9 +948,9 @@ describe("bitmap caching skips unchanged nested content", () => {
     const RECT_WIDTH = 50;
 
     const renderCallback = (d: DrawAPI, x: number) => {
-      d.group(
+      d.render.group(
         () => {
-          d.rect({
+          d.render.rect({
             x,
             y: 0,
             width: RECT_WIDTH,

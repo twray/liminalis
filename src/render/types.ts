@@ -2,15 +2,17 @@ import type {
   CappableStrokeStyles,
   Corners,
   Dimensions2D,
+  EventTime,
   FillStyles,
   IAnimatableLike,
   IsometricCuboid,
   IsometricTile,
   JoinableStrokeStyles,
+  MergeFirstOrder,
+  NormalizedFloat,
   PartialDrawStyles,
   Point2D,
   Positioned2D,
-  ReactiveProps,
   StrokeAlignment,
   StrokeStyles,
   TextStyles,
@@ -19,7 +21,6 @@ import type {
   WithIdentityKey,
   WithOpacity,
   XOR,
-  EventTime,
 } from "../types";
 import type AnimatableRegistry from "./AnimatableRegistry";
 import type DrawGroupManager from "./DrawGroupManager";
@@ -144,7 +145,8 @@ export interface ClipScope {
   // content was just drawn in.
   postProcessLocalSurface?: (
     surfaceContext:
-      CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
+      | CanvasRenderingContext2D
+      | OffscreenCanvasRenderingContext2D,
     bounds: Bounds,
   ) => void;
 }
@@ -160,12 +162,62 @@ export interface Measurements {
   center: Point2D;
 }
 
-export interface DynamicMeasurementContext {
+// The single source of truth for the draw API's namespaces. Every context
+// handed to user code -- onRender, a layer's or reactive layer's render
+// function, a frame callback -- exposes a subset of these keys and nothing
+// else. The value types are deliberately loose: this declares which
+// namespaces exist and what each is for, while the slices below declare what
+// goes in them.
+export interface DrawNamespaces {
+  /** Draw primitives, and helpers that gate or place what gets rendered. */
+  render: object;
+  /** Attributes of the frame currently being rendered. */
+  current: object;
+  /** Measurements and other utility methods. */
+  util: object;
+  /** Typed constructors for objects that can be passed into `render`. */
+  define: object;
+  /** Frame times, in ms, at which lifecycle events occurred. */
+  timeOf: object;
+  /** The props the component was instantiated with. */
+  props: unknown;
+}
+
+type OnlyNamespaces<TSlice> = {
+  [K in keyof TSlice]: K extends keyof DrawNamespaces
+    ? DrawNamespaces[K]
+    : never;
+};
+
+// Composes slices into a context. A slice is what one provider contributes:
+// some members of some namespaces. Slices that share a namespace have their
+// members merged, and a slice with a key that is not in DrawNamespaces is
+// rejected here, so a namespace cannot be introduced without registering it.
+//
+// The result is mapped over DrawNamespaces rather than over the merged slices
+// so that each namespace keeps the doc comment declared above.
+export type DrawContextOf<
+  TSlices extends readonly unknown[] & {
+    [I in keyof TSlices]: OnlyNamespaces<TSlices[I]>;
+  },
+> = {
+  [K in keyof DrawNamespaces as K extends keyof MergeFirstOrder<TSlices>
+    ? K
+    : never]: MergeFirstOrder<TSlices>[K & keyof MergeFirstOrder<TSlices>];
+};
+
+export interface MeasurementUtilities {
   hasMeasurements: boolean;
   getMeasurements: () => Measurements;
 }
 
-export type FrameContext = DynamicMeasurementContext;
+// Slice provided by a container, or a primitive given a frame callback, to
+// the content declared inside it.
+export interface DynamicMeasurementContext {
+  util: MeasurementUtilities;
+}
+
+export type FrameContext = DrawContextOf<[DynamicMeasurementContext]>;
 export type FrameCallback = (context: FrameContext) => void;
 
 export interface CoordinateContextProps {
@@ -384,8 +436,9 @@ export interface IsometricOptions
   tileWidth?: number;
 }
 
-export interface DrawProperties {
+export interface DrawUtilities {
   sceneMeasurements: Measurements;
+  centerOf: (props: Dimensions2D) => Point2D;
 }
 
 export interface DrawPrimitives {
@@ -395,7 +448,6 @@ export interface DrawPrimitives {
     options?: IsometricOptions,
   ) => void;
   background: (props: BackgroundProps) => void;
-  centerOf: (props: Dimensions2D) => Point2D;
   line: (props: LineProps) => IAnimatableLike<LineProps>;
   polygon: (
     props: PolygonProps,
@@ -429,7 +481,7 @@ export interface DrawPrimitives {
     ): IAnimatableLike<LayerOptions>;
     (frame: FrameCallback, props?: LayerOptions): IAnimatableLike<LayerOptions>;
   };
-  place: (
+  component: (
     component: LayerComponent<any>,
     options?: PlaceOptions,
   ) => IAnimatableLike<PlaceOptions>;
@@ -444,23 +496,29 @@ export interface DrawPrimitives {
 }
 
 export interface DrawPrimitivePropHelpers {
-  defineBackgroundProps: (props: BackgroundProps) => BackgroundProps;
-  defineLineProps: (props: LineProps) => LineProps;
-  definePolygonProps: (props: PolygonProps) => PolygonProps;
-  defineBezierProps: (props: BezierProps) => BezierProps;
-  defineArcProps: (props: ArcProps) => ArcProps;
-  defineCircleProps: (props: CircleProps) => CircleProps;
-  defineEllipseProps: (props: EllipseProps) => EllipseProps;
-  defineRectProps: (props: RectProps) => RectProps;
-  defineGroupProps: (props: GroupOptions) => GroupOptions;
-  defineLayerProps: (props: LayerOptions) => LayerOptions;
-  defineTextProps: (props: TextProps) => TextProps;
+  background: (props: BackgroundProps) => BackgroundProps;
+  line: (props: LineProps) => LineProps;
+  polygon: (props: PolygonProps) => PolygonProps;
+  bezier: (props: BezierProps) => BezierProps;
+  arc: (props: ArcProps) => ArcProps;
+  circle: (props: CircleProps) => CircleProps;
+  ellipse: (props: EllipseProps) => EllipseProps;
+  rect: (props: RectProps) => RectProps;
+  group: (props: GroupOptions) => GroupOptions;
+  layer: (props: LayerOptions) => LayerOptions;
+  text: (props: TextProps) => TextProps;
 }
 
-export interface DrawAPI
-  extends DrawProperties, DrawPrimitives, DrawPrimitivePropHelpers {}
+// Slice provided by createDrawContext, once per frame.
+export interface DrawAPI {
+  render: DrawPrimitives;
+  define: { propsFor: DrawPrimitivePropHelpers };
+  util: DrawUtilities;
+}
 
-export interface ContainerDrawAPI extends DrawAPI, DynamicMeasurementContext {}
+export type ContainerDrawAPI = DrawContextOf<
+  [DrawAPI, DynamicMeasurementContext]
+>;
 
 export interface IsometricMethods {
   tile: (props: IsometricTile) => void;
@@ -477,9 +535,15 @@ export interface DrawContext {
   ) => void;
 }
 
-export type LayerRenderContext<TProps> = ContainerDrawAPI & {
+// Slice provided by createLayer / createReactiveLayer to the component's own
+// render function.
+export interface ComponentProps<TProps> {
   props: TProps;
-};
+}
+
+export type LayerRenderContext<TProps> = DrawContextOf<
+  [ContainerDrawAPI, ComponentProps<TProps>]
+>;
 
 export type LayerRenderer<TProps> = (
   context: LayerRenderContext<TProps>,
@@ -490,8 +554,13 @@ export interface LayerComponent<TProps> {
   render: (ambient: ContainerDrawAPI) => void;
 }
 
-export type ReactiveLayerRenderContext<TProps> = LayerRenderContext<TProps> &
-  ReactiveProps;
+export type ReactiveContainerDrawAPI = DrawContextOf<
+  [ContainerDrawAPI, ReactiveProps]
+>;
+
+export type ReactiveLayerRenderContext<TProps> = DrawContextOf<
+  [ReactiveContainerDrawAPI, ComponentProps<TProps>]
+>;
 
 export type ReactiveLayerRenderer<TProps> = (
   context: ReactiveLayerRenderContext<TProps>,
@@ -500,5 +569,32 @@ export type ReactiveLayerRenderer<TProps> = (
 export interface ReactiveLayerComponent<TProps> {
   readonly __componentKind: "reactiveLayer";
   props: TProps;
-  render: (ambient: ContainerDrawAPI & ReactiveProps) => void;
+  render: (ambient: ReactiveContainerDrawAPI) => void;
 }
+
+// Slice provided by the scene's animation loop to onRender.
+export interface RenderProps {
+  current: {
+    context: CanvasRenderingContext2D;
+    time: number;
+  };
+}
+
+export type ReactiveStatus = "idle" | "sustained" | "releasing";
+
+// Slice provided by adaptToLayerComponent, from a reactive layer's envelope.
+export interface ReactiveProps {
+  current: {
+    status: ReactiveStatus;
+    attackValue: NormalizedFloat;
+    releasePeriod: number;
+  };
+  timeOf: {
+    attack: number | null;
+    release: number | null;
+  };
+}
+
+export type PropsFirstFactory<TProps, TInstance> = {} extends TProps
+  ? (props?: TProps) => TInstance
+  : (props: TProps) => TInstance;

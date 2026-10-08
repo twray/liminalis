@@ -1235,7 +1235,8 @@ describe("VisualisationAnimationLoopHandler note dispatch", () => {
     );
 
     let resolveStopAndEncode:
-      ((result: { blob: Blob; fileName: string }) => void) | null = null;
+      | ((result: { blob: Blob; fileName: string }) => void)
+      | null = null;
 
     recorderMock.stopAndEncode.mockImplementation(
       () =>
@@ -1761,14 +1762,14 @@ describe("VisualisationAnimationLoopHandler note dispatch", () => {
       canvas: { width: 800, height: 600 },
     }) as unknown as CanvasRenderingContext2D;
 
-  // Step 4 of spec/reactive-layer-plan.md: placeInScene(), exposed on
-  // RenderProps, is the bridge that lets a reactive layer (createReactiveLayer())
-  // be positioned via the real place()/layer() engine every frame. These
-  // tests exercise it through the real createDrawContext() pipeline (not
-  // mocked, unlike everything else in this file) since the whole point is
-  // to prove the wiring — registry -> adaptToLayerComponent -> place() ->
-  // the component's own render — actually works end to end.
-  describe("placeInScene", () => {
+  // Step 4 of spec/reactive-layer-plan.md: render.componentInScene(), exposed
+  // on onRender, is the bridge that lets a reactive layer
+  // (createReactiveLayer()) be positioned via the real place()/layer() engine
+  // every frame. These tests exercise it through the real createDrawContext()
+  // pipeline (not mocked, unlike everything else in this file) since the whole
+  // point is to prove the wiring — registry -> adaptToLayerComponent ->
+  // place() -> the component's own render — actually works end to end.
+  describe("render.componentInScene", () => {
     it("renders the reactive component via place(), injecting idle-default lifecycle props and the component's own props", async () => {
       const { default: VisualisationAnimationLoopHandler } =
         await import("./VisualisationAnimationLoopHandler");
@@ -1778,7 +1779,7 @@ describe("VisualisationAnimationLoopHandler note dispatch", () => {
       const seenContexts: any[] = [];
       const badge = createReactiveLayer<{ fillStyle: string }>((ctx) => {
         seenContexts.push(ctx);
-        ctx.circle({
+        ctx.render.circle({
           cx: 0,
           cy: 0,
           radius: 10,
@@ -1789,8 +1790,8 @@ describe("VisualisationAnimationLoopHandler note dispatch", () => {
       const handler = new VisualisationAnimationLoopHandler()
         .withSettings({ computerKeyboardDebugEnabled: false })
         .setup(({ onRender }) => {
-          onRender(({ placeInScene }) => {
-            placeInScene(badge({ fillStyle: "orange" }), "badge-1", {
+          onRender(({ render }) => {
+            render.componentInScene("badge-1", badge({ fillStyle: "orange" }), {
               x: 10,
               y: 20,
               width: 50,
@@ -1816,12 +1817,12 @@ describe("VisualisationAnimationLoopHandler note dispatch", () => {
       // The reactive component's own props survive the bridge unchanged.
       expect(ctx.props).toEqual({ fillStyle: "orange" });
       // Never attacked yet — the registry auto-vivified a fresh, idle entry.
-      expect(ctx.status).toBe("idle");
-      expect(ctx.attackValue).toBe(0);
-      expect(ctx.timeAttacked).toBeNull();
-      expect(ctx.timeReleased).toBeNull();
+      expect(ctx.current.status).toBe("idle");
+      expect(ctx.current.attackValue).toBe(0);
+      expect(ctx.timeOf.attack).toBeNull();
+      expect(ctx.timeOf.release).toBeNull();
       // Real ambient DrawApi (from place()) are present, not stubbed.
-      expect(typeof ctx.circle).toBe("function");
+      expect(typeof ctx.render.circle).toBe("function");
 
       // Positioned like layer()/place() — translated to the given x/y.
       expect(mockContext.translate).toHaveBeenCalledWith(10, 20);
@@ -1836,20 +1837,20 @@ describe("VisualisationAnimationLoopHandler note dispatch", () => {
       const seenLabels: string[] = [];
       const marker = createReactiveLayer<{ label: string }>((ctx) => {
         seenLabels.push(ctx.props.label);
-        ctx.rect({ x: 0, y: 0, width: 5, height: 5, fillStyle: "red" });
+        ctx.render.rect({ x: 0, y: 0, width: 5, height: 5, fillStyle: "red" });
       });
 
       const handler = new VisualisationAnimationLoopHandler()
         .withSettings({ computerKeyboardDebugEnabled: false })
         .setup(({ onRender }) => {
-          onRender(({ placeInScene }) => {
-            placeInScene(marker({ label: "a" }), "marker-a", {
+          onRender(({ render }) => {
+            render.componentInScene("marker-a", marker({ label: "a" }), {
               x: 0,
               y: 0,
               width: 10,
               height: 10,
             });
-            placeInScene(marker({ label: "b" }), "marker-b", {
+            render.componentInScene("marker-b", marker({ label: "b" }), {
               x: 10,
               y: 0,
               width: 10,
@@ -1901,7 +1902,10 @@ describe("VisualisationAnimationLoopHandler note dispatch", () => {
                     const placeSpy = vi.fn((_component: any, options: any) => {
                       capturedPlaceOptions.push(options);
                     });
-                    callback({ ...drawApi, place: placeSpy });
+                    callback({
+                      ...drawApi,
+                      render: { ...drawApi.render, component: placeSpy },
+                    });
                   },
                   context,
                   width,
@@ -1923,8 +1927,8 @@ describe("VisualisationAnimationLoopHandler note dispatch", () => {
       const handler = new VisualisationAnimationLoopHandler()
         .withSettings({ computerKeyboardDebugEnabled: false })
         .setup(({ onRender }) => {
-          onRender(({ placeInScene }) => {
-            placeInScene(marker(), "note-42", {
+          onRender(({ render }) => {
+            render.componentInScene("note-42", marker(), {
               x: 0,
               y: 0,
               width: 10,
@@ -1955,7 +1959,7 @@ describe("VisualisationAnimationLoopHandler note dispatch", () => {
       const handler = new VisualisationAnimationLoopHandler()
         .withSettings({ computerKeyboardDebugEnabled: false })
         .setup(({ onRender }) => {
-          onRender(({ sceneMeasurements }) => {
+          onRender(({ util: { sceneMeasurements } }) => {
             seenSceneMeasurements = sceneMeasurements;
           });
         });
@@ -2002,10 +2006,10 @@ describe("VisualisationAnimationLoopHandler note dispatch", () => {
       const marker = createReactiveLayer<{ id: "note-first" | "render-first" }>(
         (ctx) => {
           seenProps[ctx.props.id]!.push({
-            status: ctx.status,
-            attackValue: ctx.attackValue,
+            status: ctx.current.status,
+            attackValue: ctx.current.attackValue,
           });
-          ctx.rect({ x: 0, y: 0, width: 5, height: 5, fillStyle: "red" });
+          ctx.render.rect({ x: 0, y: 0, width: 5, height: 5, fillStyle: "red" });
         },
       );
 
@@ -2016,14 +2020,14 @@ describe("VisualisationAnimationLoopHandler note dispatch", () => {
             getFromScene(note).attack(attack);
           });
 
-          onRender(({ placeInScene }) => {
-            placeInScene(marker({ id: "note-first" }), "note-first", {
+          onRender(({ render }) => {
+            render.componentInScene("note-first", marker({ id: "note-first" }), {
               x: 0,
               y: 0,
               width: 10,
               height: 10,
             });
-            placeInScene(marker({ id: "render-first" }), "render-first", {
+            render.componentInScene("render-first", marker({ id: "render-first" }), {
               x: 10,
               y: 0,
               width: 10,
@@ -2073,8 +2077,8 @@ describe("VisualisationAnimationLoopHandler note dispatch", () => {
 
       const seenProps: Array<{ status: string; attackValue: number }> = [];
       const badge = createReactiveLayer((ctx) => {
-        seenProps.push({ status: ctx.status, attackValue: ctx.attackValue });
-        ctx.rect({ x: 0, y: 0, width: 5, height: 5, fillStyle: "blue" });
+        seenProps.push({ status: ctx.current.status, attackValue: ctx.current.attackValue });
+        ctx.render.rect({ x: 0, y: 0, width: 5, height: 5, fillStyle: "blue" });
       });
 
       const handler = new VisualisationAnimationLoopHandler()
@@ -2084,8 +2088,8 @@ describe("VisualisationAnimationLoopHandler note dispatch", () => {
             getFromScene(note).attack(attack);
           });
 
-          onRender(({ placeInScene }) => {
-            placeInScene(badge(), "badge-1", {
+          onRender(({ render }) => {
+            render.componentInScene("badge-1", badge(), {
               x: 0,
               y: 0,
               width: 10,
@@ -2122,8 +2126,8 @@ describe("VisualisationAnimationLoopHandler note dispatch", () => {
 
         const seenStatuses: string[] = [];
         const pulse = createReactiveLayer((ctx) => {
-          seenStatuses.push(ctx.status);
-          ctx.rect({ x: 0, y: 0, width: 5, height: 5, fillStyle: "green" });
+          seenStatuses.push(ctx.current.status);
+          ctx.render.rect({ x: 0, y: 0, width: 5, height: 5, fillStyle: "green" });
         });
 
         const handler = new VisualisationAnimationLoopHandler()
@@ -2142,8 +2146,8 @@ describe("VisualisationAnimationLoopHandler note dispatch", () => {
               getFromScene(note).release(100);
             });
 
-            onRender(({ placeInScene }) => {
-              placeInScene(pulse(), "pulse-1", {
+            onRender(({ render }) => {
+              render.componentInScene("pulse-1", pulse(), {
                 x: 0,
                 y: 0,
                 width: 10,
@@ -2203,8 +2207,8 @@ describe("VisualisationAnimationLoopHandler note dispatch", () => {
 
         const seenStatuses: string[] = [];
         const pulse = createReactiveLayer((ctx) => {
-          seenStatuses.push(ctx.status);
-          ctx.rect({ x: 0, y: 0, width: 5, height: 5, fillStyle: "green" });
+          seenStatuses.push(ctx.current.status);
+          ctx.render.rect({ x: 0, y: 0, width: 5, height: 5, fillStyle: "green" });
         });
 
         const probedEnvelopes: Array<{
@@ -2313,8 +2317,8 @@ describe("VisualisationAnimationLoopHandler note dispatch", () => {
 
         const seenStatuses: string[] = [];
         const pulse = createReactiveLayer((ctx) => {
-          seenStatuses.push(ctx.status);
-          ctx.rect({ x: 0, y: 0, width: 5, height: 5, fillStyle: "green" });
+          seenStatuses.push(ctx.current.status);
+          ctx.render.rect({ x: 0, y: 0, width: 5, height: 5, fillStyle: "green" });
         });
 
         const probedEnvelopes: Array<{
@@ -2416,8 +2420,8 @@ describe("VisualisationAnimationLoopHandler note dispatch", () => {
 
         const seenStatuses: string[] = [];
         const pulse = createReactiveLayer((ctx) => {
-          seenStatuses.push(ctx.status);
-          ctx.rect({ x: 0, y: 0, width: 5, height: 5, fillStyle: "green" });
+          seenStatuses.push(ctx.current.status);
+          ctx.render.rect({ x: 0, y: 0, width: 5, height: 5, fillStyle: "green" });
         });
 
         const handler = new VisualisationAnimationLoopHandler()
@@ -2431,8 +2435,8 @@ describe("VisualisationAnimationLoopHandler note dispatch", () => {
               getFromScene(note).release(100);
             });
 
-            onRender(({ placeInScene }) => {
-              placeInScene(pulse(), "pulse-1", {
+            onRender(({ render }) => {
+              render.componentInScene("pulse-1", pulse(), {
                 x: 0,
                 y: 0,
                 width: 10,

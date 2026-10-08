@@ -213,9 +213,9 @@ const layerAt = (
   body: (width: number, height: number) => void,
   options: Record<string, unknown> = {},
 ) =>
-  draw.layer(
+  draw.render.layer(
     (frame) => {
-      const { width, height } = frame.getMeasurements();
+      const { width, height } = frame.util.getMeasurements();
       body(width, height);
     },
     { x: FRAME_X, y: FRAME_Y, width: SIDE, height: SIDE, ...options },
@@ -227,14 +227,14 @@ const groupAt = (
   draw: DrawAPI,
   body: () => void,
   options: Record<string, unknown> = {},
-) => draw.group(body, { x: FRAME_X, y: FRAME_Y, ...options } as never);
+) => draw.render.group(body, { x: FRAME_X, y: FRAME_Y, ...options } as never);
 
 // A small marker, found by its distinctive size, whose absolute position is
 // the thing under test.
 const MARKER = 12;
 
 const marker = (draw: DrawAPI, at: { x: number; y: number }) =>
-  draw.rect({ ...at, width: MARKER, height: MARKER });
+  draw.render.rect({ ...at, width: MARKER, height: MARKER });
 
 const markerPosition = (strokeList: Stroke[]) => {
   const found = strokeList.find(
@@ -259,7 +259,7 @@ describe("group() anchoring: content never drifts", () => {
       groupAt(draw, () => {
         marker(draw, { x: FRAME_X, y: FRAME_Y });
 
-        draw.rect({
+        draw.render.rect({
           x: FRAME_X,
           y: FRAME_Y,
           width: SIDE,
@@ -304,9 +304,9 @@ describe("group() anchoring: content never drifts", () => {
 
   it("leaves content where it was authored when the group declares no x/y", async () => {
     const { strokes: observed } = await renderSettled((draw) => {
-      draw.group(() => {
+      draw.render.group(() => {
         marker(draw, { x: FRAME_X, y: FRAME_Y });
-        draw.rect({
+        draw.render.rect({
           x: FRAME_X,
           y: FRAME_Y,
           width: SIDE,
@@ -323,10 +323,10 @@ describe("group() anchoring: content never drifts", () => {
     const run = async (rotate: number) => {
       const { strokes: observed } = await renderSettled((draw) => {
         groupAt(draw, () => {
-          draw.group(
+          draw.render.group(
             () => {
               marker(draw, { x: FRAME_X, y: FRAME_Y });
-              draw.rect({
+              draw.render.rect({
                 x: FRAME_X,
                 y: FRAME_Y,
                 width: SIDE,
@@ -357,7 +357,7 @@ describe("container paint extent vs declared frame", () => {
       await renderSettled((draw) => {
         layerAt(draw, (width, height) => {
           measured = { width, height };
-          draw.rect({ x: 0, y: 0, width, height, scale: 0.75 });
+          draw.render.rect({ x: 0, y: 0, width, height, scale: 0.75 });
         });
       });
 
@@ -369,7 +369,7 @@ describe("container paint extent vs declared frame", () => {
       // there is nothing to expand for: 300x300, exactly as declared.
       const { blits: observed } = await renderSettled((draw) => {
         layerAt(draw, (width, height) => {
-          draw.rect({ x: 0, y: 0, width, height, scale: 0.75 });
+          draw.render.rect({ x: 0, y: 0, width, height, scale: 0.75 });
         });
       });
 
@@ -388,7 +388,7 @@ describe("container paint extent vs declared frame", () => {
       // was 300x300 and cropped ~62px off every edge once promoted.
       const { blits: observed } = await renderSettled((draw) => {
         layerAt(draw, (width, height) => {
-          draw.rect({ x: 0, y: 0, width, height, rotate: 45 });
+          draw.render.rect({ x: 0, y: 0, width, height, rotate: 45 });
         });
       });
 
@@ -410,7 +410,7 @@ describe("container paint extent vs declared frame", () => {
       // opposite direction, or the whole layer lands in the wrong place.
       const { blits: observed } = await renderSettled((draw) => {
         layerAt(draw, (width, height) => {
-          draw.rect({ x: 0, y: 0, width, height, rotate: 45 });
+          draw.render.rect({ x: 0, y: 0, width, height, rotate: 45 });
         });
       });
 
@@ -427,7 +427,7 @@ describe("container paint extent vs declared frame", () => {
       await renderSettled((draw) => {
         layerAt(draw, (width, height) => {
           measured = { width, height };
-          draw.rect({ x: 0, y: 0, width, height, rotate: 45 });
+          draw.render.rect({ x: 0, y: 0, width, height, rotate: 45 });
         });
       });
 
@@ -447,9 +447,9 @@ describe("container paint extent vs declared frame", () => {
       const { strokes: observed } = await renderSettled((draw) => {
         layerAt(draw, (width, height) => {
           // The anchored marker, small enough never to overflow on its own.
-          draw.rect({ ...marker, width: 10, height: 10 });
+          draw.render.rect({ ...marker, width: 10, height: 10 });
           // A sibling that either fits, or forces the container to expand.
-          draw.rect({
+          draw.render.rect({
             x: 0,
             y: 0,
             width,
@@ -490,13 +490,13 @@ describe("container paint extent vs declared frame", () => {
   describe("overflow does not grow an implicitly-sized ancestor", () => {
     it("sizes an implicit ancestor from its children's layout bounds, not their overflow", async () => {
       const { strokes: observed } = await renderSettled((draw) => {
-        draw.layer(
+        draw.render.layer(
           (outer) => {
             // An explicitly-sized inner container whose child overflows it.
-            draw.layer(
+            draw.render.layer(
               (inner) => {
-                const { width, height } = inner.getMeasurements();
-                draw.rect({ x: 0, y: 0, width, height, rotate: 45 });
+                const { width, height } = inner.util.getMeasurements();
+                draw.render.rect({ x: 0, y: 0, width, height, rotate: 45 });
               },
               { x: 0, y: 0, width: SIDE, height: SIDE },
             );
@@ -504,8 +504,8 @@ describe("container paint extent vs declared frame", () => {
             // Declared AFTER the inner container, so it measures the ancestor
             // once that container has reported upward. Its drawn width is the
             // ancestor's derived size, made observable.
-            const { width } = outer.getMeasurements();
-            draw.rect({ x: 0, y: 0, width, height: 5 });
+            const { width } = outer.util.getMeasurements();
+            draw.render.rect({ x: 0, y: 0, width, height: 5 });
           },
           // No width/height: this ancestor derives its own size.
           { x: FRAME_X, y: FRAME_Y },
@@ -529,7 +529,7 @@ describe("container paint extent vs declared frame", () => {
         layerAt(
           draw,
           (width, height) => {
-            draw.rect({ x: 0, y: 0, width, height, rotate: 45 });
+            draw.render.rect({ x: 0, y: 0, width, height, rotate: 45 });
           },
           { showBounds: true },
         );
@@ -547,7 +547,7 @@ describe("container paint extent vs declared frame", () => {
         layerAt(
           draw,
           (width, height) => {
-            draw.rect({ x: 0, y: 0, width, height, scale: 0.75 });
+            draw.render.rect({ x: 0, y: 0, width, height, scale: 0.75 });
           },
           { showBounds: true },
         );
@@ -568,8 +568,8 @@ describe("container paint extent vs declared frame", () => {
       // position must not depend on whether its group happened to be promoted.
       const scene = (draw: DrawAPI) => {
         layerAt(draw, (width, height) => {
-          draw.rect({ x: 0, y: 0, width: 10, height: 10 });
-          draw.rect({ x: 0, y: 0, width, height, rotate: 45 });
+          draw.render.rect({ x: 0, y: 0, width: 10, height: 10 });
+          draw.render.rect({ x: 0, y: 0, width, height, rotate: 45 });
         });
       };
 
@@ -592,8 +592,8 @@ describe("container paint extent vs declared frame", () => {
       // of what its children painted and overflow cannot arise. The surface
       // should match the content, not be inflated on top of it.
       const { blits: observed } = await renderSettled((draw) => {
-        draw.group(() => {
-          draw.rect({ x: 0, y: 0, width: SIDE, height: SIDE, rotate: 45 });
+        draw.render.group(() => {
+          draw.render.rect({ x: 0, y: 0, width: SIDE, height: SIDE, rotate: 45 });
         });
       });
 
@@ -611,12 +611,12 @@ describe("container paint extent vs declared frame", () => {
       // expanded extent upward, so the OUTER layer's surface covers it too.
       // Without propagation the overflow was simply cropped one level higher.
       const { blits: observed } = await renderSettled((draw) => {
-        draw.layer(
+        draw.render.layer(
           () => {
-            draw.layer(
+            draw.render.layer(
               (inner) => {
-                const { width, height } = inner.getMeasurements();
-                draw.rect({ x: 0, y: 0, width, height, rotate: 45 });
+                const { width, height } = inner.util.getMeasurements();
+                draw.render.rect({ x: 0, y: 0, width, height, rotate: 45 });
               },
               { x: 0, y: 0, width: SIDE, height: SIDE },
             );

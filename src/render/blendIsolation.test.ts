@@ -220,8 +220,8 @@ describe("blend modes across a group boundary", () => {
   it("applies a blend against a sibling when the primitive is at root", async () => {
     // The control, and what the grouped case below should match. Passes today.
     const ops = await renderSettled((draw) => {
-      draw.video(VIDEO_SRC, { x: 0, y: 0, width: 800, height: 600 });
-      draw.rect(BLENDED_RECT);
+      draw.render.video(VIDEO_SRC, { x: 0, y: 0, width: 800, height: 600 });
+      draw.render.rect(BLENDED_RECT);
     });
 
     expect(
@@ -248,9 +248,9 @@ describe("blend modes across a group boundary", () => {
     // blend would land `surface/difference`. Both satisfy the property that
     // actually matters, so the test pins the property rather than the repair.
     const ops = await renderSettled((draw) => {
-      draw.video(VIDEO_SRC, { x: 0, y: 0, width: 800, height: 600 });
-      draw.group(() => {
-        draw.rect(BLENDED_RECT);
+      draw.render.video(VIDEO_SRC, { x: 0, y: 0, width: 800, height: 600 });
+      draw.render.group(() => {
+        draw.render.rect(BLENDED_RECT);
       });
     });
 
@@ -266,10 +266,10 @@ describe("blend modes across a group boundary", () => {
     // whole subtree -- the blend would be cut off one level higher up
     // instead, which looks identical on screen.
     const ops = await renderSettled((draw) => {
-      draw.video(VIDEO_SRC, { x: 0, y: 0, width: 800, height: 600 });
-      draw.group(() => {
-        draw.group(() => {
-          draw.rect(BLENDED_RECT);
+      draw.render.video(VIDEO_SRC, { x: 0, y: 0, width: 800, height: 600 });
+      draw.render.group(() => {
+        draw.render.group(() => {
+          draw.render.rect(BLENDED_RECT);
         });
       });
     });
@@ -284,10 +284,10 @@ describe("blend modes across a group boundary", () => {
     // every group in every scene. An unblended static group must still settle
     // to a blit rather than repainting its children forever.
     const ops = await renderSettled((draw) => {
-      draw.video(VIDEO_SRC, { x: 0, y: 0, width: 800, height: 600 });
-      draw.group(() => {
+      draw.render.video(VIDEO_SRC, { x: 0, y: 0, width: 800, height: 600 });
+      draw.render.group(() => {
         const { blend: _blend, ...withoutBlend } = BLENDED_RECT;
-        draw.rect(withoutBlend);
+        draw.render.rect(withoutBlend);
       });
     });
 
@@ -301,9 +301,9 @@ describe("blend modes across a group boundary", () => {
     // case above fails -- it is promotion, not group() itself.
     const ops = await renderSettled(
       (draw) => {
-        draw.video(VIDEO_SRC, { x: 0, y: 0, width: 800, height: 600 });
-        draw.group(() => {
-          draw.rect(BLENDED_RECT);
+        draw.render.video(VIDEO_SRC, { x: 0, y: 0, width: 800, height: 600 });
+        draw.render.group(() => {
+          draw.render.rect(BLENDED_RECT);
         });
       },
       { caching: false },
@@ -338,8 +338,8 @@ describe("background() inside the group tree", () => {
     const allOps: PaintOp[] = [];
 
     const scene = (draw: DrawAPI) => {
-      draw.background({ color: BACKGROUND });
-      draw.rect(BLENDED_RECT);
+      draw.render.background({ color: BACKGROUND });
+      draw.render.rect(BLENDED_RECT);
     };
 
     for (let frame = 0; frame < 4; frame++) {
@@ -377,8 +377,8 @@ describe("background() inside the group tree", () => {
     const target = createContext("target");
 
     const sceneWith = (color: string) => (draw: DrawAPI) => {
-      draw.background({ color });
-      draw.rect({ x: 0, y: 0, width: 10, height: 10, fillStyle: "#ffffff" });
+      draw.render.background({ color });
+      draw.render.rect({ x: 0, y: 0, width: 10, height: 10, fillStyle: "#ffffff" });
     };
 
     // Settle on one colour first, so the next frame is a cache hit unless the
@@ -416,9 +416,9 @@ describe("background() inside the group tree", () => {
     // frame and puts a stray full-canvas fill in the parent.
     const ops = await renderSettled(
       (draw) => {
-        draw.group(() => {
-          draw.background({ color: BACKGROUND });
-          draw.rect({
+        draw.render.group(() => {
+          draw.render.background({ color: BACKGROUND });
+          draw.render.rect({
             x: 20,
             y: 20,
             width: 30,
@@ -448,12 +448,12 @@ describe("context globals inherited from the canvas", () => {
     const target = createContext("target");
 
     const scene = (draw: DrawAPI) => {
-      draw.video(VIDEO_SRC, { x: 0, y: 0, width: 800, height: 600 });
+      draw.render.video(VIDEO_SRC, { x: 0, y: 0, width: 800, height: 600 });
       (
         target as unknown as { globalCompositeOperation: string }
       ).globalCompositeOperation = "difference";
-      draw.group(() => {
-        draw.rect({
+      draw.render.group(() => {
+        draw.render.rect({
           x: 10,
           y: 10,
           width: 40,
@@ -491,11 +491,11 @@ describe("context globals inherited from the canvas", () => {
     const target = createContext("target");
 
     const sceneWith = (blend: string) => (draw: DrawAPI) => {
-      draw.background({ color: "#101010" });
+      draw.render.background({ color: "#101010" });
       (
         target as unknown as { globalCompositeOperation: string }
       ).globalCompositeOperation = blend;
-      draw.rect({ x: 10, y: 10, width: 40, height: 40, fillStyle: "#ffffff" });
+      draw.render.rect({ x: 10, y: 10, width: 40, height: 40, fillStyle: "#ffffff" });
     };
 
     for (let frame = 0; frame < 4; frame++) {

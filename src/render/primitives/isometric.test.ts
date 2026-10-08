@@ -27,10 +27,10 @@ describe("isometric overlay warnings", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.isometric(() => {
-          d.rect({ x: 10, y: 20, width: 30, height: 40 });
-          d.rect({ x: 40, y: 60, width: 30, height: 40 });
-          d.circle({ cx: 100, cy: 120, radius: 12 });
+        d.render.isometric(() => {
+          d.render.rect({ x: 10, y: 20, width: 30, height: 40 });
+          d.render.rect({ x: 40, y: 60, width: 30, height: 40 });
+          d.render.circle({ cx: 100, cy: 120, radius: 12 });
         });
       },
       mockContext,
@@ -41,8 +41,8 @@ describe("isometric overlay warnings", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.isometric(() => {
-          d.circle({ cx: 150, cy: 150, radius: 16 });
+        d.render.isometric(() => {
+          d.render.circle({ cx: 150, cy: 150, radius: 16 });
         });
       },
       mockContext,
@@ -64,8 +64,8 @@ describe("isometric overlay warnings", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.rect({ x: 10, y: 20, width: 30, height: 40 });
-        d.circle({ cx: 100, cy: 120, radius: 12 });
+        d.render.rect({ x: 10, y: 20, width: 30, height: 40 });
+        d.render.circle({ cx: 100, cy: 120, radius: 12 });
       },
       mockContext,
       800,
@@ -82,7 +82,7 @@ describe("isometric overlay warnings", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.circle({
+        d.render.circle({
           cx: 200,
           cy: 200,
           radius: 120,
@@ -90,7 +90,7 @@ describe("isometric overlay warnings", () => {
           strokeStyle: "transparent",
         });
 
-        d.isometric(({ cuboid }) => {
+        d.render.isometric(({ cuboid }) => {
           cuboid({
             isoX: 0,
             isoY: 0,
@@ -150,7 +150,7 @@ describe("isometric() default viewport sizing", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.isometric(() => {});
+        d.render.isometric(() => {});
       },
       createMockContext(),
       800,
@@ -189,9 +189,9 @@ describe("isometric() default viewport sizing", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.layer(
+        d.render.layer(
           () => {
-            d.isometric(() => {});
+            d.render.isometric(() => {});
           },
           { x: 0, y: 0, width: 200, height: 100 },
         );
@@ -233,15 +233,15 @@ describe("isometric() default viewport sizing", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.layer(
+        d.render.layer(
           () => {
             // A layer, not a group: the innermost container here exists to
             // give its descendants a sized coordinate space, which is
             // layer()'s role. group() derives its frame from its children and
             // has no dimensions to declare.
-            d.layer(
+            d.render.layer(
               () => {
-                d.isometric(() => {});
+                d.render.isometric(() => {});
               },
               { x: 0, y: 0, width: 50, height: 40 },
             );
@@ -286,9 +286,9 @@ describe("isometric() default viewport sizing", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.layer(
+        d.render.layer(
           () => {
-            d.isometric(() => {}, { width: 30, height: 20 });
+            d.render.isometric(() => {}, { width: 30, height: 20 });
           },
           { x: 0, y: 0, width: 200, height: 100 },
         );
@@ -330,8 +330,8 @@ describe("isometric() default viewport sizing", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.layer(() => {}, { x: 0, y: 0, width: 200, height: 100 });
-        d.isometric(() => {});
+        d.render.layer(() => {}, { x: 0, y: 0, width: 200, height: 100 });
+        d.render.isometric(() => {});
       },
       createMockContext(),
       800,

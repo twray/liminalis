@@ -1,4 +1,5 @@
-import type { NormalizedFloat, ReactiveStatus } from "../types";
+import type { ReactiveStatus } from "../render";
+import type { NormalizedFloat } from "../types";
 import { getMsSince, toNormalizedFloat } from "../util";
 
 // "Envelope" borrows the audio-synthesis term for exactly this shape: a

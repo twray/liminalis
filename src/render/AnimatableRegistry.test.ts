@@ -1209,7 +1209,7 @@ describe("primitive identity", () => {
       (draw: DrawAPI): void => {
         ids.forEach((id, index) => {
           draw
-            .rect({
+            .render.rect({
               x: index * 50,
               y: BASELINE - MIN_HEIGHT,
               width: 40,

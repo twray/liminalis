@@ -164,7 +164,7 @@ const renderScene = async (
 };
 
 const square = (draw: DrawAPI, fillStyle: string) =>
-  draw.rect({ x: 10, y: 10, width: 40, height: 40, fillStyle });
+  draw.render.rect({ x: 10, y: 10, width: 40, height: 40, fillStyle });
 
 describe("paint order follows declaration order", () => {
   describe("plain primitives against containers", () => {
@@ -174,7 +174,7 @@ describe("paint order follows declaration order", () => {
       // primitive declared ahead of it.
       const log = await renderScene((draw) => {
         square(draw, RED);
-        draw.group(() => {
+        draw.render.group(() => {
           square(draw, GREEN);
         });
       });
@@ -184,7 +184,7 @@ describe("paint order follows declaration order", () => {
 
     it("paints a primitive declared AFTER a container on top of it", async () => {
       const log = await renderScene((draw) => {
-        draw.group(() => {
+        draw.render.group(() => {
           square(draw, GREEN);
         });
         square(draw, RED);
@@ -198,9 +198,9 @@ describe("paint order follows declaration order", () => {
       // are flush-time primitives while the inner group is declare-time, so
       // before the fix this produced [GREEN, RED, BLUE].
       const log = await renderScene((draw) => {
-        draw.group(() => {
+        draw.render.group(() => {
           square(draw, RED);
-          draw.group(() => {
+          draw.render.group(() => {
             square(draw, GREEN);
           });
           square(draw, BLUE);
@@ -215,7 +215,7 @@ describe("paint order follows declaration order", () => {
       // discipline can work around, and the one that pins the fix hardest.
       const log = await renderScene((draw) => {
         square(draw, RED);
-        draw.group(() => {
+        draw.render.group(() => {
           square(draw, GREEN);
         });
         square(draw, BLUE);
@@ -237,8 +237,8 @@ describe("paint order follows declaration order", () => {
 
     it("keeps two containers in declaration order", async () => {
       const log = await renderScene((draw) => {
-        draw.group(() => square(draw, RED));
-        draw.group(() => square(draw, GREEN));
+        draw.render.group(() => square(draw, RED));
+        draw.render.group(() => square(draw, GREEN));
       });
 
       expect(log).toEqual([RED, GREEN]);
@@ -253,8 +253,8 @@ describe("paint order follows declaration order", () => {
       // time, so it exercises the reserved-slot path for groups rather than
       // for primitives.
       const log = await renderScene((draw) => {
-        draw.video(VIDEO_SRC, { x: 0, y: 0, width: 800, height: 600 });
-        draw.group(() => {
+        draw.render.video(VIDEO_SRC, { x: 0, y: 0, width: 800, height: 600 });
+        draw.render.group(() => {
           square(draw, RED);
         });
       });
@@ -264,10 +264,10 @@ describe("paint order follows declaration order", () => {
 
     it("paints a video on top of a container declared before it", async () => {
       const log = await renderScene((draw) => {
-        draw.group(() => {
+        draw.render.group(() => {
           square(draw, RED);
         });
-        draw.video(VIDEO_SRC, { x: 0, y: 0, width: 800, height: 600 });
+        draw.render.video(VIDEO_SRC, { x: 0, y: 0, width: 800, height: 600 });
       });
 
       expect(log).toEqual([RED, "video"]);
@@ -275,7 +275,7 @@ describe("paint order follows declaration order", () => {
 
     it("paints a video underneath a plain primitive declared after it", async () => {
       const log = await renderScene((draw) => {
-        draw.video(VIDEO_SRC, { x: 0, y: 0, width: 800, height: 600 });
+        draw.render.video(VIDEO_SRC, { x: 0, y: 0, width: 800, height: 600 });
         square(draw, RED);
       });
 
@@ -294,7 +294,7 @@ describe("paint order follows declaration order", () => {
       const log = await renderScene(
         (draw) => {
           square(draw, RED);
-          draw.group(() => {
+          draw.render.group(() => {
             square(draw, GREEN);
           });
         },
@@ -312,7 +312,7 @@ describe("paint order follows declaration order", () => {
       // after the measurement guard in queueAnimatable rather than before it.
       const log = await renderScene((draw) => {
         square(draw, RED);
-        draw.group(() => {
+        draw.render.group(() => {
           square(draw, GREEN);
         });
         square(draw, BLUE);

@@ -12,11 +12,11 @@ describe("sceneMeasurements", () => {
   it("is available directly on the ambient DrawAPI at root, matching the canvas size", async () => {
     const { createDrawContext } = await import("../index");
     const drawContext = createDrawContext();
-    let seenSceneMeasurements: DrawAPI["sceneMeasurements"] | null = null;
+    let seenSceneMeasurements: DrawAPI["util"]["sceneMeasurements"] | null = null;
 
     drawContext.executeDrawCallback(
       (d) => {
-        seenSceneMeasurements = d.sceneMeasurements;
+        seenSceneMeasurements = d.util.sceneMeasurements;
       },
       mockContext,
       800,
@@ -44,13 +44,13 @@ describe("sceneMeasurements", () => {
   it("reports the full canvas size inside a group() via the closed-over ambient DrawAPI, not the group's own smaller explicit size", async () => {
     const { createDrawContext } = await import("../index");
     const drawContext = createDrawContext();
-    let seenSceneMeasurements: DrawAPI["sceneMeasurements"] | null = null;
+    let seenSceneMeasurements: DrawAPI["util"]["sceneMeasurements"] | null = null;
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.group(
+        d.render.group(
           () => {
-            seenSceneMeasurements = d.sceneMeasurements;
+            seenSceneMeasurements = d.util.sceneMeasurements;
           },
           { x: 10, y: 20 },
         );
@@ -83,7 +83,7 @@ describe("sceneMeasurements", () => {
       draw.group(() => {}, { height: 100 });
 
       // x/y, transforms and container props remain valid.
-      draw.group(() => {}, { x: 10, y: 20, rotate: 45, showBounds: true });
+      draw.render.group(() => {}, { x: 10, y: 20, rotate: 45, showBounds: true });
     };
 
     expect(typeof accepts).toBe("function");

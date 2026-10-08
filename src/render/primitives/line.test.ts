@@ -15,7 +15,7 @@ describe("line rendering", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.line({
+        d.render.line({
           start: { x: 10, y: 20 },
           end: { x: 110, y: 220 },
           strokeStyle: "#0a0",
@@ -38,7 +38,7 @@ describe("line rendering", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.line({
+        d.render.line({
           start: { x: 0, y: 0 },
           end: { x: 100, y: 0 },
           strokeStyle: "#f00",
@@ -61,7 +61,7 @@ describe("line rendering", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.line({
+        d.render.line({
           start: { x: 0, y: 50 },
           end: { x: 100, y: 50 },
           strokeStyle: "#333",
@@ -83,7 +83,7 @@ describe("line rendering", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.line({
+        d.render.line({
           start: { x: 50, y: 0 },
           end: { x: 50, y: 100 },
           strokeStyle: "#333",
@@ -105,7 +105,7 @@ describe("line rendering", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.line({
+        d.render.line({
           start: { x: 25, y: 25 },
           end: { x: 25, y: 25 },
           strokeStyle: "#333",
@@ -128,7 +128,7 @@ describe("line rendering", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.line({
+        d.render.line({
           start: { x: 0, y: 0 },
           end: { x: 100, y: 100 },
           strokeStyle: "#333",
@@ -150,7 +150,7 @@ describe("line rendering", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.line({
+        d.render.line({
           start: { x: 0, y: 0 },
           end: { x: 100, y: 100 },
         });
@@ -182,7 +182,7 @@ describe("line rendering", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.line({
+        d.render.line({
           start: { x: 0, y: 0 },
           end: { x: 100, y: 100 },
         });
@@ -204,7 +204,7 @@ describe("line rendering", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.line({
+        d.render.line({
           start: { x: 0, y: 0 },
           end: { x: 100, y: 100 },
           blend: "screen",
@@ -225,7 +225,7 @@ describe("line rendering", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.line({
+        d.render.line({
           start: { x: 0, y: 0 },
           end: { x: 100, y: 100 },
           strokeStyle: "#333",
@@ -247,7 +247,7 @@ describe("line rendering", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.line({
+        d.render.line({
           start: { x: 0, y: 0 },
           end: { x: 100, y: 100 },
           rotate: 45,
@@ -271,7 +271,7 @@ describe("line rendering", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.line({
+        d.render.line({
           start: { x: 0, y: 0 },
           end: { x: 100, y: 100 },
           strokeStyle: "#333",
@@ -297,7 +297,7 @@ describe("line rendering", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.line({
+        d.render.line({
           start: { x: 0, y: 0 },
           end: { x: 100, y: 100 },
           strokeStyle: "#333",
@@ -319,7 +319,7 @@ describe("line rendering", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.line({
+        d.render.line({
           start: { x: 0, y: 0 },
           end: { x: 100, y: 100 },
           strokeStyle: "#333",

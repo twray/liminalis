@@ -30,7 +30,7 @@ describe("image rendering", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.image("https://example.com/ready.png", { x: 12, y: 34 });
+        d.render.image("https://example.com/ready.png", { x: 12, y: 34 });
       },
       mockContext,
       800,
@@ -63,7 +63,7 @@ describe("image rendering", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.image("https://example.com/pending.png", { x: 10, y: 20 });
+        d.render.image("https://example.com/pending.png", { x: 10, y: 20 });
       },
       mockContext,
       800,
@@ -101,7 +101,7 @@ describe("image rendering", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.image("https://example.com/cover.png", {
+        d.render.image("https://example.com/cover.png", {
           x: 10,
           y: 20,
           width: 100,
@@ -154,7 +154,7 @@ describe("image rendering", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.image("https://example.com/contain.png", {
+        d.render.image("https://example.com/contain.png", {
           x: 10,
           y: 20,
           width: 100,
@@ -204,7 +204,7 @@ describe("image rendering", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.image("https://example.com/stretch.png", {
+        d.render.image("https://example.com/stretch.png", {
           x: 10,
           y: 20,
           width: 100,
@@ -254,7 +254,7 @@ describe("image rendering", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.image("https://example.com/partial-dimensions.png", {
+        d.render.image("https://example.com/partial-dimensions.png", {
           x: 10,
           y: 20,
           width: 100,
@@ -296,7 +296,7 @@ describe("image rendering", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.image("https://example.com/non-positive-dimensions.png", {
+        d.render.image("https://example.com/non-positive-dimensions.png", {
           x: 10,
           y: 20,
           width: 0,
@@ -339,7 +339,7 @@ describe("image rendering", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.image("https://example.com/scaled-rotate.png", {
+        d.render.image("https://example.com/scaled-rotate.png", {
           x: 10,
           y: 20,
           width: 100,
@@ -383,7 +383,7 @@ describe("image rendering", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.image("https://example.com/opacity.png", {
+        d.render.image("https://example.com/opacity.png", {
           x: 0,
           y: 0,
           opacity: 0.5,
@@ -422,7 +422,7 @@ describe("image rendering", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.image("https://example.com/blend.png", {
+        d.render.image("https://example.com/blend.png", {
           x: 0,
           y: 0,
           blend: "multiply",

@@ -583,12 +583,12 @@ export const createDrawContext = (
     // assignment below.
     let drawApi!: DrawAPI;
 
-    const drawProperties = { sceneMeasurements };
+    const drawUtilities = { sceneMeasurements, centerOf };
 
     const drawPrimitives = {
       isometric: createIsometricPrimitive({
         ...renderCollaborators,
-        drawProperties,
+        drawUtilities,
         timeInMs,
         appliedStylesManager,
         renderWarningManager,
@@ -608,7 +608,6 @@ export const createDrawContext = (
           blendsWithBackdrop: false,
         });
       },
-      centerOf,
       line: (props: LineProps) =>
         queueAnimatable(
           "line",
@@ -666,7 +665,7 @@ export const createDrawContext = (
       ),
       group: group(containerPrimitiveCommonParams),
       layer: layer(containerPrimitiveCommonParams),
-      place: place(containerPrimitiveCommonParams, () => drawApi),
+      component: place(containerPrimitiveCommonParams, () => drawApi),
       text: (
         textValue: string,
         props: TextProps = {},
@@ -753,23 +752,25 @@ export const createDrawContext = (
     };
 
     const drawPrimitivePropHelpers = {
-      defineBackgroundProps: (props: BackgroundProps) => props,
-      defineLineProps: (props: LineProps) => props,
-      definePolygonProps: (props: PolygonProps) => props,
-      defineBezierProps: (props: BezierProps) => props,
-      defineArcProps: (props: ArcProps) => props,
-      defineCircleProps: (props: CircleProps) => props,
-      defineEllipseProps: (props: EllipseProps) => props,
-      defineRectProps: (props: RectProps) => props,
-      defineGroupProps: (props: GroupOptions) => props,
-      defineLayerProps: (props: LayerOptions) => props,
-      defineTextProps: (props: TextProps) => props,
+      propsFor: {
+        background: (props: BackgroundProps) => props,
+        line: (props: LineProps) => props,
+        polygon: (props: PolygonProps) => props,
+        bezier: (props: BezierProps) => props,
+        arc: (props: ArcProps) => props,
+        circle: (props: CircleProps) => props,
+        ellipse: (props: EllipseProps) => props,
+        rect: (props: RectProps) => props,
+        group: (props: GroupOptions) => props,
+        layer: (props: LayerOptions) => props,
+        text: (props: TextProps) => props,
+      },
     };
 
     drawApi = {
-      ...drawProperties,
-      ...drawPrimitives,
-      ...drawPrimitivePropHelpers,
+      util: drawUtilities,
+      render: drawPrimitives,
+      define: drawPrimitivePropHelpers,
     };
 
     // Seeds the ambient-measurements stack with the canvas's own size for

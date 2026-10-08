@@ -9,6 +9,7 @@ import {
 import {
   createDrawContext,
   DrawAPI,
+  DrawContextOf,
   LayerOptions,
   Measurements,
   PlaceOptions,
@@ -33,9 +34,10 @@ import type {
   NormalizedFloat,
   NoteDownEvent,
   NoteUpEvent,
-  RenderProps,
   SketchSettings,
 } from "../types";
+
+import type { RenderProps } from "../render/types";
 
 import { eventTimeToMs, toNormalizedFloat } from "../util";
 import { logMessage } from "../util/log";
@@ -127,17 +129,25 @@ interface SetupAssetLoadOptions {
   deferRender?: boolean;
 }
 
-interface SceneRenderProps extends RenderProps, DrawAPI {
-  beforeTime: (time: EventTime) => boolean;
-  afterTime: (time: EventTime) => boolean;
-  duringTimeInterval: (startTime: EventTime, endTime: EventTime) => boolean;
-  activeNotes: NoteDownEvent[];
-  placeInScene: (
-    component: ReactiveLayerComponent<any>,
-    id: string,
-    options?: PlaceOptions,
-  ) => IAnimatableLike<LayerOptions>;
+// Slice this handler contributes to onRender, on top of the frame's DrawAPI:
+// the members that need the scene's clock, note state or layer registry.
+interface SceneProps {
+  render: {
+    beforeTime: (time: EventTime) => boolean;
+    afterTime: (time: EventTime) => boolean;
+    duringTimeInterval: (startTime: EventTime, endTime: EventTime) => boolean;
+    componentInScene: (
+      id: string,
+      component: ReactiveLayerComponent<any>,
+      options?: PlaceOptions,
+    ) => IAnimatableLike<LayerOptions>;
+  };
+  current: {
+    activeNotes: NoteDownEvent[];
+  };
 }
+
+type SceneRenderProps = DrawContextOf<[DrawAPI, RenderProps, SceneProps]>;
 
 const KEYBOARD_DEBUG_ATTACK_KEY_REGEX = /^[1-9]$/;
 const SCREENSHOT_EXPORT_KEY = "e";
@@ -280,7 +290,7 @@ class VisualisationAnimationLoopHandler<TState> {
       this.#noteReleasedCallbacks.push(callback);
     };
 
-    const onRender = (callback: FrameEventCallback) => {
+    const render = (callback: FrameEventCallback) => {
       this.#frameRenderCallbacks.push(callback);
     };
 
@@ -395,7 +405,7 @@ class VisualisationAnimationLoopHandler<TState> {
       onNoteUp,
       onNoteAttacked,
       onNoteReleased,
-      onRender,
+      onRender: render,
       atTime,
       atStart,
     });
@@ -424,7 +434,7 @@ class VisualisationAnimationLoopHandler<TState> {
       return createNoopAnimatable<PlaceOptions>(options);
     }
 
-    return drawAPI.place(adaptToLayerComponent(component, state), {
+    return drawAPI.render.component(adaptToLayerComponent(component, state), {
       ...options,
       key: id,
     });
@@ -477,19 +487,24 @@ class VisualisationAnimationLoopHandler<TState> {
             (drawApi) => {
               frameRenderCallback({
                 ...drawApi,
-                context,
-                time: timeInMs,
-                beforeTime,
-                afterTime,
-                duringTimeInterval,
-                activeNotes: activeNotesForFrame,
-                placeInScene: (component, id, options) =>
-                  this.#placeReactiveLayer(
-                    drawApi,
-                    component,
-                    { ...options, isTemporary: false },
-                    id,
-                  ),
+                current: {
+                  context,
+                  time: timeInMs,
+                  activeNotes: activeNotesForFrame,
+                },
+                render: {
+                  ...drawApi.render,
+                  beforeTime,
+                  afterTime,
+                  duringTimeInterval,
+                  componentInScene: (id, component, options) =>
+                    this.#placeReactiveLayer(
+                      drawApi,
+                      component,
+                      { ...options, isTemporary: false },
+                      id,
+                    ),
+                },
               });
 
               this.#sceneEntries.forEach(({ component, options }, id) => {

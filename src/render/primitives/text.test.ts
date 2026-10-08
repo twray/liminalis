@@ -17,7 +17,7 @@ describe("text rendering", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.text("Hello", { x: 10, y: 20 });
+        d.render.text("Hello", { x: 10, y: 20 });
       },
       mockContext,
       800,
@@ -36,7 +36,7 @@ describe("text rendering", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.withStyles(
+        d.render.withStyles(
           {
             fillStyle: "#ff0000",
             strokeStyle: "#00ff00",
@@ -49,7 +49,7 @@ describe("text rendering", () => {
             blend: "screen",
           },
           () => {
-            d.text("Styled", { x: 30, y: 40 });
+            d.render.text("Styled", { x: 30, y: 40 });
           },
         );
       },
@@ -75,7 +75,7 @@ describe("text rendering", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.text("Typed", {
+        d.render.text("Typed", {
           x: 16,
           y: 24,
           fontStyle: "oblique 12deg",
@@ -102,7 +102,7 @@ describe("text rendering", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.text("Shorthand", {
+        d.render.text("Shorthand", {
           x: 50,
           y: 60,
           font: 'italic 500 24px "Fira Code", monospace',
@@ -130,7 +130,7 @@ describe("text rendering", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        measuredBounds = d.getTextBounds("Hello", {
+        measuredBounds = d.render.getTextBounds("Hello", {
           x: 10,
           y: 20,
           fontStyle: "italic",
@@ -177,14 +177,14 @@ describe("text rendering", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.withStyles(
+        d.render.withStyles(
           {
             font: 'oblique 14deg bold 16px "Fredericka the Great", serif',
             strokeStyle: "#123456",
             strokeWidth: 2,
           },
           () => {
-            measuredBounds = d.getTextBounds("Hi", {
+            measuredBounds = d.render.getTextBounds("Hi", {
               x: 100,
               y: 40,
             });
@@ -215,7 +215,7 @@ describe("text rendering", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.text("Hi", { x: 100, y: 50, rotate: 45 });
+        d.render.text("Hi", { x: 100, y: 50, rotate: 45 });
       },
       mockContext,
       800,
@@ -237,7 +237,7 @@ describe("text rendering", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.text("Hello", { x: 10, y: 20, fillStyle: "transparent" });
+        d.render.text("Hello", { x: 10, y: 20, fillStyle: "transparent" });
       },
       mockContext,
       800,
@@ -254,7 +254,7 @@ describe("text rendering", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.text("Hello", { x: 10, y: 20, strokeStyle: "transparent" });
+        d.render.text("Hello", { x: 10, y: 20, strokeStyle: "transparent" });
       },
       mockContext,
       800,
@@ -274,7 +274,7 @@ describe("text rendering", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.text("", { x: 10, y: 20 });
+        d.render.text("", { x: 10, y: 20 });
       },
       mockContext,
       800,
@@ -370,11 +370,11 @@ describe("framed clipping for text", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        textClipRef.current = d.text(
+        textClipRef.current = d.render.text(
           "Mask",
           { x: 120, y: 140, fontSize: "48px" },
           () => {
-            d.circle({ cx: 130, cy: 150, radius: 20, fillStyle: "red" });
+            d.render.circle({ cx: 130, cy: 150, radius: 20, fillStyle: "red" });
           },
         );
       },
@@ -414,11 +414,11 @@ describe("framed clipping for text", () => {
 
       drawContextInstance.executeDrawCallback(
         (d) => {
-          d.text(
+          d.render.text(
             "Mask",
             { x: 120, y: 140, fontSize: "48px", useLocalCoordinateContext },
             () => {
-              d.circle({ cx: 10, cy: 10, radius: 5, fillStyle: "red" });
+              d.render.circle({ cx: 10, cy: 10, radius: 5, fillStyle: "red" });
             },
           );
         },
@@ -484,11 +484,11 @@ describe("framed clipping for text", () => {
         // strokeStyle: "transparent" avoids the ambient default stroke
         // width (1px) inflating these deliberately tiny bounds back
         // above the old 0.5px threshold before the validity check runs.
-        d.text(
+        d.render.text(
           "i",
           { x: 10, y: 10, fontSize: "1px", strokeStyle: "transparent" },
           () => {
-            d.circle({ cx: 0, cy: 0, radius: 1, fillStyle: "red" });
+            d.render.circle({ cx: 0, cy: 0, radius: 1, fillStyle: "red" });
           },
         );
       },
@@ -523,8 +523,8 @@ describe("framed clipping for text", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.text("Mask", { x: 120, y: 140, fontSize: "48px" }, () => {
-          d.circle({ cx: 130, cy: 150, radius: 20, fillStyle: "red" });
+        d.render.text("Mask", { x: 120, y: 140, fontSize: "48px" }, () => {
+          d.render.circle({ cx: 130, cy: 150, radius: 20, fillStyle: "red" });
         });
       },
       mockContext,
@@ -595,9 +595,9 @@ describe("framed clipping for text", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.text("Mask", { x: 80, y: 90, fontSize: "36px" }, () => {
-          d.rect({ x: 100, y: 100, width: 120, height: 80 }, () => {
-            d.image("https://example.com/masked.png", {
+        d.render.text("Mask", { x: 80, y: 90, fontSize: "36px" }, () => {
+          d.render.rect({ x: 100, y: 100, width: 120, height: 80 }, () => {
+            d.render.image("https://example.com/masked.png", {
               x: 90,
               y: 90,
               width: 140,

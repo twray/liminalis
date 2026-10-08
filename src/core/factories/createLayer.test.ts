@@ -38,25 +38,31 @@ describe("createLayer", () => {
     const component = logo({ fillStyle: "red" });
 
     const ambientCircle = vi.fn();
-    const ambient = { circle: ambientCircle } as unknown as ContainerDrawAPI;
+    const ambient = {
+      render: { circle: ambientCircle },
+    } as unknown as ContainerDrawAPI;
 
     component.render(ambient);
 
     expect(renderer).toHaveBeenCalledTimes(1);
     expect(renderer).toHaveBeenCalledWith({
-      circle: ambientCircle,
+      render: { circle: ambientCircle },
       props: { fillStyle: "red" },
     });
   });
 
   it("lets the render function call ambient primitives passed in", () => {
     const ambientCircle = vi.fn();
-    const logo = createLayer<{ fillStyle: string }>(({ props, circle }) => {
-      circle({ cx: 0, cy: 0, radius: 10, fillStyle: props.fillStyle });
-    });
+    const logo = createLayer<{ fillStyle: string }>(
+      ({ props, render: { circle } }) => {
+        circle({ cx: 0, cy: 0, radius: 10, fillStyle: props.fillStyle });
+      },
+    );
     const component = logo({ fillStyle: "blue" });
 
-    component.render({ circle: ambientCircle } as unknown as ContainerDrawAPI);
+    component.render({
+      render: { circle: ambientCircle },
+    } as unknown as ContainerDrawAPI);
 
     expect(ambientCircle).toHaveBeenCalledWith({
       cx: 0,

@@ -50,7 +50,7 @@ describe("bezier rendering", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.bezier({
+        d.render.bezier({
           segments: [
             {
               point: { x: 100, y: 120 },
@@ -114,9 +114,9 @@ describe("bezier rendering", () => {
           ],
           fillStyle: "transparent",
           strokeStyle: "#333",
-        } as unknown as Parameters<typeof d.bezier>[0];
+        } as unknown as Parameters<typeof d.render.bezier>[0];
 
-        d.bezier(invalidBezierInput);
+        d.render.bezier(invalidBezierInput);
       },
       mockContext,
       800,
@@ -135,7 +135,7 @@ describe("bezier rendering", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.bezier({
+        d.render.bezier({
           segments: [
             {
               point: { x: 100, y: 120 },
@@ -165,7 +165,7 @@ describe("bezier rendering", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.bezier({
+        d.render.bezier({
           segments: [
             {
               point: { x: 100, y: 120 },
@@ -195,7 +195,7 @@ describe("bezier rendering", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.bezier({
+        d.render.bezier({
           segments: [
             {
               point: { x: 100, y: 120 },
@@ -239,7 +239,7 @@ describe("bezier rendering", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.bezier({
+        d.render.bezier({
           segments: [
             {
               point: { x: 100, y: 120 },
@@ -319,7 +319,7 @@ describe("bezier rendering", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.bezier({
+        d.render.bezier({
           ...initialPath,
           fillStyle: "transparent",
           strokeStyle: "#333",
@@ -335,7 +335,7 @@ describe("bezier rendering", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.bezier({
+        d.render.bezier({
           ...initialPath,
           fillStyle: "transparent",
           strokeStyle: "#333",
@@ -378,7 +378,7 @@ describe("bezier rendering", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.bezier({ segments, fillStyle: "#0f0", strokeStyle: "transparent" });
+        d.render.bezier({ segments, fillStyle: "#0f0", strokeStyle: "transparent" });
       },
       mockContext,
       800,
@@ -393,7 +393,7 @@ describe("bezier rendering", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.bezier({
+        d.render.bezier({
           segments,
           fillStyle: "transparent",
           strokeStyle: "#333",
@@ -415,7 +415,7 @@ describe("bezier rendering", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.bezier({
+        d.render.bezier({
           segments: [
             { point: { x: 0, y: 0 } },
             { control: { x: 50, y: 100 }, point: { x: 100, y: 0 } },
@@ -439,7 +439,7 @@ describe("bezier rendering", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.bezier({
+        d.render.bezier({
           segments: [
             { point: { x: 0, y: 0 } },
             { control: { x: 50, y: 100 }, point: { x: 100, y: 0 } },
@@ -462,7 +462,7 @@ describe("bezier rendering", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.bezier({
+        d.render.bezier({
           segments: [
             { point: { x: 0, y: 0 } },
             { control: { x: 50, y: 100 }, point: { x: 100, y: 0 } },
@@ -489,7 +489,7 @@ describe("bezier rendering", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.bezier({
+        d.render.bezier({
           segments: [
             { point: { x: 0, y: 0 } },
             { control: { x: 50, y: 100 }, point: { x: 100, y: 0 } },
@@ -515,7 +515,7 @@ describe("bezier rendering", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.bezier({
+        d.render.bezier({
           segments: [
             { point: { x: 0, y: 0 } },
             { control: { x: 50, y: 100 }, point: { x: 100, y: 0 } },
@@ -542,7 +542,7 @@ describe("bezier rendering", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.bezier({
+        d.render.bezier({
           segments: [
             { point: { x: 0, y: 0 } },
             { control: { x: 50, y: 100 }, point: { x: 100, y: 0 } },
@@ -566,7 +566,7 @@ describe("bezier rendering", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.bezier({
+        d.render.bezier({
           segments: [
             { point: { x: 0, y: 0 } },
             { control: { x: 50, y: 100 }, point: { x: 100, y: 0 } },
@@ -591,7 +591,7 @@ describe("framed clipping for bezier", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.bezier(
+        d.render.bezier(
           {
             segments: [
               {
@@ -608,7 +608,7 @@ describe("framed clipping for bezier", () => {
             ],
           },
           () => {
-            d.circle({ cx: 150, cy: 120, radius: 60, fillStyle: "#00f" });
+            d.render.circle({ cx: 150, cy: 120, radius: 60, fillStyle: "#00f" });
           },
         );
       },
@@ -629,7 +629,7 @@ describe("framed clipping for bezier", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.bezier(
+        d.render.bezier(
           {
             segments: [
               {
@@ -643,7 +643,7 @@ describe("framed clipping for bezier", () => {
             closePath: false,
           },
           () => {
-            d.circle({ cx: 150, cy: 120, radius: 60, fillStyle: "#00f" });
+            d.render.circle({ cx: 150, cy: 120, radius: 60, fillStyle: "#00f" });
           },
         );
       },

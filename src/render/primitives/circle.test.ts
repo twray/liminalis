@@ -15,7 +15,7 @@ describe("circle rendering", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.circle({ cx: 100, cy: 100, radius: 50, strokeStyle: "#333" });
+        d.render.circle({ cx: 100, cy: 100, radius: 50, strokeStyle: "#333" });
       },
       mockContext,
       800,
@@ -40,7 +40,7 @@ describe("circle rendering", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.circle({ cx: 100, cy: 100, radius: 0, strokeStyle: "#333" });
+        d.render.circle({ cx: 100, cy: 100, radius: 0, strokeStyle: "#333" });
       },
       mockContext,
       800,
@@ -57,7 +57,7 @@ describe("circle rendering", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.circle({
+        d.render.circle({
           cx: 100,
           cy: 100,
           radius: 50,
@@ -81,7 +81,7 @@ describe("circle rendering", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.circle({
+        d.render.circle({
           cx: 200,
           cy: 200,
           radius: 50,
@@ -114,7 +114,7 @@ describe("circle rendering", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.circle({
+        d.render.circle({
           cx: 200,
           cy: 200,
           radius: 50,
@@ -158,7 +158,7 @@ describe("circle rendering", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.circle({
+        d.render.circle({
           cx: 200,
           cy: 200,
           radius: 50,
@@ -202,7 +202,7 @@ describe("circle rendering", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.circle({
+        d.render.circle({
           cx: 100,
           cy: 100,
           radius: 50,
@@ -227,7 +227,7 @@ describe("circle rendering", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.circle({
+        d.render.circle({
           cx: 100,
           cy: 100,
           radius: 50,
@@ -250,7 +250,7 @@ describe("circle rendering", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.circle({
+        d.render.circle({
           cx: 100,
           cy: 100,
           radius: 50,
@@ -271,8 +271,8 @@ describe("circle rendering", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.withStyles({ blend: "multiply" }, () => {
-          d.circle({ cx: 100, cy: 100, radius: 30 });
+        d.render.withStyles({ blend: "multiply" }, () => {
+          d.render.circle({ cx: 100, cy: 100, radius: 30 });
         });
       },
       mockContext,
@@ -290,8 +290,8 @@ describe("circle rendering", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.withStyles({ blend: "multiply" }, () => {
-          d.circle({
+        d.render.withStyles({ blend: "multiply" }, () => {
+          d.render.circle({
             cx: 100,
             cy: 100,
             radius: 30,
@@ -321,8 +321,8 @@ describe("framed clipping for circle", () => {
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.circle({ cx: 200, cy: 200, radius: 100 }, () => {
-          d.line({
+        d.render.circle({ cx: 200, cy: 200, radius: 100 }, () => {
+          d.render.line({
             start: { x: 0, y: 0 },
             end: { x: 400, y: 400 },
             strokeStyle: "#f00",

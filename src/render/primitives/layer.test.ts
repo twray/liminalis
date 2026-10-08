@@ -12,15 +12,15 @@ describe("sceneMeasurements", () => {
   it("reports the full canvas size inside a nested layer() two levels deep, via the closed-over ambient DrawAPI", async () => {
     const { createDrawContext } = await import("../index");
     const drawContext = createDrawContext();
-    let seenSceneMeasurements: DrawAPI["sceneMeasurements"] | null = null;
+    let seenSceneMeasurements: DrawAPI["util"]["sceneMeasurements"] | null = null;
 
     drawContext.executeDrawCallback(
       (d) => {
-        d.layer(
+        d.render.layer(
           () => {
-            d.layer(
+            d.render.layer(
               () => {
-                seenSceneMeasurements = d.sceneMeasurements;
+                seenSceneMeasurements = d.util.sceneMeasurements;
               },
               { x: 5, y: 5, width: 20, height: 20 },
             );
@@ -46,19 +46,19 @@ describe("sceneMeasurements", () => {
     const drawContext = createDrawContext();
     const observedPasses: Array<{
       hasMeasurements: boolean;
-      sceneMeasurements: DrawAPI["sceneMeasurements"];
+      sceneMeasurements: DrawAPI["util"]["sceneMeasurements"];
     }> = [];
 
     drawContext.executeDrawCallback(
       (d) => {
         // No explicit width/height -- triggers the implicit measurement
         // pass, where this layer's own hasMeasurements is false.
-        d.layer(({ hasMeasurements }) => {
+        d.render.layer(({ util: { hasMeasurements } }) => {
           observedPasses.push({
             hasMeasurements,
-            sceneMeasurements: d.sceneMeasurements,
+            sceneMeasurements: d.util.sceneMeasurements,
           });
-          d.rect({ x: 0, y: 0, width: 50, height: 50, fillStyle: "red" });
+          d.render.rect({ x: 0, y: 0, width: 50, height: 50, fillStyle: "red" });
         });
       },
       mockContext,
