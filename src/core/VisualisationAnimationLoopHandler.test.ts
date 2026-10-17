@@ -2566,9 +2566,9 @@ describe("VisualisationAnimationLoopHandler note dispatch", () => {
               if (note === "probe") {
                 const envelope = getFromScene("pulse-1");
                 probedEnvelopes.push({
-                  status: envelope.status,
-                  attackValue: envelope.attackValue,
-                  timeAttacked: envelope.timeAttacked,
+                  status: envelope.current.status,
+                  attackValue: envelope.current.attackValue,
+                  timeAttacked: envelope.timeOf.attack,
                 });
                 return;
               }
@@ -2673,9 +2673,9 @@ describe("VisualisationAnimationLoopHandler note dispatch", () => {
               if (note === "probe") {
                 const envelope = getFromScene("pulse-1");
                 probedEnvelopes.push({
-                  status: envelope.status,
-                  attackValue: envelope.attackValue,
-                  timeAttacked: envelope.timeAttacked,
+                  status: envelope.current.status,
+                  attackValue: envelope.current.attackValue,
+                  timeAttacked: envelope.timeOf.attack,
                 });
                 return;
               }

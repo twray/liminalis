@@ -582,15 +582,18 @@ export interface RenderProps {
 
 export type ReactiveStatus = "idle" | "sustained" | "releasing";
 
-// Slice provided by adaptToLayerComponent, from a reactive layer's envelope.
 export interface ReactiveProps {
   current: {
     status: ReactiveStatus;
     attackValue: NormalizedFloat;
+    attackPeriod: number;
+    decayPeriod: number;
     releasePeriod: number;
   };
   timeOf: {
     attack: number | null;
+    sustain: number | null;
+    decay: number | null;
     release: number | null;
   };
 }

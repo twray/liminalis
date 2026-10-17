@@ -5,16 +5,15 @@ export const adaptToLayerComponent = (
   reactiveComponent: ReactiveLayerComponent<any>,
   state: ReactiveLayerEnvelope,
 ): LayerComponent<any> => {
-  const { status, attackValue, releasePeriod, timeAttacked, timeReleased } =
-    state;
+  const { current, timeOf } = state;
 
   return {
     props: reactiveComponent.props,
     render: (ambient) =>
       reactiveComponent.render({
         ...ambient,
-        current: { status, attackValue, releasePeriod },
-        timeOf: { attack: timeAttacked, release: timeReleased },
+        current,
+        timeOf,
       }),
   };
 };

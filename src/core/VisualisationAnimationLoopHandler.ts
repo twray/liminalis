@@ -484,7 +484,7 @@ class VisualisationAnimationLoopHandler<TState> {
 
     if (
       !state.isPermanent &&
-      state.status === "idle" &&
+      state.current.status === "idle" &&
       state.hasBeenReleased
     ) {
       return createNoopAnimatable<PlaceOptions>(options);
@@ -570,7 +570,7 @@ class VisualisationAnimationLoopHandler<TState> {
                 if (
                   state &&
                   !state.isPermanent &&
-                  state.status === "idle" &&
+                  state.current.status === "idle" &&
                   state.hasBeenReleased
                 ) {
                   this.#sceneEntries.delete(id);
