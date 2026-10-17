@@ -28,12 +28,16 @@ import VideoRecorder from "./VideoRecorder";
 import type {
   AppSettings,
   CanvasProps,
+  ControlChangeEvent,
   EventTime,
   IAnimatableLike,
   MidiEventType,
   NormalizedFloat,
-  NoteDownEvent,
-  NoteUpEvent,
+  NoteOffEvent,
+  NoteOnEvent,
+  PedalChangeEvent,
+  PedalOnOffEvent,
+  PianoPedal,
   SketchSettings,
 } from "../types";
 
@@ -65,9 +69,21 @@ type MidiEventCallback = (
   event: NoteMessageEvent | ControlChangeMessageEvent,
 ) => void;
 
-type NoteDownEventCallback = (params: NoteDownEvent & WithSceneContext) => void;
+type NoteOnEventCallback = (params: NoteOnEvent & WithSceneContext) => void;
 
-type NoteUpEventCallback = (params: NoteUpEvent & WithSceneContext) => void;
+type NoteOffEventCallback = (params: NoteOffEvent & WithSceneContext) => void;
+
+type PedalOnOffEventCallback = (
+  params: PedalOnOffEvent & WithSceneContext,
+) => void;
+
+type PedalChangeEventCallback = (
+  params: PedalChangeEvent & WithSceneContext,
+) => void;
+
+type ControlChangeEventCallback = (
+  params: ControlChangeEvent & WithSceneContext,
+) => void;
 
 type FrameEventCallback = (params: SceneRenderProps) => void;
 
@@ -108,10 +124,14 @@ interface SetupFunctionProps<TState> {
     callback: (loaders: SetupAssetLoaders) => void,
     options?: SetupAssetLoadOptions,
   ) => void;
-  onNoteDown: (callback: NoteDownEventCallback) => void;
-  onNoteUp: (callback: NoteUpEventCallback) => void;
-  onNoteAttacked: (callback: NoteDownEventCallback) => void;
-  onNoteReleased: (callback: NoteUpEventCallback) => void;
+  onNoteDown: (callback: NoteOnEventCallback) => void;
+  onNoteUp: (callback: NoteOffEventCallback) => void;
+  onNoteAttacked: (callback: NoteOnEventCallback) => void;
+  onNoteReleased: (callback: NoteOffEventCallback) => void;
+  onPedalDown: (callback: PedalOnOffEventCallback) => void;
+  onPedalUp: (callback: PedalOnOffEventCallback) => void;
+  onPedalChange: (callback: PedalChangeEventCallback) => void;
+  onControlChange: (callback: ControlChangeEventCallback) => void;
   onRender: (callback: FrameEventCallback) => void;
   atTime: (time: EventTime, callback: TimeEventCallback) => void;
   atStart: (callback: TimeEventCallback) => void;
@@ -143,11 +163,23 @@ interface SceneProps {
     ) => IAnimatableLike<LayerOptions>;
   };
   current: {
-    activeNotes: NoteDownEvent[];
+    activeNotes: NoteOnEvent[];
   };
 }
 
 type SceneRenderProps = DrawContextOf<[DrawAPI, RenderProps, SceneProps]>;
+
+const PIANO_PEDALS: readonly PianoPedal[] = [
+  "damperpedal",
+  "sostenuto",
+  "softpedal",
+];
+
+// MIDI convention for switch-type controllers: 0-63 is off, 64-127 is on.
+const PEDAL_DOWN_RAW_VALUE_THRESHOLD = 64;
+
+const isPianoPedal = (subtype: string | undefined): subtype is PianoPedal =>
+  PIANO_PEDALS.includes(subtype as PianoPedal);
 
 const KEYBOARD_DEBUG_ATTACK_KEY_REGEX = /^[1-9]$/;
 const SCREENSHOT_EXPORT_KEY = "e";
@@ -198,10 +230,14 @@ class VisualisationAnimationLoopHandler<TState> {
   // are registered in the 'setup' function
 
   #timeCallbacks: ExpirableTimeCallbackEntry[] = [];
-  #noteDownCallbacks: NoteDownEventCallback[] = [];
-  #noteUpCallbacks: NoteUpEventCallback[] = [];
-  #noteAttackedCallbacks: NoteDownEventCallback[] = [];
-  #noteReleasedCallbacks: NoteUpEventCallback[] = [];
+  #noteDownCallbacks: NoteOnEventCallback[] = [];
+  #noteUpCallbacks: NoteOffEventCallback[] = [];
+  #noteAttackedCallbacks: NoteOnEventCallback[] = [];
+  #noteReleasedCallbacks: NoteOffEventCallback[] = [];
+  #pedalDownCallbacks: PedalOnOffEventCallback[] = [];
+  #pedalUpCallbacks: PedalOnOffEventCallback[] = [];
+  #pedalChangeCallbacks: PedalChangeEventCallback[] = [];
+  #controlChangeCallbacks: ControlChangeEventCallback[] = [];
 
   #frameRenderCallbacks: FrameEventCallback[] = [];
 
@@ -210,8 +246,8 @@ class VisualisationAnimationLoopHandler<TState> {
 
   #currentKeyboardDebugNumericPressedKey: string | null = null;
 
-  #pendingDamperReleases: Map<string, NoteUpEvent> = new Map();
-  #damperPedalDown = false;
+  #pendingDamperReleases: Map<string, NoteOffEvent> = new Map();
+  #pedalsDown: Set<PianoPedal> = new Set();
 
   #canvas: HTMLCanvasElement | null = null;
   #canvasRenderer = new CanvasRenderer();
@@ -274,20 +310,36 @@ class VisualisationAnimationLoopHandler<TState> {
   setup(setupFunction: (props: SetupFunctionProps<TState>) => void) {
     this.#deferredAssetLoadPromises = [];
 
-    const onNoteDown = (callback: NoteDownEventCallback) => {
+    const onNoteDown = (callback: NoteOnEventCallback) => {
       this.#noteDownCallbacks.push(callback);
     };
 
-    const onNoteUp = (callback: NoteUpEventCallback) => {
+    const onNoteUp = (callback: NoteOffEventCallback) => {
       this.#noteUpCallbacks.push(callback);
     };
 
-    const onNoteAttacked = (callback: NoteDownEventCallback) => {
+    const onNoteAttacked = (callback: NoteOnEventCallback) => {
       this.#noteAttackedCallbacks.push(callback);
     };
 
-    const onNoteReleased = (callback: NoteUpEventCallback) => {
+    const onNoteReleased = (callback: NoteOffEventCallback) => {
       this.#noteReleasedCallbacks.push(callback);
+    };
+
+    const onPedalDown = (callback: PedalOnOffEventCallback) => {
+      this.#pedalDownCallbacks.push(callback);
+    };
+
+    const onPedalUp = (callback: PedalOnOffEventCallback) => {
+      this.#pedalUpCallbacks.push(callback);
+    };
+
+    const onPedalChange = (callback: PedalChangeEventCallback) => {
+      this.#pedalChangeCallbacks.push(callback);
+    };
+
+    const onControlChange = (callback: ControlChangeEventCallback) => {
+      this.#controlChangeCallbacks.push(callback);
     };
 
     const render = (callback: FrameEventCallback) => {
@@ -405,6 +457,10 @@ class VisualisationAnimationLoopHandler<TState> {
       onNoteUp,
       onNoteAttacked,
       onNoteReleased,
+      onPedalDown,
+      onPedalUp,
+      onPedalChange,
+      onControlChange,
       onRender: render,
       atTime,
       atStart,
@@ -688,16 +744,12 @@ class VisualisationAnimationLoopHandler<TState> {
           });
 
           this.#addMidiListener(midiInput, "controlchange", (event) => {
-            const { subtype } = event as ControlChangeMessageEvent;
+            const { subtype, controller, rawValue } =
+              event as ControlChangeMessageEvent;
 
-            if (subtype === "damperpedal") {
-              this.#damperPedalDown =
-                typeof event.value === "number" && event.value >= 0.5;
+            if (typeof rawValue !== "number") return;
 
-              if (!this.#damperPedalDown) {
-                this.#flushPendingDamperReleases();
-              }
-            }
+            handleControlChange(controller.number, rawValue, subtype);
           });
         } else {
           console.log("No MIDI devices available");
@@ -734,10 +786,51 @@ class VisualisationAnimationLoopHandler<TState> {
       // Unaffected by the pedal, same as it always was.
       this.#dispatchNoteUpCallbacks(noteUpEvent);
 
-      if (this.#damperPedalDown) {
+      if (this.#pedalsDown.has("damperpedal")) {
         this.#pendingDamperReleases.set(note, noteUpEvent);
       } else {
         this.#dispatchNoteReleasedCallbacks(noteUpEvent);
+      }
+    };
+
+    const handleControlChange = (
+      controlChangeNumber: number,
+      value: number,
+      subtype: string | undefined,
+    ) => {
+      this.#dispatchToCallbacks(this.#controlChangeCallbacks, {
+        controlChangeNumber,
+        value,
+      });
+
+      if (isPianoPedal(subtype)) {
+        handlePedalChange(subtype, value);
+      }
+    };
+
+    const handlePedalChange = (pedal: PianoPedal, value: number) => {
+      this.#dispatchToCallbacks(this.#pedalChangeCallbacks, {
+        type: pedal,
+        value,
+      });
+
+      const wasDown = this.#pedalsDown.has(pedal);
+      const isDown = value >= PEDAL_DOWN_RAW_VALUE_THRESHOLD;
+
+      // Edge-triggered: a half-pedalling piano streams many values on the
+      // same side of the threshold, but only a crossing is a down/up event.
+      if (wasDown === isDown) return;
+
+      if (isDown) {
+        this.#pedalsDown.add(pedal);
+        this.#dispatchToCallbacks(this.#pedalDownCallbacks, { type: pedal });
+      } else {
+        this.#pedalsDown.delete(pedal);
+        this.#dispatchToCallbacks(this.#pedalUpCallbacks, { type: pedal });
+
+        if (pedal === "damperpedal") {
+          this.#flushPendingDamperReleases();
+        }
       }
     };
   }
@@ -750,13 +843,13 @@ class VisualisationAnimationLoopHandler<TState> {
     input.addListener(eventType, callback);
   };
 
-  #dispatchToNoteCallbacks = <TEvent extends NoteDownEvent | NoteUpEvent>(
+  #dispatchToCallbacks = <TEvent extends object>(
     callbacks: Array<(params: TEvent & WithSceneContext) => void>,
-    noteEvent: TEvent,
+    event: TEvent,
   ): void => {
     callbacks.forEach((callback) => {
       callback({
-        ...noteEvent,
+        ...event,
         getFromScene: this.#getFromScene,
         placeInScene: (component, options, id) => {
           this.#sceneEntries.set(id, { component, options });
@@ -765,20 +858,20 @@ class VisualisationAnimationLoopHandler<TState> {
     });
   };
 
-  #dispatchNoteDownCallbacks = (noteDownEvent: NoteDownEvent): void => {
-    this.#dispatchToNoteCallbacks(this.#noteDownCallbacks, noteDownEvent);
+  #dispatchNoteDownCallbacks = (noteDownEvent: NoteOnEvent): void => {
+    this.#dispatchToCallbacks(this.#noteDownCallbacks, noteDownEvent);
   };
 
-  #dispatchNoteUpCallbacks = (noteUpEvent: NoteUpEvent): void => {
-    this.#dispatchToNoteCallbacks(this.#noteUpCallbacks, noteUpEvent);
+  #dispatchNoteUpCallbacks = (noteUpEvent: NoteOffEvent): void => {
+    this.#dispatchToCallbacks(this.#noteUpCallbacks, noteUpEvent);
   };
 
-  #dispatchNoteAttackedCallbacks = (noteDownEvent: NoteDownEvent): void => {
-    this.#dispatchToNoteCallbacks(this.#noteAttackedCallbacks, noteDownEvent);
+  #dispatchNoteAttackedCallbacks = (noteDownEvent: NoteOnEvent): void => {
+    this.#dispatchToCallbacks(this.#noteAttackedCallbacks, noteDownEvent);
   };
 
-  #dispatchNoteReleasedCallbacks = (noteUpEvent: NoteUpEvent): void => {
-    this.#dispatchToNoteCallbacks(this.#noteReleasedCallbacks, noteUpEvent);
+  #dispatchNoteReleasedCallbacks = (noteUpEvent: NoteOffEvent): void => {
+    this.#dispatchToCallbacks(this.#noteReleasedCallbacks, noteUpEvent);
   };
 
   #flushPendingDamperReleases = (): void => {

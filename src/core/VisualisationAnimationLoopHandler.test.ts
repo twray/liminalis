@@ -667,6 +667,7 @@ describe("VisualisationAnimationLoopHandler note dispatch", () => {
       controlChange!({
         subtype: "damperpedal",
         value: 1,
+        rawValue: 127,
         controller: { number: 64, name: "damperpedal" },
       });
 
@@ -705,6 +706,7 @@ describe("VisualisationAnimationLoopHandler note dispatch", () => {
       controlChange!({
         subtype: "damperpedal",
         value: 0.3,
+        rawValue: 38,
         controller: { number: 64, name: "damperpedal" },
       });
 
@@ -740,6 +742,7 @@ describe("VisualisationAnimationLoopHandler note dispatch", () => {
       controlChange!({
         subtype: "modulationwheel",
         value: 1,
+        rawValue: 127,
         controller: { number: 1, name: "modulationwheel" },
       });
 
@@ -821,6 +824,7 @@ describe("VisualisationAnimationLoopHandler note dispatch", () => {
       controlChange!({
         subtype: "damperpedal",
         value: 1,
+        rawValue: 127,
         controller: { number: 64, name: "damperpedal" },
       });
 
@@ -834,6 +838,7 @@ describe("VisualisationAnimationLoopHandler note dispatch", () => {
       controlChange!({
         subtype: "damperpedal",
         value: 0,
+        rawValue: 0,
         controller: { number: 64, name: "damperpedal" },
       });
 
@@ -864,6 +869,7 @@ describe("VisualisationAnimationLoopHandler note dispatch", () => {
       controlChange!({
         subtype: "damperpedal",
         value: 1,
+        rawValue: 127,
         controller: { number: 64, name: "damperpedal" },
       });
 
@@ -880,6 +886,7 @@ describe("VisualisationAnimationLoopHandler note dispatch", () => {
       controlChange!({
         subtype: "damperpedal",
         value: 0,
+        rawValue: 0,
         controller: { number: 64, name: "damperpedal" },
       });
 
@@ -913,6 +920,7 @@ describe("VisualisationAnimationLoopHandler note dispatch", () => {
       controlChange!({
         subtype: "damperpedal",
         value: 1,
+        rawValue: 127,
         controller: { number: 64, name: "damperpedal" },
       });
 
@@ -926,6 +934,7 @@ describe("VisualisationAnimationLoopHandler note dispatch", () => {
       controlChange!({
         subtype: "damperpedal",
         value: 0,
+        rawValue: 0,
         controller: { number: 64, name: "damperpedal" },
       });
 
@@ -958,12 +967,14 @@ describe("VisualisationAnimationLoopHandler note dispatch", () => {
         controlChange!({
           subtype: "damperpedal",
           value: 1,
+          rawValue: 127,
           controller: { number: 64, name: "damperpedal" },
         });
       const pedalUp = () =>
         controlChange!({
           subtype: "damperpedal",
           value: 0,
+          rawValue: 0,
           controller: { number: 64, name: "damperpedal" },
         });
 
@@ -979,6 +990,334 @@ describe("VisualisationAnimationLoopHandler note dispatch", () => {
       pedalUp();
 
       expect(released).toEqual(["C4"]);
+    });
+  });
+
+  describe("onPedalDown / onPedalUp / onPedalChange / onControlChange", () => {
+    const PEDAL_CONTROLLER_NUMBERS = {
+      damperpedal: 64,
+      sostenuto: 66,
+      softpedal: 67,
+    } as const;
+
+    const sendControlChange = (
+      subtype: string,
+      controllerNumber: number,
+      rawValue: number,
+    ) => {
+      const [controlChange] = mockState.midiListeners.controlchange;
+
+      controlChange!({
+        subtype,
+        value: rawValue / 127,
+        rawValue,
+        controller: { number: controllerNumber, name: subtype },
+      });
+    };
+
+    const sendPedal = (
+      pedal: keyof typeof PEDAL_CONTROLLER_NUMBERS,
+      rawValue: number,
+    ) => sendControlChange(pedal, PEDAL_CONTROLLER_NUMBERS[pedal], rawValue);
+
+    it.each(["damperpedal", "sostenuto", "softpedal"] as const)(
+      "fires onPedalDown and onPedalUp for the %s pedal",
+      async (pedal) => {
+        const { default: VisualisationAnimationLoopHandler } =
+          await import("./VisualisationAnimationLoopHandler");
+
+        const received: string[] = [];
+
+        const handler = new VisualisationAnimationLoopHandler()
+          .withSettings({ computerKeyboardDebugEnabled: false, fps: 5 })
+          .setup(({ onPedalDown, onPedalUp }) => {
+            onPedalDown(({ type }) => received.push(`down:${type}`));
+            onPedalUp(({ type }) => received.push(`up:${type}`));
+          });
+
+        handler.render();
+        await flushPromises();
+
+        sendPedal(pedal, 127);
+        sendPedal(pedal, 0);
+
+        expect(received).toEqual([`down:${pedal}`, `up:${pedal}`]);
+      },
+    );
+
+    it("uses 64 as the down threshold: 63 is up, 64 is down", async () => {
+      const { default: VisualisationAnimationLoopHandler } =
+        await import("./VisualisationAnimationLoopHandler");
+
+      const received: string[] = [];
+
+      const handler = new VisualisationAnimationLoopHandler()
+        .withSettings({ computerKeyboardDebugEnabled: false, fps: 5 })
+        .setup(({ onPedalDown, onPedalUp }) => {
+          onPedalDown(() => received.push("down"));
+          onPedalUp(() => received.push("up"));
+        });
+
+      handler.render();
+      await flushPromises();
+
+      sendPedal("damperpedal", 63);
+      expect(received).toEqual([]);
+
+      sendPedal("damperpedal", 64);
+      expect(received).toEqual(["down"]);
+
+      sendPedal("damperpedal", 63);
+      expect(received).toEqual(["down", "up"]);
+    });
+
+    it("fires onPedalDown / onPedalUp only on a threshold crossing, not on every half-pedal value", async () => {
+      // A half-pedalling piano streams continuous CC64 values. Only the
+      // crossing of the threshold is a down/up event; everything is a change.
+      const { default: VisualisationAnimationLoopHandler } =
+        await import("./VisualisationAnimationLoopHandler");
+
+      const received: string[] = [];
+
+      const handler = new VisualisationAnimationLoopHandler()
+        .withSettings({ computerKeyboardDebugEnabled: false, fps: 5 })
+        .setup(({ onPedalDown, onPedalUp, onPedalChange }) => {
+          onPedalDown(() => received.push("down"));
+          onPedalUp(() => received.push("up"));
+          onPedalChange(({ value }) => received.push(`change:${value}`));
+        });
+
+      handler.render();
+      await flushPromises();
+
+      [10, 40, 70, 100, 127, 90, 50, 20, 0].forEach((rawValue) =>
+        sendPedal("damperpedal", rawValue),
+      );
+
+      expect(received).toEqual([
+        "change:10",
+        "change:40",
+        "change:70",
+        "down",
+        "change:100",
+        "change:127",
+        "change:90",
+        "change:50",
+        "up",
+        "change:20",
+        "change:0",
+      ]);
+    });
+
+    it("fires onPedalChange with the pedal type and raw 0-127 value", async () => {
+      const { default: VisualisationAnimationLoopHandler } =
+        await import("./VisualisationAnimationLoopHandler");
+
+      const onPedalChange = vi.fn();
+
+      const handler = new VisualisationAnimationLoopHandler()
+        .withSettings({ computerKeyboardDebugEnabled: false, fps: 5 })
+        .setup(({ onPedalChange: registerOnPedalChange }) => {
+          registerOnPedalChange(onPedalChange);
+        });
+
+      handler.render();
+      await flushPromises();
+
+      sendPedal("sostenuto", 100);
+      sendPedal("softpedal", 25);
+
+      expect(onPedalChange).toHaveBeenCalledTimes(2);
+      expect(onPedalChange.mock.calls[0]?.[0]).toMatchObject({
+        type: "sostenuto",
+        value: 100,
+      });
+      expect(onPedalChange.mock.calls[1]?.[0]).toMatchObject({
+        type: "softpedal",
+        value: 25,
+      });
+    });
+
+    it("tracks each pedal's down state independently", async () => {
+      const { default: VisualisationAnimationLoopHandler } =
+        await import("./VisualisationAnimationLoopHandler");
+
+      const received: string[] = [];
+
+      const handler = new VisualisationAnimationLoopHandler()
+        .withSettings({ computerKeyboardDebugEnabled: false, fps: 5 })
+        .setup(({ onPedalDown, onPedalUp }) => {
+          onPedalDown(({ type }) => received.push(`down:${type}`));
+          onPedalUp(({ type }) => received.push(`up:${type}`));
+        });
+
+      handler.render();
+      await flushPromises();
+
+      sendPedal("damperpedal", 127);
+      sendPedal("softpedal", 127);
+      sendPedal("damperpedal", 0);
+      // Soft pedal is still down, so this repeat is not a new down event.
+      sendPedal("softpedal", 120);
+      sendPedal("softpedal", 0);
+
+      expect(received).toEqual([
+        "down:damperpedal",
+        "down:softpedal",
+        "up:damperpedal",
+        "up:softpedal",
+      ]);
+    });
+
+    it("does not fire pedal callbacks for non-pedal controllers", async () => {
+      const { default: VisualisationAnimationLoopHandler } =
+        await import("./VisualisationAnimationLoopHandler");
+
+      const onPedalDown = vi.fn();
+      const onPedalChange = vi.fn();
+
+      const handler = new VisualisationAnimationLoopHandler()
+        .withSettings({ computerKeyboardDebugEnabled: false, fps: 5 })
+        .setup(
+          ({
+            onPedalDown: registerOnPedalDown,
+            onPedalChange: registerOnPedalChange,
+          }) => {
+            registerOnPedalDown(onPedalDown);
+            registerOnPedalChange(onPedalChange);
+          },
+        );
+
+      handler.render();
+      await flushPromises();
+
+      sendControlChange("modulationwheel", 1, 127);
+      sendControlChange("volumecoarse", 7, 127);
+
+      expect(onPedalDown).not.toHaveBeenCalled();
+      expect(onPedalChange).not.toHaveBeenCalled();
+    });
+
+    it("fires onControlChange for every controller, pedals included, with the CC number and raw value", async () => {
+      const { default: VisualisationAnimationLoopHandler } =
+        await import("./VisualisationAnimationLoopHandler");
+
+      const received: Array<{ controlChangeNumber: number; value: number }> =
+        [];
+
+      const handler = new VisualisationAnimationLoopHandler()
+        .withSettings({ computerKeyboardDebugEnabled: false, fps: 5 })
+        .setup(({ onControlChange }) => {
+          onControlChange(({ controlChangeNumber, value }) =>
+            received.push({ controlChangeNumber, value }),
+          );
+        });
+
+      handler.render();
+      await flushPromises();
+
+      sendControlChange("modulationwheel", 1, 42);
+      sendPedal("damperpedal", 127);
+      sendPedal("softpedal", 0);
+
+      expect(received).toEqual([
+        { controlChangeNumber: 1, value: 42 },
+        { controlChangeNumber: 64, value: 127 },
+        { controlChangeNumber: 67, value: 0 },
+      ]);
+    });
+
+    it("dispatches onControlChange, then onPedalChange, then onPedalUp, then deferred note releases", async () => {
+      const { default: VisualisationAnimationLoopHandler } =
+        await import("./VisualisationAnimationLoopHandler");
+
+      const received: string[] = [];
+
+      const handler = new VisualisationAnimationLoopHandler()
+        .withSettings({ computerKeyboardDebugEnabled: false, fps: 5 })
+        .setup(
+          ({ onControlChange, onPedalChange, onPedalUp, onNoteReleased }) => {
+            onControlChange(() => received.push("controlchange"));
+            onPedalChange(() => received.push("pedalchange"));
+            onPedalUp(() => received.push("pedalup"));
+            onNoteReleased(({ note }) => received.push(`released:${note}`));
+          },
+        );
+
+      handler.render();
+      await flushPromises();
+
+      const [noteOn] = mockState.midiListeners.noteon;
+      const [noteOff] = mockState.midiListeners.noteoff;
+
+      sendPedal("damperpedal", 127);
+      noteOn!({ note: { identifier: "C4", number: 60, attack: 0.7 } });
+      noteOff!({ note: { identifier: "C4", number: 60 } });
+
+      received.length = 0;
+      sendPedal("damperpedal", 0);
+
+      expect(received).toEqual([
+        "controlchange",
+        "pedalchange",
+        "pedalup",
+        "released:C4",
+      ]);
+    });
+
+    it("does not defer note releases for the sostenuto or soft pedal", async () => {
+      // Sustain-deferral of onNoteReleased is damper-only behaviour.
+      const { default: VisualisationAnimationLoopHandler } =
+        await import("./VisualisationAnimationLoopHandler");
+
+      const released: string[] = [];
+
+      const handler = new VisualisationAnimationLoopHandler()
+        .withSettings({ computerKeyboardDebugEnabled: false, fps: 5 })
+        .setup(({ onNoteReleased }) => {
+          onNoteReleased(({ note }) => released.push(note));
+        });
+
+      handler.render();
+      await flushPromises();
+
+      const [noteOn] = mockState.midiListeners.noteon;
+      const [noteOff] = mockState.midiListeners.noteoff;
+
+      sendPedal("sostenuto", 127);
+      sendPedal("softpedal", 127);
+      noteOn!({ note: { identifier: "C4", number: 60, attack: 0.7 } });
+      noteOff!({ note: { identifier: "C4", number: 60 } });
+
+      expect(released).toEqual(["C4"]);
+    });
+
+    it("exposes scene context to pedal and control change callbacks", async () => {
+      const { default: VisualisationAnimationLoopHandler } =
+        await import("./VisualisationAnimationLoopHandler");
+
+      const contexts: unknown[] = [];
+
+      const handler = new VisualisationAnimationLoopHandler()
+        .withSettings({ computerKeyboardDebugEnabled: false, fps: 5 })
+        .setup(({ onPedalDown, onPedalChange, onControlChange }) => {
+          onPedalDown((params) => contexts.push(params));
+          onPedalChange((params) => contexts.push(params));
+          onControlChange((params) => contexts.push(params));
+        });
+
+      handler.render();
+      await flushPromises();
+
+      sendPedal("damperpedal", 127);
+
+      expect(contexts).toHaveLength(3);
+      contexts.forEach((params) => {
+        expect(params).toMatchObject({
+          getFromScene: expect.any(Function),
+          placeInScene: expect.any(Function),
+        });
+      });
     });
   });
 

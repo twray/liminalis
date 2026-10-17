@@ -1,16 +1,16 @@
 import { Chord } from "tonal";
 import {
   NormalizedFloat,
-  NoteDownEvent,
   NoteEvent,
   NoteEventType,
-  NoteUpEvent,
+  NoteOffEvent,
+  NoteOnEvent,
 } from "../types";
 import { toNormalizedFloat } from "../util";
 
 export default class NoteEventManager {
   #noteEvents: NoteEvent[] = [];
-  #activeNotes: Map<string, NoteDownEvent> = new Map();
+  #activeNotes: Map<string, NoteOnEvent> = new Map();
   #noteEventsForFrames: Map<number, NoteEvent[]> = new Map();
   #nextUnreadNoteEventIndex = 0;
   #timeStampSinceLastFetchOfNewNoteEventsForFrame: number;
@@ -224,12 +224,14 @@ export default class NoteEventManager {
         return null;
       }
 
-      if (!(
-        noteNumbersOfLastThreeNotesPlayed.toString() ===
-          noteNumbersOfLastThreeNotesPlayed.toSorted().toString() ||
-        noteNumbersOfLastThreeNotesPlayed.toString() ===
-          noteNumbersOfLastThreeNotesPlayed.toSorted().toReversed().toString()
-      )) {
+      if (
+        !(
+          noteNumbersOfLastThreeNotesPlayed.toString() ===
+            noteNumbersOfLastThreeNotesPlayed.toSorted().toString() ||
+          noteNumbersOfLastThreeNotesPlayed.toString() ===
+            noteNumbersOfLastThreeNotesPlayed.toSorted().toReversed().toString()
+        )
+      ) {
         return null;
       }
 
@@ -259,7 +261,7 @@ export default class NoteEventManager {
       this.getRecentlyPhrasedNoteEvents(timeWindow, "notedown")
         .map(
           (recentlyPhrasedNoteEvent) =>
-            (recentlyPhrasedNoteEvent as NoteDownEvent).attack,
+            (recentlyPhrasedNoteEvent as NoteOnEvent).attack,
         )
         .reduce(
           (totalIntensity, currentIntensity) =>
@@ -274,8 +276,8 @@ export default class NoteEventManager {
     note: string,
     number: number,
     attack: NormalizedFloat = toNormalizedFloat(1),
-  ): NoteDownEvent {
-    const noteDownEvent: NoteDownEvent = {
+  ): NoteOnEvent {
+    const noteDownEvent: NoteOnEvent = {
       event: "notedown",
       time: new Date().getTime(),
       note,
@@ -289,8 +291,8 @@ export default class NoteEventManager {
     return noteDownEvent;
   }
 
-  registerNoteOffEvent(note: string, number: number): NoteUpEvent {
-    const noteUpEvent: NoteUpEvent = {
+  registerNoteOffEvent(note: string, number: number): NoteOffEvent {
+    const noteUpEvent: NoteOffEvent = {
       event: "noteup",
       time: new Date().getTime(),
       note,

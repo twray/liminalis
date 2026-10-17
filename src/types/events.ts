@@ -10,25 +10,36 @@ export type MidiEventType = "noteon" | "noteoff" | "controlchange";
 
 export type NoteEventType = "notedown" | "noteup";
 
-export interface NoteDownEvent extends BaseNoteEvent {
+export interface NoteOnEvent extends BaseNoteEvent {
   event: "notedown";
   attack: NormalizedFloat;
 }
 
-export interface NoteUpEvent extends BaseNoteEvent {
+export interface NoteOffEvent extends BaseNoteEvent {
   event: "noteup";
 }
 
-// What NoteEventManager actually stores and returns: the discriminant is
-// `event` ("notedown" | "noteup"), unrelated to MidiEvent's own discriminant
-// (`type`: "note" | "controller") -- two different unions that happen to
-// share the word "event" in their names but describe different things.
-export type NoteEvent = NoteDownEvent | NoteUpEvent;
+export type NoteEvent = NoteOnEvent | NoteOffEvent;
+
+interface PedalEvent {
+  type: PianoPedal;
+}
+
+export interface PedalOnOffEvent extends PedalEvent {}
+
+export interface PedalChangeEvent extends PedalEvent {
+  value: number;
+}
+
+export interface ControlChangeEvent {
+  controlChangeNumber: number;
+  value: number;
+}
 
 export type EventTime = number | string;
 
 export interface ActiveNotesEvent {
-  notes: NoteDownEvent[];
+  notes: NoteOnEvent[];
 }
 
 export interface TimeEvent {
@@ -52,9 +63,11 @@ export interface MidiNoteEvent {
   };
 }
 
+export type PianoPedal = "damperpedal" | "sostenuto" | "softpedal";
+
 export interface MidiControllerEvent {
   type: "controller";
-  subtype: "damperpedal";
+  subtype: PianoPedal;
   value: number;
 }
 
