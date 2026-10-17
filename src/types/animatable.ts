@@ -79,5 +79,6 @@ export interface IAnimatableLike<TProps> {
   withOptions(
     options: Partial<AnimationSegmentOptions>,
   ): IAnimatableLike<TProps>;
+  loop(): IAnimatableLike<TProps>;
   getCurrentProps(timeInMs: number): TProps;
 }

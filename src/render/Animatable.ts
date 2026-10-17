@@ -43,6 +43,9 @@ class Animatable<TProps extends object> implements IAnimatableLike<TProps> {
   #firstInvokedTime: number;
   #currentFrameTimeInMs: number;
   #segments: Segment<TProps>[] = [];
+  // Declared alongside the segments, so it is cleared with them: the scene
+  // re-declares both every frame.
+  #isLooping = false;
   #appliedOptions: Partial<AnimationSegmentOptions> = {};
   #propsSnapshot: Partial<TProps> | null = null;
   #staticPropsCache: { initialProps: TProps; result: TProps } | null = null;
@@ -60,6 +63,7 @@ class Animatable<TProps extends object> implements IAnimatableLike<TProps> {
   // actually needs it.
   #pendingSnapshotSource: {
     segments: Segment<TProps>[];
+    isLooping: boolean;
     initialProps: TProps;
     previousSnapshot: Partial<TProps> | null;
     timeInMs: number;
@@ -192,6 +196,7 @@ class Animatable<TProps extends object> implements IAnimatableLike<TProps> {
 
     this.#pendingSnapshotSource = {
       segments: this.#segments,
+      isLooping: this.#isLooping,
       initialProps: this.#initialProps,
       previousSnapshot: this.#propsSnapshot,
       timeInMs,
@@ -214,10 +219,12 @@ class Animatable<TProps extends object> implements IAnimatableLike<TProps> {
     this.#pendingSnapshotSource = null;
 
     const currentSegments = this.#segments;
+    const currentIsLooping = this.#isLooping;
     const currentInitialProps = this.#initialProps;
     const currentFrameTimeInMs = this.#currentFrameTimeInMs;
 
     this.#segments = source.segments;
+    this.#isLooping = source.isLooping;
     this.#initialProps = source.initialProps;
     this.#propsSnapshot = source.previousSnapshot;
 
@@ -225,6 +232,7 @@ class Animatable<TProps extends object> implements IAnimatableLike<TProps> {
       this.#propsSnapshot = this.getCurrentProps(source.timeInMs);
     } finally {
       this.#segments = currentSegments;
+      this.#isLooping = currentIsLooping;
       this.#initialProps = currentInitialProps;
       this.#currentFrameTimeInMs = currentFrameTimeInMs;
     }
@@ -234,6 +242,7 @@ class Animatable<TProps extends object> implements IAnimatableLike<TProps> {
 
   clearSegments(): void {
     this.#segments = [];
+    this.#isLooping = false;
   }
 
   // Whether this animatable is currently mid-animation, as opposed to having
@@ -271,6 +280,16 @@ class Animatable<TProps extends object> implements IAnimatableLike<TProps> {
 
   withOptions(options: Partial<AnimationSegmentOptions>): this {
     this.#appliedOptions = { ...this.#appliedOptions, ...options };
+    return this;
+  }
+
+  // Repeats the timeline continuously. One cycle runs from time 0 to the
+  // end of the last scheduled segment, so any leading delay or `at` offset
+  // is part of every cycle, and each cycle restarts from the initial props.
+  // Unscheduled (`at: null`) segments are ignored, as they are everywhere
+  // else in evaluation, until they are given a start time.
+  loop(): this {
+    this.#isLooping = true;
     return this;
   }
 
@@ -316,6 +335,7 @@ class Animatable<TProps extends object> implements IAnimatableLike<TProps> {
 
     if (
       settled &&
+      !this.#isLooping &&
       settled.initialProps === this.#initialProps &&
       relativeTime >= settled.settledAtRelativeTime &&
       this.#segmentsMatchCached(settled.segments)
@@ -329,16 +349,46 @@ class Animatable<TProps extends object> implements IAnimatableLike<TProps> {
     // Build timeline: calculate effective start times for all segments
     const timeline = this.#buildTimeline();
 
+    const evaluationTime = this.#isLooping
+      ? this.#wrapToLoopCycle(timeline, relativeTime)
+      : relativeTime;
+
     // Start with initial props. Snapshot is only used when a newly-introduced
     // segment needs to inherit a live in-flight value.
     const baseProps = this.#cloneValue(this.#initialProps);
 
     // For each property, find the value at the current time
-    const result = this.#evaluatePropsAtTime(timeline, baseProps, relativeTime);
+    const result = this.#evaluatePropsAtTime(
+      timeline,
+      baseProps,
+      evaluationTime,
+    );
 
     this.#cacheIfSettled(timeline, relativeTime, result);
 
     return result;
+  }
+
+  #wrapToLoopCycle(
+    timeline: AnimatableTimelineEntry<TProps>[],
+    relativeTime: number,
+  ): number {
+    let cycleDuration = 0;
+
+    for (const entry of timeline) {
+      if (entry.startTime === null) continue;
+
+      cycleDuration = Math.max(
+        cycleDuration,
+        entry.startTime + entry.duration,
+      );
+    }
+
+    if (cycleDuration <= 0 || relativeTime < cycleDuration) {
+      return relativeTime;
+    }
+
+    return relativeTime % cycleDuration;
   }
 
   #cacheIfSettled(
@@ -346,6 +396,12 @@ class Animatable<TProps extends object> implements IAnimatableLike<TProps> {
     relativeTime: number,
     result: TProps,
   ): void {
+    // A looping animation never finishes, so it never settles.
+    if (this.#isLooping) {
+      this.#settledCache = null;
+      return;
+    }
+
     let settledAtRelativeTime = 0;
 
     for (let index = 0; index < timeline.length; index++) {

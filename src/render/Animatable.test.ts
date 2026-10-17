@@ -1510,6 +1510,210 @@ describe("Edge Cases", () => {
       expect(props.scale).toBe(1.25); // 25% of 2000
     });
   });
+
+  describe("loop()", () => {
+    it("returns the same instance, so it chains", () => {
+      const anim = new Animatable({ x: 0 }, 0);
+
+      expect(anim.loop()).toBe(anim);
+    });
+
+    it("holds the final value without loop() -- the contrast case", () => {
+      const anim = new Animatable({ x: 0 }, 0).animateTo(
+        { x: 100 },
+        { duration: 1000 },
+      );
+
+      expect(anim.getCurrentProps(5250).x).toBe(100);
+    });
+
+    it("repeats a single segment every cycle", () => {
+      const anim = new Animatable({ x: 0 }, 0)
+        .animateTo({ x: 100 }, { duration: 1000 })
+        .loop();
+
+      expect(anim.getCurrentProps(250).x).toBe(25);
+      expect(anim.getCurrentProps(1250).x).toBe(25);
+      expect(anim.getCurrentProps(5750).x).toBe(75);
+    });
+
+    it("restarts from the initial props at each cycle boundary", () => {
+      const anim = new Animatable({ x: 0 }, 0)
+        .animateTo({ x: 100 }, { duration: 1000 })
+        .loop();
+
+      expect(anim.getCurrentProps(999).x).toBeCloseTo(99.9);
+      expect(anim.getCurrentProps(1000).x).toBe(0);
+      expect(anim.getCurrentProps(3000).x).toBe(0);
+    });
+
+    it("repeats a sequence of segments as one cycle", () => {
+      // There and back: a seamless loop, since it ends where it started.
+      const anim = new Animatable({ x: 0 }, 0)
+        .animateTo({ x: 100 }, { duration: 1000 })
+        .animateTo({ x: 0 }, { duration: 1000 })
+        .loop();
+
+      expect(anim.getCurrentProps(500).x).toBe(50);
+      expect(anim.getCurrentProps(1500).x).toBe(50);
+      expect(anim.getCurrentProps(2500).x).toBe(50);
+      expect(anim.getCurrentProps(3000).x).toBe(100);
+      expect(anim.getCurrentProps(4000).x).toBe(0);
+    });
+
+    it("loops parallel properties with different durations over the longest one", () => {
+      const anim = new Animatable({ x: 0, y: 0 }, 0)
+        .animateTo({ x: 100 }, { at: 0, duration: 1000 })
+        .animateTo({ y: 100 }, { at: 0, duration: 2000 })
+        .loop();
+
+      // At 1500ms into a 2000ms cycle, x has finished and y is 75% there.
+      expect(anim.getCurrentProps(3500)).toEqual({ x: 100, y: 75 });
+    });
+
+    it("includes a leading `at` offset in every cycle", () => {
+      const anim = new Animatable({ x: 0 }, 0)
+        .animateTo({ x: 100 }, { at: 500, duration: 500 })
+        .loop();
+
+      expect(anim.getCurrentProps(250).x).toBe(0);
+      expect(anim.getCurrentProps(750).x).toBe(50);
+      // Second cycle: back in the leading gap, then animating again.
+      expect(anim.getCurrentProps(1250).x).toBe(0);
+      expect(anim.getCurrentProps(1750).x).toBe(50);
+    });
+
+    it("includes a leading delay in every cycle", () => {
+      const anim = new Animatable({ x: 0 }, 0)
+        .animateTo({ x: 100 }, { delay: 500, duration: 500 })
+        .loop();
+
+      expect(anim.getCurrentProps(1250).x).toBe(0);
+      expect(anim.getCurrentProps(1750).x).toBe(50);
+    });
+
+    it("applies easing afresh in every cycle", () => {
+      const anim = new Animatable({ x: 0 }, 0)
+        .animateTo({ x: 100 }, { duration: 1000, easing: easeOutCubic })
+        .loop();
+
+      expect(anim.getCurrentProps(5300).x).toBeCloseTo(
+        anim.getCurrentProps(300).x,
+      );
+    });
+
+    it("measures cycles from the animatable's first invoked time", () => {
+      const anim = new Animatable({ x: 0 }, 10000)
+        .animateTo({ x: 100 }, { duration: 1000 })
+        .loop();
+
+      expect(anim.getCurrentProps(10250).x).toBe(25);
+      expect(anim.getCurrentProps(12250).x).toBe(25);
+    });
+
+    it("ignores unscheduled (at: null) segments when working out the cycle", () => {
+      const anim = new Animatable({ x: 0, y: 0 }, 0)
+        .animateTo({ x: 100 }, { at: 0, duration: 1000 })
+        .animateTo({ y: 100 }, { at: null, duration: 5000 })
+        .loop();
+
+      expect(anim.getCurrentProps(1500)).toEqual({ x: 50, y: 0 });
+    });
+
+    it("leaves the props unchanged when there are no segments to loop", () => {
+      const anim = new Animatable({ x: 7 }, 0).loop();
+
+      expect(anim.getCurrentProps(5000).x).toBe(7);
+    });
+
+    it("loops a zero-duration timeline without dividing by zero", () => {
+      const anim = new Animatable({ x: 0 }, 0)
+        .animateTo({ x: 100 }, { at: 0, duration: 0 })
+        .loop();
+
+      expect(Number.isNaN(anim.getCurrentProps(5000).x)).toBe(false);
+    });
+
+    describe("across per-frame rebuilds", () => {
+      it("keeps looping when segments and loop() are re-declared every frame", () => {
+        const results = simulateRegistryStyleFrames(
+          { x: 0 },
+          0,
+          (anim) => {
+            anim.animateTo({ x: 100 }, { duration: 1000 }).loop();
+          },
+          [0, 250, 500, 999, 1000, 1250, 2500, 9750],
+        );
+
+        expect(results.map((props) => props.x)).toEqual([
+          0,
+          25,
+          50,
+          expect.closeTo(99.9),
+          0,
+          25,
+          50,
+          75,
+        ]);
+      });
+
+      it("never treats a looping animation as settled, however far past its first cycle", () => {
+        // The settled cache returns the same object once nothing can
+        // change; a looping animation must keep producing new values.
+        const results = simulateFrames(
+          { x: 0 },
+          0,
+          (anim) => {
+            anim.animateTo({ x: 100 }, { duration: 1000 }).loop();
+          },
+          [5000, 5250, 5500],
+        );
+
+        expect(results.map((props) => props.x)).toEqual([0, 25, 50]);
+      });
+
+      it("starts looping when loop() is added to an animation that had already settled", () => {
+        const results = simulateFrames(
+          { x: 0 },
+          0,
+          (anim, { time }) => {
+            anim.animateTo({ x: 100 }, { duration: 1000 });
+            if (time >= 5250) anim.loop();
+          },
+          [5000, 5250],
+        );
+
+        expect(results[0].x).toBe(100);
+        expect(results[1].x).toBe(25);
+      });
+
+      it("stops looping when a frame re-declares the animation without loop()", () => {
+        const results = simulateFrames(
+          { x: 0 },
+          0,
+          (anim, { time }) => {
+            anim.animateTo({ x: 100 }, { duration: 1000 });
+            if (time < 5000) anim.loop();
+          },
+          [4250, 5250],
+        );
+
+        expect(results[0].x).toBe(25);
+        expect(results[1].x).toBe(100);
+      });
+
+      it("is cleared by clearSegments()", () => {
+        const anim = new Animatable({ x: 0 }, 0)
+          .animateTo({ x: 100 }, { duration: 1000 })
+          .loop();
+
+        anim.clearSegments();
+        anim.animateTo({ x: 100 }, { duration: 1000 });
+
+        expect(anim.getCurrentProps(5250).x).toBe(100);
+      });
+    });
+  });
 });
 
 describe("Delay with At Warning", () => {

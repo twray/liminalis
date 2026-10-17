@@ -847,6 +847,13 @@ describe("createNoopAnimatable", () => {
     expect(animatable.currentProps).toEqual({ x: 2 });
   });
 
+  it("loop() returns the same noop instance, so chains keep working", () => {
+    const animatable = createNoopAnimatable({ x: 1 });
+
+    expect(animatable.loop()).toBe(animatable);
+    expect(animatable.getCurrentProps(5000)).toEqual({ x: 1 });
+  });
+
   it("getCurrentProps returns currentProps regardless of the time given", () => {
     const animatable = createNoopAnimatable({ x: 1 });
 

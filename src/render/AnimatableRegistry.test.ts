@@ -122,6 +122,25 @@ describe("AnimatableRegistry", () => {
       expect(anim2.getCurrentProps(750).radius).toBe(25);
       registry.endFrame();
     });
+
+    it("keeps a looping animation cycling across frames, through snapshot capture and segment rebuild", () => {
+      const registry = new AnimatableRegistry();
+      const heights: number[] = [];
+
+      for (const t of [0, 250, 1000, 1250, 1500, 2250, 2500, 3750]) {
+        registry.beginFrame(t);
+        const anim = registry
+          .getOrCreate({ h: 0 }, t)
+          .animateTo({ h: 100 }, { duration: 1000 })
+          .animateTo({ h: 0 }, { duration: 1000 })
+          .loop();
+        heights.push(anim.getCurrentProps(t).h);
+        registry.endFrame();
+      }
+
+      // Cycle is 2000ms: up over the first second, down over the second.
+      expect(heights).toEqual([0, 25, 100, 75, 50, 25, 50, 25]);
+    });
   });
 
   describe("beginFrame", () => {

@@ -644,6 +644,7 @@ export const createNoopAnimatable = <TProps extends object>(
     animateTo: (_targetProps, _options): IAnimatableLike<TProps> =>
       noopAnimatable,
     withOptions: (_options): IAnimatableLike<TProps> => noopAnimatable,
+    loop: (): IAnimatableLike<TProps> => noopAnimatable,
     getCurrentProps: (_timeInMs: number) => currentProps,
   };
 
