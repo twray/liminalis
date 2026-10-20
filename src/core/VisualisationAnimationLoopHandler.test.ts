@@ -2,6 +2,14 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { logMessage } from "../util/log";
 import type { AssetCacheEntry } from "./AsyncAssetCache";
 import type { FontAssetDefinition } from "./FontAssetCache";
+import type VisualisationAnimationLoopHandlerType from "./VisualisationAnimationLoopHandler";
+
+type SetupCallback = Parameters<
+  VisualisationAnimationLoopHandlerType<unknown>["setup"]
+>[0];
+type OnRenderCallback = Parameters<
+  Parameters<SetupCallback>[0]["onRender"]
+>[0];
 
 const mockState = {
   latestRenderCallback: null as ((props: any) => void) | null,
@@ -395,6 +403,21 @@ const getLatestSnapshotExporterMock = () => {
 
   return latestSnapshotExporterMock!;
 };
+
+// The scene clock reads performance.now(), which vitest does not fake by
+// default -- tests that advance fake time to move envelopes through their
+// lifecycle must fake it too, or scene time would not advance with them.
+const useFakeSceneTimers = () =>
+  vi.useFakeTimers({
+    toFake: [
+      "setTimeout",
+      "clearTimeout",
+      "setInterval",
+      "clearInterval",
+      "Date",
+      "performance",
+    ],
+  });
 
 const getLatestCanvasRendererMock = () => {
   const latestCanvasRendererMock = canvasRendererMockState.instances.at(-1);
@@ -2288,6 +2311,102 @@ describe("VisualisationAnimationLoopHandler note dispatch", () => {
     });
   });
 
+  describe("time-conditional render blocks", () => {
+    // Drives one frame per wall time; the scene clock starts at the first.
+    const runFramesAt = async (
+      wallTimesInMs: number[],
+      onRender: OnRenderCallback,
+    ) => {
+      const { default: VisualisationAnimationLoopHandler } =
+        await import("./VisualisationAnimationLoopHandler");
+
+      let wallTimeInMs = 0;
+      vi.mocked((globalThis as any).performance.now).mockImplementation(
+        () => wallTimeInMs,
+      );
+
+      const handler = new VisualisationAnimationLoopHandler()
+        .withSettings({
+          computerKeyboardDebugEnabled: false,
+          enableBitmapBasedCaching: false,
+        })
+        .setup(({ onRender: registerOnRender }) => {
+          registerOnRender(onRender);
+        });
+
+      handler.render();
+      await flushPromises();
+
+      const context = createRichMockContext();
+
+      wallTimesInMs.forEach((time) => {
+        wallTimeInMs = time;
+        mockState.latestRenderCallback!({ context, width: 800, height: 600 });
+      });
+
+      return context;
+    };
+
+    it("runs each block's callback only while its time condition holds", async () => {
+      const seen: Record<string, number[]> = {
+        before: [],
+        after: [],
+        during: [],
+      };
+
+      await runFramesAt([0, 100, 200, 300], ({ render, current }) => {
+        render.beforeTime(150, () => seen.before.push(current.time));
+        render.afterTime(150, () => seen.after.push(current.time));
+        render.duringTimeInterval(100, 200, () =>
+          seen.during.push(current.time),
+        );
+      });
+
+      expect(seen.before).toEqual([0, 100]);
+      expect(seen.after).toEqual([200, 300]);
+      expect(seen.during).toEqual([100, 200]);
+    });
+
+    it("accepts time expressions", async () => {
+      const seen: number[] = [];
+
+      await runFramesAt([0], ({ render, current }) => {
+        render.beforeTime("0:05", () => seen.push(current.time));
+      });
+
+      expect(seen).toEqual([0]);
+    });
+
+    // The reason these take a callback rather than returning a boolean: the
+    // block holds its positional slot while its content is absent, so an
+    // unkeyed sibling declared after it keeps its animation state the frame
+    // the block switches on. With a bare `if`, the block's rect would claim
+    // the sibling's slot and the sibling would restart its entrance.
+    it("keeps an unkeyed sibling's animation state when a block switches on", async () => {
+      const siblingWidth = 10;
+
+      const context = await runFramesAt([0, 100, 200], ({ render }) => {
+        render.afterTime(150, () => {
+          render.rect({ x: 500, y: 0, width: 50, height: 50 });
+        });
+
+        render
+          .rect({ x: 0, y: 0, width: siblingWidth, height: 10 })
+          .animateTo({ x: 100 }, { duration: 1000 });
+      });
+
+      const siblingXs = vi
+        .mocked(context.roundRect)
+        .mock.calls.filter(([, , width]) => width === siblingWidth)
+        .map(([x]) => x);
+
+      expect(siblingXs).toHaveLength(3);
+      // Still advancing on the frame the block appeared, not reset to 0.
+      expect(siblingXs[2]).toBeGreaterThan(siblingXs[1]!);
+      expect(siblingXs[1]).toBeGreaterThan(siblingXs[0]!);
+    });
+  });
+
   describe("sceneMeasurements", () => {
     it("is available on onRender's ambient props", async () => {
       const { default: VisualisationAnimationLoopHandler } =
@@ -2455,7 +2574,7 @@ describe("VisualisationAnimationLoopHandler note dispatch", () => {
     });
 
     it("a full note-on/note-off cycle -- attack via onNoteDown, then release via onNoteUp -- is observed by the placed reactive layer's render props transitioning status: 'sustained' -> 'releasing' -> 'idle' (hasBeenReleased: true) across successive frames, using fake timers for sustainPeriod/releasePeriod", async () => {
-      vi.useFakeTimers();
+      useFakeSceneTimers();
 
       try {
         const { default: VisualisationAnimationLoopHandler } =
@@ -2477,10 +2596,8 @@ describe("VisualisationAnimationLoopHandler note dispatch", () => {
             });
 
             // No .sustain() call -- sustainPeriod defaults to 0, so
-            // release() takes effect on the next scheduled-timer tick
-            // rather than being held for a minimum duration first (see
-            // ReactiveLayerEnvelope.test.ts's own "defaults sustainPeriod
-            // to 0" case).
+            // release() takes effect at the scene time it is called rather
+            // than being held for a minimum duration first.
             onNoteUp(({ note, getFromScene }) => {
               getFromScene(note).release(100);
             });
@@ -2514,18 +2631,12 @@ describe("VisualisationAnimationLoopHandler note dispatch", () => {
         renderFrame(); // attacked -> sustained
 
         noteOff!({ note: { identifier: "pulse-1", number: 1 } });
-        // release(100) is scheduled but its 0ms-delay timer hasn't fired
-        // yet -- still sustained until timers advance.
-        renderFrame();
-
-        vi.advanceTimersByTime(0); // release takes effect now
-        renderFrame(); // releasing
+        renderFrame(); // released immediately (sustainPeriod 0) -> releasing
 
         vi.advanceTimersByTime(100); // releasePeriod elapses
         renderFrame(); // idle, hasBeenReleased
 
         expect(seenStatuses).toEqual([
-          "sustained",
           "sustained",
           "releasing",
           "idle",
@@ -2536,7 +2647,7 @@ describe("VisualisationAnimationLoopHandler note dispatch", () => {
     });
 
     it("a placeInScene'd entry with isTemporary: true stops rendering and is physically removed from the registry once fully decayed -- a later getFromScene(id) sees a fresh, never-attacked envelope, not the stale decayed one", async () => {
-      vi.useFakeTimers();
+      useFakeSceneTimers();
 
       try {
         const { default: VisualisationAnimationLoopHandler } =
@@ -2558,7 +2669,7 @@ describe("VisualisationAnimationLoopHandler note dispatch", () => {
 
         const handler = new VisualisationAnimationLoopHandler()
           .withSettings({ computerKeyboardDebugEnabled: false })
-          .setup(({ onNoteDown, onNoteUp, onRender }) => {
+          .setup(({ onNoteDown, onNoteUp }) => {
             onNoteDown(({ note, attack, placeInScene, getFromScene }) => {
               // A distinct "probe" note lets the test inspect pulse-1's
               // envelope later without attacking it (attacking would
@@ -2585,12 +2696,6 @@ describe("VisualisationAnimationLoopHandler note dispatch", () => {
               getFromScene(note).release(100);
             });
 
-            // Empty, but required: #sceneEntries (what a
-            // WithSceneContext-scoped placeInScene registers into) is only
-            // drained inside the per-frame pass nested under a registered
-            // onRender callback -- see
-            // VisualisationAnimationLoopHandler.ts:432,447.
-            onRender(() => {});
           });
 
         handler.render();
@@ -2612,9 +2717,6 @@ describe("VisualisationAnimationLoopHandler note dispatch", () => {
         renderFrame(); // registered + attacked -> sustained, rendered
 
         noteOff!({ note: { identifier: "pulse-1", number: 1 } });
-        renderFrame(); // release(100) scheduled, 0ms delay not yet fired
-
-        vi.advanceTimersByTime(0); // release takes effect
         renderFrame(); // releasing
 
         vi.advanceTimersByTime(100); // releasePeriod elapses
@@ -2625,10 +2727,10 @@ describe("VisualisationAnimationLoopHandler note dispatch", () => {
         // it just silently stops being drawn from this frame on.
         renderFrame();
 
-        expect(seenStatuses).toEqual(["sustained", "sustained", "releasing"]);
+        expect(seenStatuses).toEqual(["sustained", "releasing"]);
 
         renderFrame(); // nothing left in #sceneEntries -- confirm it stays gone
-        expect(seenStatuses).toEqual(["sustained", "sustained", "releasing"]);
+        expect(seenStatuses).toEqual(["sustained", "releasing"]);
 
         noteOn!({ note: { identifier: "probe", number: 99, attack: 1 } });
 
@@ -2646,7 +2748,7 @@ describe("VisualisationAnimationLoopHandler note dispatch", () => {
     });
 
     it("a temporary entry still decays and is removed even when getFromScene(id) auto-vivifies it (isPermanent: true, hardcoded) BEFORE placeInScene(..., { isTemporary: true }) ever runs for that id -- placeInScene wins regardless of which call touches the id first", async () => {
-      vi.useFakeTimers();
+      useFakeSceneTimers();
 
       try {
         const { default: VisualisationAnimationLoopHandler } =
@@ -2668,7 +2770,7 @@ describe("VisualisationAnimationLoopHandler note dispatch", () => {
 
         const handler = new VisualisationAnimationLoopHandler()
           .withSettings({ computerKeyboardDebugEnabled: false })
-          .setup(({ onNoteDown, onNoteUp, onRender }) => {
+          .setup(({ onNoteDown, onNoteUp }) => {
             onNoteDown(({ note, attack, placeInScene, getFromScene }) => {
               if (note === "probe") {
                 const envelope = getFromScene("pulse-1");
@@ -2703,7 +2805,6 @@ describe("VisualisationAnimationLoopHandler note dispatch", () => {
               getFromScene(note).release(100);
             });
 
-            onRender(() => {});
           });
 
         handler.render();
@@ -2723,16 +2824,13 @@ describe("VisualisationAnimationLoopHandler note dispatch", () => {
         renderFrame(); // sustained
 
         noteOff!({ note: { identifier: "pulse-1", number: 1 } });
-        renderFrame(); // still sustained
-
-        vi.advanceTimersByTime(0);
         renderFrame(); // releasing
 
         vi.advanceTimersByTime(100);
         renderFrame(); // decayed this frame -- skipped and removed, per the
         // same same-frame skip-check timing as the removal test above.
 
-        expect(seenStatuses).toEqual(["sustained", "sustained", "releasing"]);
+        expect(seenStatuses).toEqual(["sustained", "releasing"]);
 
         noteOn!({ note: { identifier: "probe", number: 99, attack: 1 } });
 
@@ -2749,7 +2847,7 @@ describe("VisualisationAnimationLoopHandler note dispatch", () => {
     });
 
     it("a directly placeInScene'd layer (always permanent, no isTemporary) keeps rendering through and after full decay -- contrast case for the removal test above", async () => {
-      vi.useFakeTimers();
+      useFakeSceneTimers();
 
       try {
         const { default: VisualisationAnimationLoopHandler } =
@@ -2801,9 +2899,6 @@ describe("VisualisationAnimationLoopHandler note dispatch", () => {
         renderFrame(); // sustained
 
         noteOff!({ note: { identifier: "pulse-1", number: 1 } });
-        renderFrame(); // still sustained, release not yet in effect
-
-        vi.advanceTimersByTime(0);
         renderFrame(); // releasing
 
         vi.advanceTimersByTime(100);
@@ -2812,13 +2907,261 @@ describe("VisualisationAnimationLoopHandler note dispatch", () => {
 
         expect(seenStatuses).toEqual([
           "sustained",
-          "sustained",
           "releasing",
           "idle",
           "idle",
         ]);
       } finally {
         vi.useRealTimers();
+      }
+    });
+  });
+
+  describe("one draw pass per frame", () => {
+    const renderFrameAt = (advanceByInMs: number) => {
+      vi.advanceTimersByTime(advanceByInMs);
+      mockState.latestRenderCallback!({
+        context: createRichMockContext(),
+        width: 800,
+        height: 600,
+      });
+    };
+
+    it("keeps one onRender callback's animations running when another callback declares nothing", async () => {
+      useFakeSceneTimers();
+
+      try {
+        const { default: VisualisationAnimationLoopHandler } =
+          await import("./VisualisationAnimationLoopHandler");
+
+        const heights: number[] = [];
+
+        const handler = new VisualisationAnimationLoopHandler()
+          .withSettings({ computerKeyboardDebugEnabled: false })
+          .setup(({ onRender }) => {
+            onRender(({ render }) => {
+              const bar = render
+                .rect({ x: 0, y: 0, width: 10, height: 0 })
+                .animateTo({ height: 100 }, { duration: 1000 });
+
+              heights.push(bar.currentProps.height);
+            });
+
+            // A pass of its own per callback would sweep away the bar
+            // declared above, restarting its entrance on every frame.
+            onRender(() => {});
+          });
+
+        handler.render();
+        await flushPromises();
+
+        renderFrameAt(0);
+        renderFrameAt(250);
+        renderFrameAt(250);
+
+        expect(heights).toEqual([0, 25, 50]);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("renders placeInScene entries with no onRender callback registered", async () => {
+      const { default: VisualisationAnimationLoopHandler } =
+        await import("./VisualisationAnimationLoopHandler");
+      const { createReactiveLayer } =
+        await import("./factories/createReactiveLayer");
+
+      let renderCount = 0;
+      const pulse = createReactiveLayer(({ render }) => {
+        renderCount += 1;
+        render.rect({ x: 0, y: 0, width: 5, height: 5 });
+      });
+
+      const handler = new VisualisationAnimationLoopHandler()
+        .withSettings({ computerKeyboardDebugEnabled: false })
+        .setup(({ atStart }) => {
+          atStart(({ placeInScene }) => {
+            placeInScene(pulse(), { x: 0, y: 0, width: 10, height: 10 }, "pulse");
+          });
+        });
+
+      handler.render();
+      await flushPromises();
+
+      const renderFrame = () =>
+        mockState.latestRenderCallback!({
+          context: createRichMockContext(),
+          width: 800,
+          height: 600,
+        });
+
+      renderFrame(); // atStart runs after this frame's draw pass
+      renderFrame();
+      renderFrame();
+
+      expect(renderCount).toBe(2);
+    });
+
+    it("renders each placeInScene entry once per frame, however many onRender callbacks there are", async () => {
+      const { default: VisualisationAnimationLoopHandler } =
+        await import("./VisualisationAnimationLoopHandler");
+      const { createReactiveLayer } =
+        await import("./factories/createReactiveLayer");
+
+      let renderCount = 0;
+      const pulse = createReactiveLayer(({ render }) => {
+        renderCount += 1;
+        render.rect({ x: 0, y: 0, width: 5, height: 5 });
+      });
+
+      const handler = new VisualisationAnimationLoopHandler()
+        .withSettings({ computerKeyboardDebugEnabled: false })
+        .setup(({ atStart, onRender }) => {
+          atStart(({ placeInScene }) => {
+            placeInScene(pulse(), { x: 0, y: 0, width: 10, height: 10 }, "pulse");
+          });
+
+          onRender(() => {});
+          onRender(() => {});
+          onRender(() => {});
+        });
+
+      handler.render();
+      await flushPromises();
+
+      const renderFrame = () =>
+        mockState.latestRenderCallback!({
+          context: createRichMockContext(),
+          width: 800,
+          height: 600,
+        });
+
+      renderFrame();
+      renderCount = 0;
+
+      renderFrame();
+      renderFrame();
+
+      expect(renderCount).toBe(2);
+    });
+  });
+
+  describe("scene time", () => {
+    it("starts an attack's animation at once after the tab has been hidden, rather than once the hidden time has also passed", async () => {
+      useFakeSceneTimers();
+
+      try {
+        const { default: VisualisationAnimationLoopHandler } =
+          await import("./VisualisationAnimationLoopHandler");
+        const { createReactiveLayer } =
+          await import("./factories/createReactiveLayer");
+
+        const heights: number[] = [];
+        const bar = createReactiveLayer(({ render, timeOf }) => {
+          const rect = render
+            .rect({ x: 0, y: 0, width: 5, height: 0 })
+            .animateTo({ height: 100 }, { at: timeOf.attack, duration: 500 });
+
+          heights.push(rect.currentProps.height);
+        });
+
+        const handler = new VisualisationAnimationLoopHandler()
+          .withSettings({ computerKeyboardDebugEnabled: false })
+          .setup(({ onNoteDown, onRender }) => {
+            onNoteDown(({ note, attack, getFromScene }) => {
+              getFromScene(note).attack(attack);
+            });
+
+            onRender(({ render }) => {
+              render.componentInScene("bar", bar(), {
+                x: 0,
+                y: 0,
+                width: 10,
+                height: 10,
+              });
+            });
+          });
+
+        handler.render();
+        await flushPromises();
+
+        const [noteOn] = mockState.midiListeners.noteon;
+        const renderFrameAt = (advanceByInMs: number) => {
+          vi.advanceTimersByTime(advanceByInMs);
+          mockState.latestRenderCallback!({
+            context: createRichMockContext(),
+            width: 800,
+            height: 600,
+          });
+        };
+
+        renderFrameAt(0);
+        renderFrameAt(10_000); // no frames for ten seconds: a hidden tab
+
+        noteOn!({ note: { identifier: "bar", number: 1, attack: 1 } });
+        renderFrameAt(250);
+
+        expect(heights.at(-1)).toBe(50);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+  });
+
+  describe("unplaced attack warning", () => {
+    it("warns when an event attacks an id that the scene never places", async () => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+      try {
+        const { default: VisualisationAnimationLoopHandler } =
+          await import("./VisualisationAnimationLoopHandler");
+        const { createReactiveLayer } =
+          await import("./factories/createReactiveLayer");
+
+        const bar = createReactiveLayer(({ render }) => {
+          render.rect({ x: 0, y: 0, width: 5, height: 5 });
+        });
+
+        const handler = new VisualisationAnimationLoopHandler()
+          .withSettings({ computerKeyboardDebugEnabled: false })
+          .setup(({ onNoteDown, onRender }) => {
+            onNoteDown(({ note, attack, getFromScene }) => {
+              getFromScene(note).attack(attack);
+            });
+
+            onRender(({ render }) => {
+              render.componentInScene("C", bar(), {
+                x: 0,
+                y: 0,
+                width: 10,
+                height: 10,
+              });
+            });
+          });
+
+        handler.render();
+        await flushPromises();
+
+        const [noteOn] = mockState.midiListeners.noteon;
+        noteOn!({ note: { identifier: "C", number: 1, attack: 1 } });
+        noteOn!({ note: { identifier: "F#", number: 2, attack: 1 } });
+
+        for (let frame = 0; frame < 10; frame++) {
+          mockState.latestRenderCallback!({
+            context: createRichMockContext(),
+            width: 800,
+            height: 600,
+          });
+        }
+
+        const unplacedWarnings = warn.mock.calls
+          .map(([message]) => String(message))
+          .filter((message) => message.includes("no component has been placed"));
+
+        expect(unplacedWarnings).toHaveLength(1);
+        expect(unplacedWarnings[0]).toContain('"F#"');
+      } finally {
+        warn.mockRestore();
       }
     });
   });

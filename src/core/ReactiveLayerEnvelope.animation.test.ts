@@ -20,7 +20,7 @@ type EnvelopeEvent = [timeInMs: number, act: (e: ReactiveLayerEnvelope) => void]
 // attack, fall on decay, fall on release. Returns the animated height at
 // every frame.
 const simulate = (events: EnvelopeEvent[], untilInMs: number) => {
-  const envelope = new ReactiveLayerEnvelope(true);
+  const envelope = new ReactiveLayerEnvelope(true, Date.now);
   const registry = new AnimatableRegistry();
   const heights = new Map<number, number>();
 
@@ -139,5 +139,51 @@ describe("ReactiveLayerEnvelope driving an animation", () => {
       expect(Math.abs(after - before)).toBeLessThan(5);
       expect(heightAt(3000)).toBe(100);
     });
+  });
+});
+
+describe("ReactiveLayerEnvelope driving a primitive first declared after the envelope", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("plays the attack from the moment of attack, not that long after the primitive appears", () => {
+    const envelope = new ReactiveLayerEnvelope(true, Date.now);
+    const registry = new AnimatableRegistry();
+    const heights = new Map<number, number>();
+
+    for (let t = 0; t <= 6000; t += 100) {
+      vi.setSystemTime(t);
+
+      if (t === 5000) {
+        envelope.attack(1, 500);
+      }
+
+      registry.beginFrame(t);
+
+      // Declared only while the layer is active, so first declared on the
+      // frame of the attack -- five seconds after the envelope was created.
+      if (envelope.current.status !== "idle") {
+        const bar = registry
+          .getOrCreate({ ...RELEASED }, t, { key: "bar" })
+          .animateTo(ATTACKED, {
+            at: envelope.timeOf.attack,
+            duration: envelope.current.attackPeriod,
+          });
+
+        heights.set(t, bar.getCurrentProps(t).h);
+      }
+
+      registry.endFrame();
+    }
+
+    expect(heights.get(5000)).toBe(0);
+    expect(heights.get(5300)).toBeCloseTo(60);
+    expect(heights.get(5500)).toBe(100);
   });
 });

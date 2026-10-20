@@ -724,7 +724,8 @@ const declareBar = (
     identity,
   );
 
-  animatable.animateTo({ height: 100 }, { at: 0, duration: ENTRANCE_MS });
+  // No `at`: an entrance, starting when this declaration first appears.
+  animatable.animateTo({ height: 100 }, { duration: ENTRANCE_MS });
 
   return animatable;
 };
@@ -1111,6 +1112,20 @@ describe("primitive identity", () => {
       expect(warnSpy).not.toHaveBeenCalled();
     });
 
+    it("stays silent when a scope grows from empty", () => {
+      // An empty scope had no identities to misassign. This is the frame a
+      // when() block switches on, its content entering mid-animation.
+      runFrames(new AnimatableRegistry(), [0, 2]);
+
+      expect(warnSpy).not.toHaveBeenCalled();
+    });
+
+    it("still warns when a scope that grew from empty then changes again", () => {
+      runFrames(new AnimatableRegistry(), [0, 2, 3]);
+
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+    });
+
     it("stays silent when the changing list is keyed", () => {
       runFrames(new AnimatableRegistry(), [1, 2, 3], { keyed: true });
 
@@ -1239,7 +1254,7 @@ describe("primitive identity", () => {
             })
             .animateTo(
               { y: BASELINE - FULL_HEIGHT, height: FULL_HEIGHT },
-              { at: 0, duration: ENTRANCE_MS },
+              { duration: ENTRANCE_MS },
             );
         });
       };

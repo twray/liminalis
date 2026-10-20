@@ -443,6 +443,7 @@ export interface DrawUtilities {
 
 export interface DrawPrimitives {
   withStyles: (styles: PartialDrawStyles, callback: () => void) => void;
+  when: (condition: boolean, callback: () => void) => void;
   isometric: (
     callback: (methods: IsometricMethods) => void,
     options?: IsometricOptions,

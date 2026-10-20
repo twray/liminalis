@@ -842,13 +842,14 @@ describe("firstInvokedTime Offset", () => {
       expect(results[3].radius).toBe(150); // t=3500 (after complete)
     });
 
-    it("handles at values correctly with offset", () => {
+    it("treats at as absolute scene time, not time since the shape appeared", () => {
       const results = simulateFrames(
         { radius: 100 },
         2000,
         (anim) => {
-          // at: 500 means "500ms after shape appeared"
-          anim.animateTo({ radius: 150 }, { at: 500, duration: 1000 });
+          // at: 2500 is scene time 2500 -- 500ms after this shape appeared
+          // at t=2000, not 2500ms after it.
+          anim.animateTo({ radius: 150 }, { at: 2500, duration: 1000 });
         },
         [2000, 2250, 2500, 3000, 3500],
       );
@@ -858,6 +859,41 @@ describe("firstInvokedTime Offset", () => {
       expect(results[2].radius).toBe(100); // t=2500, animation starts
       expect(results[3].radius).toBe(125); // t=3000, 50% progress
       expect(results[4].radius).toBe(150); // t=3500, complete
+    });
+
+    it("schedules a delay without at relative to when the shape appeared", () => {
+      const results = simulateFrames(
+        { radius: 100 },
+        2000,
+        (anim) => {
+          anim.animateTo({ radius: 150 }, { delay: 500, duration: 1000 });
+        },
+        [2000, 2250, 2500, 3000, 3500],
+      );
+
+      expect(results[0].radius).toBe(100); // t=2000, appeared
+      expect(results[1].radius).toBe(100); // t=2250, still delayed
+      expect(results[2].radius).toBe(100); // t=2500, animation starts
+      expect(results[3].radius).toBe(125); // t=3000, 50% progress
+      expect(results[4].radius).toBe(150); // t=3500, complete
+    });
+
+    it("picks up mid-flight when the shape appears after its at", () => {
+      // An event stamped between frames, or a shape first declared on a
+      // later frame than the event it reacts to: the animation is already
+      // under way when the shape first appears.
+      const results = simulateFrames(
+        { radius: 100 },
+        2000,
+        (anim) => {
+          anim.animateTo({ radius: 150 }, { at: 1500, duration: 1000 });
+        },
+        [2000, 2500, 3000],
+      );
+
+      expect(results[0].radius).toBe(125); // t=2000, 50% in at first sight
+      expect(results[1].radius).toBe(150); // t=2500, complete
+      expect(results[2].radius).toBe(150);
     });
   });
 });

@@ -283,9 +283,10 @@ class Animatable<TProps extends object> implements IAnimatableLike<TProps> {
     return this;
   }
 
-  // Repeats the timeline continuously. One cycle runs from time 0 to the
-  // end of the last scheduled segment, so any leading delay or `at` offset
-  // is part of every cycle, and each cycle restarts from the initial props.
+  // Repeats the timeline continuously. One cycle runs from the primitive's
+  // first declaration to the end of the last scheduled segment, so any
+  // leading delay or `at` offset (measured from that first declaration) is
+  // part of every cycle, and each cycle restarts from the initial props.
   // Unscheduled (`at: null`) segments are ignored, as they are everywhere
   // else in evaluation, until they are given a start time.
   loop(): this {
@@ -452,8 +453,14 @@ class Animatable<TProps extends object> implements IAnimatableLike<TProps> {
             duration ??
             (endTime !== undefined ? endTime : Animatable.#DEFAULT_DURATION);
         } else {
+          // `at` is absolute scene time -- the same base as the frame time
+          // and a reactive layer's timeOf.* -- so it is rebased onto this
+          // primitive's local timeline, which starts at its first
+          // declaration. Without that, a primitive first declared after
+          // scene start (conditionally rendered, or inside a layer placed
+          // later) would schedule every `at` that much too late.
           const atMs = eventTimeToMs(at);
-          startTime = atMs + delay;
+          startTime = atMs - this.#firstInvokedTime + delay;
           segmentDuration =
             duration ??
             (endTime !== undefined

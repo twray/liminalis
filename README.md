@@ -779,13 +779,34 @@ rect({ x: 0, y: 50, width: 20, height: 20, fillStyle: "#0000ff" }).animateTo(
 
 #### Explicit Timing with `at`
 
-Use the `at` property to start animations at specific times:
+Use the `at` property to start animations at specific times. `at` is
+absolute scene time -- the same clock as a frame's `current.time` and a
+reactive layer's `timeOf.*` -- regardless of when the primitive first appears:
 
 ```typescript
 rect({ x: 0, y: 50, width: 20, height: 20, fillStyle: "#ff00ff" })
   .animateTo({ x: 100 }, { at: 500, duration: 1000 }) // Starts at 500ms
   .animateTo({ y: 150 }, { at: 1000, duration: 500 }); // Starts at 1000ms
 ```
+
+To animate relative to when a primitive first appears (an entrance), leave
+`at` out: the first segment without `at` starts on the primitive's first
+frame, plus any `delay`.
+
+```typescript
+render.afterTime("0:05", () => {
+  render
+    .rect({ x: 0, y: 50, width: 20, height: 0 })
+    .animateTo({ height: 100 }, { duration: 500 }); // Enters as it appears, at 0:05
+});
+```
+
+`beforeTime(time, callback)`, `afterTime(time, callback)` and
+`duringTimeInterval(start, end, callback)` render their callback's content only
+while the condition holds. Like `group()` and `layer()`, each block keeps its
+own place in declaration order even while it renders nothing, so unkeyed
+primitives declared after it keep their animation state when it switches on or
+off. `render.when(condition, callback)` does the same for any condition.
 
 #### Event-Based Timing with `at: null`
 
@@ -953,7 +974,7 @@ circle({ cx: 0, cy: 0, radius: 50 })
 
 ```typescript
 interface AnimationSegmentOptions {
-  at?: number | null; // Start time (ms) or null for event-based
+  at?: number | null; // Start time (absolute scene ms) or null for event-based
   duration?: number; // Duration in ms
   endTime?: number; // Alternative: absolute end time
   delay?: number; // Delay before starting (added to 'at')
@@ -964,14 +985,15 @@ interface AnimationSegmentOptions {
 
 #### Key Behaviors
 
-| Behavior                        | Description                                                     |
-| ------------------------------- | --------------------------------------------------------------- |
-| **Sequential by default**       | Segments without `at` start after the previous completes        |
-| **Event-based with `at: null`** | Segment waits until the time value becomes non-null             |
-| **Overlapping supersedes**      | Later segments capture current value as their start             |
-| **Property independence**       | Each property is animated independently                         |
-| **Value persistence**           | Properties stay at their final values after animation completes |
-| **Type-safe**                   | Only numeric properties can be animated                         |
+| Behavior                        | Description                                                                                                 |
+| ------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| **Sequential by default**       | Segments without `at` start after the previous completes; the first starts when the primitive first appears |
+| **`at` is scene time**          | `at` is absolute, not relative to when the primitive appeared                                               |
+| **Event-based with `at: null`** | Segment waits until the time value becomes non-null                                                         |
+| **Overlapping supersedes**      | Later segments capture current value as their start                                                         |
+| **Property independence**       | Each property is animated independently                                                                     |
+| **Value persistence**           | Properties stay at their final values after animation completes                                             |
+| **Type-safe**                   | Only numeric properties can be animated                                                                     |
 
 #### ⚠️ Combining `delay` with `at`
 

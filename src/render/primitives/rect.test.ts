@@ -2170,7 +2170,7 @@ describe("framed clipping for rect", () => {
           fillStyle: "red",
           strokeStyle: "transparent",
         });
-      }).animateTo({ x: 200 }, { at: 0, duration: 1000 });
+      }).animateTo({ x: 200 }, { duration: 1000 });
     };
 
     drawContext.executeDrawCallback(

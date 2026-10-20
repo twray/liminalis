@@ -138,7 +138,8 @@ class AnimatableRegistry {
   //   - no UNKEYED declaration in the scope animates (identity has no effect
   //     on output for a primitive with no segments -- getCurrentProps returns
   //     initialProps verbatim -- and a keyed one is already safe regardless);
-  //   - the scope's declaration count is stable frame to frame;
+  //   - the scope's declaration count is stable frame to frame, or was zero
+  //     on the previous frame;
   //   - everything in the scope is keyed (keyed declarations consume no
   //     positional index, so the count stays at zero and never changes).
   #warnOnUnkeyedReorderHazard(): void {
@@ -150,7 +151,14 @@ class AnimatableRegistry {
       const previousCount =
         this.#identityTracker.previousScopeDeclarationCounts.get(scope);
 
-      if (previousCount === undefined || previousCount === count) {
+      // A scope that declared nothing last frame had no identities to hand
+      // to the wrong primitive, so growing from empty is never a hazard --
+      // which is exactly what a when() block does the frame it switches on.
+      if (
+        previousCount === undefined ||
+        previousCount === 0 ||
+        previousCount === count
+      ) {
         continue;
       }
 

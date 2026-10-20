@@ -53,6 +53,7 @@ import { createNoopAnimatable } from "../render/common";
 import { adaptToLayerComponent } from "./adapters/adaptToLayerComponent";
 import ReactiveLayerEnvelope from "./ReactiveLayerEnvelope";
 import ReactiveLayerRegistry from "./ReactiveLayerRegistry";
+import SceneClock, { readWallClockInMs } from "./SceneClock";
 
 type VideoFormatPreference = "auto" | "webm" | "mp4";
 
@@ -153,9 +154,13 @@ interface SetupAssetLoadOptions {
 // the members that need the scene's clock, note state or layer registry.
 interface SceneProps {
   render: {
-    beforeTime: (time: EventTime) => boolean;
-    afterTime: (time: EventTime) => boolean;
-    duringTimeInterval: (startTime: EventTime, endTime: EventTime) => boolean;
+    beforeTime: (time: EventTime, callback: () => void) => void;
+    afterTime: (time: EventTime, callback: () => void) => void;
+    duringTimeInterval: (
+      startTime: EventTime,
+      endTime: EventTime,
+      callback: () => void,
+    ) => void;
     componentInScene: (
       id: string,
       component: ReactiveLayerComponent<any>,
@@ -186,7 +191,6 @@ const SCREENSHOT_EXPORT_KEY = "e";
 const VIDEO_EXPORT_KEY = "e";
 
 const DEFAULTS = {
-  INTERNAL_CLOCK_MAX_FRAME_DELTA_IN_MS: 250,
   SETTINGS_COMPUTER_KEYBOARD_DEBUG_ENABLED: true,
   SETTINGS_FPS: 60,
   SETTINGS_AUTO_SCALE_DOWN: true,
@@ -215,15 +219,22 @@ class VisualisationAnimationLoopHandler<TState> {
 
   #noteEventManager = new NoteEventManager("major");
 
-  #reactiveLayerRegistry = new ReactiveLayerRegistry();
+  #sceneClock = new SceneClock();
+  #reactiveLayerRegistry = new ReactiveLayerRegistry(() =>
+    this.#sceneClock.now(),
+  );
   #sceneState: TState = {} as TState;
   #sceneEntries = new Map<
     string,
     { component: ReactiveLayerComponent<any>; options: PlaceOptions }
   >();
 
-  #getFromScene = (id: string) => {
-    return this.#reactiveLayerRegistry.getOrCreate(id, true);
+  // Handed to every event and time callback registered in setup().
+  #sceneContext: WithSceneContext = {
+    getFromScene: (id) => this.#reactiveLayerRegistry.getOrCreate(id, true),
+    placeInScene: (component, options, id) => {
+      this.#sceneEntries.set(id, { component, options });
+    },
   };
 
   // Callbacks from event-based handlers that
@@ -240,9 +251,6 @@ class VisualisationAnimationLoopHandler<TState> {
   #controlChangeCallbacks: ControlChangeEventCallback[] = [];
 
   #frameRenderCallbacks: FrameEventCallback[] = [];
-
-  #internalElapsedTimeInMs = 0;
-  #internalLastFrameTimestampInMs: number | null = null;
 
   #currentKeyboardDebugNumericPressedKey: string | null = null;
 
@@ -475,7 +483,7 @@ class VisualisationAnimationLoopHandler<TState> {
     options: PlaceOptionsNonPermanent,
     id: string,
   ) {
-    const state = this.#reactiveLayerRegistry.getOrCreate(
+    const state = this.#reactiveLayerRegistry.getOrCreateForPlacement(
       id,
       !options.isTemporary,
     );
@@ -497,7 +505,8 @@ class VisualisationAnimationLoopHandler<TState> {
   }
 
   render() {
-    this.#resetInternalClock();
+    this.#sceneClock.reset();
+    this.#resetFpsSample();
 
     // Creates the canvas instance on render
     const canvas = document.createElement("canvas");
@@ -513,34 +522,53 @@ class VisualisationAnimationLoopHandler<TState> {
     const renderer = () => {
       return (canvasProps: CanvasProps) => {
         const { context, width, height } = canvasProps;
-        const nowInMs = this.#getNowInMs();
+        const nowInMs = readWallClockInMs();
 
-        // Compute runtime from a monotonic internal clock so timing is
-        // independent from renderer playback settings.
-        const timeInMs = this.#getInternalElapsedTimeInMs(nowInMs);
+        // Compute runtime from the scene's monotonic clock so timing is
+        // independent from renderer playback settings, and shared with the
+        // times reactive layer envelopes record.
+        const timeInMs = this.#sceneClock.tick(nowInMs);
 
         // Set background color and clear the canvas for rendering
         context.fillStyle = "white";
         context.fillRect(0, 0, width, height);
 
-        // Convenience functions for conditional rendering based on time
-        // intervals
+        // Predicates behind the time-conditional render blocks below. The
+        // blocks themselves delegate to render.when(), which owns the
+        // identity scoping, so this layer only decides *whether* to render.
 
-        const beforeTime = (time: EventTime) => timeInMs < eventTimeToMs(time);
-        const afterTime = (time: EventTime) => timeInMs > eventTimeToMs(time);
-        const duringTimeInterval = (startTime: EventTime, endTime: EventTime) =>
+        const isBeforeTime = (time: EventTime) =>
+          timeInMs < eventTimeToMs(time);
+        const isAfterTime = (time: EventTime) => timeInMs > eventTimeToMs(time);
+        const isDuringTimeInterval = (startTime: EventTime, endTime: EventTime) =>
           timeInMs >= eventTimeToMs(startTime) &&
           timeInMs <= eventTimeToMs(endTime);
 
         const activeNotesForFrame = this.#noteEventManager.activeNotes;
 
-        // Call the custom render function if it is specified. This function
-        // runs on every frame and allows the user to manipulate the context
-        // in real time using top-level draw primitives.
+        // The whole frame is a single draw pass: every onRender callback, in
+        // registration order, then the entries placed via placeInScene. One
+        // pass means one beginFrame/flush/endFrame on the draw context, so
+        // all of them share one positional-identity space and one GC sweep
+        // -- separate passes would each sweep away the animation state the
+        // previous one had just declared. Scene entries are drawn last, on
+        // top, and are drawn even when no onRender callback is registered.
 
-        this.#frameRenderCallbacks.forEach((frameRenderCallback) => {
-          drawContext.executeDrawCallback(
-            (drawApi) => {
+        drawContext.executeDrawCallback(
+          (drawApi) => {
+            const { when } = drawApi.render;
+
+            const timeConditionals: Pick<
+              SceneProps["render"],
+              "beforeTime" | "afterTime" | "duringTimeInterval"
+            > = {
+              beforeTime: (time, callback) => when(isBeforeTime(time), callback),
+              afterTime: (time, callback) => when(isAfterTime(time), callback),
+              duringTimeInterval: (startTime, endTime, callback) =>
+                when(isDuringTimeInterval(startTime, endTime), callback),
+            };
+
+            this.#frameRenderCallbacks.forEach((frameRenderCallback) => {
               frameRenderCallback({
                 ...drawApi,
                 current: {
@@ -550,9 +578,7 @@ class VisualisationAnimationLoopHandler<TState> {
                 },
                 render: {
                   ...drawApi.render,
-                  beforeTime,
-                  afterTime,
-                  duringTimeInterval,
+                  ...timeConditionals,
                   componentInScene: (id, component, options) =>
                     this.#placeReactiveLayer(
                       drawApi,
@@ -562,28 +588,28 @@ class VisualisationAnimationLoopHandler<TState> {
                     ),
                 },
               });
+            });
 
-              this.#sceneEntries.forEach(({ component, options }, id) => {
-                this.#placeReactiveLayer(drawApi, component, options, id);
+            this.#sceneEntries.forEach(({ component, options }, id) => {
+              this.#placeReactiveLayer(drawApi, component, options, id);
 
-                const state = this.#reactiveLayerRegistry.get(id);
-                if (
-                  state &&
-                  !state.isPermanent &&
-                  state.current.status === "idle" &&
-                  state.hasBeenReleased
-                ) {
-                  this.#sceneEntries.delete(id);
-                  this.#reactiveLayerRegistry.delete(id);
-                }
-              });
-            },
-            context,
-            width,
-            height,
-            timeInMs,
-          );
-        });
+              const state = this.#reactiveLayerRegistry.get(id);
+              if (
+                state &&
+                !state.isPermanent &&
+                state.current.status === "idle" &&
+                state.hasBeenReleased
+              ) {
+                this.#sceneEntries.delete(id);
+                this.#reactiveLayerRegistry.delete(id);
+              }
+            });
+          },
+          context,
+          width,
+          height,
+          timeInMs,
+        );
 
         // Handle remaining event callbacks as registered
         // within the setup() function
@@ -592,18 +618,12 @@ class VisualisationAnimationLoopHandler<TState> {
           .filter((timeCallback) => !timeCallback.expired)
           .forEach((timeCallback) => {
             if (timeInMs >= timeCallback.time) {
-              timeCallback.callback({
-                getFromScene: this.#getFromScene,
-                placeInScene: (component, options, id) => {
-                  this.#sceneEntries.set(id, {
-                    component,
-                    options,
-                  });
-                },
-              });
+              timeCallback.callback(this.#sceneContext);
               timeCallback.expired = true;
             }
           });
+
+        this.#reactiveLayerRegistry.endFrame();
 
         if (this.#videoRecorder.isRecording) {
           this.#videoRecorder.captureFrame(timeInMs);
@@ -848,13 +868,7 @@ class VisualisationAnimationLoopHandler<TState> {
     event: TEvent,
   ): void => {
     callbacks.forEach((callback) => {
-      callback({
-        ...event,
-        getFromScene: this.#getFromScene,
-        placeInScene: (component, options, id) => {
-          this.#sceneEntries.set(id, { component, options });
-        },
-      });
+      callback({ ...event, ...this.#sceneContext });
     });
   };
 
@@ -882,44 +896,9 @@ class VisualisationAnimationLoopHandler<TState> {
     this.#pendingDamperReleases.clear();
   };
 
-  #resetInternalClock = (): void => {
-    this.#internalElapsedTimeInMs = 0;
-    this.#internalLastFrameTimestampInMs = null;
+  #resetFpsSample = (): void => {
     this.#fpsSampleStartInMs = null;
     this.#fpsFramesInSample = 0;
-  };
-
-  #getInternalElapsedTimeInMs = (nowInMs?: number): number => {
-    const now = nowInMs ?? this.#getNowInMs();
-
-    if (this.#internalLastFrameTimestampInMs === null) {
-      this.#internalLastFrameTimestampInMs = now;
-      return Math.floor(this.#internalElapsedTimeInMs);
-    }
-
-    const deltaTimeInMs = now - this.#internalLastFrameTimestampInMs;
-
-    this.#internalLastFrameTimestampInMs = now;
-
-    const clampedDeltaTimeInMs = Math.min(
-      Math.max(deltaTimeInMs, 0),
-      DEFAULTS.INTERNAL_CLOCK_MAX_FRAME_DELTA_IN_MS,
-    );
-
-    this.#internalElapsedTimeInMs += clampedDeltaTimeInMs;
-
-    return Math.floor(this.#internalElapsedTimeInMs);
-  };
-
-  #getNowInMs = (): number => {
-    if (
-      typeof performance !== "undefined" &&
-      typeof performance.now === "function"
-    ) {
-      return performance.now();
-    }
-
-    return Date.now();
   };
 
   #logFpsIfEnabled = (nowInMs: number): void => {

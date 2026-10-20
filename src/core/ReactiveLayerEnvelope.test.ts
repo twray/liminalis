@@ -2,10 +2,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import ReactiveLayerEnvelope from "./ReactiveLayerEnvelope";
 
+const START = new Date("2026-01-01T00:00:00.000Z");
+
+// Scene time, driven by the fake system clock: 0 at START, advanced by
+// vi.advanceTimersByTime.
+const sceneTime = () => Date.now() - START.getTime();
+
 describe("ReactiveLayerEnvelope", () => {
   beforeEach(() => {
     vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
+    vi.setSystemTime(START);
   });
 
   afterEach(() => {
@@ -14,12 +20,12 @@ describe("ReactiveLayerEnvelope", () => {
 
   describe("construction", () => {
     it("stores isPermanent as given", () => {
-      expect(new ReactiveLayerEnvelope(true).isPermanent).toBe(true);
-      expect(new ReactiveLayerEnvelope(false).isPermanent).toBe(false);
+      expect(new ReactiveLayerEnvelope(true, sceneTime).isPermanent).toBe(true);
+      expect(new ReactiveLayerEnvelope(false, sceneTime).isPermanent).toBe(false);
     });
 
     it("starts idle: never attacked, never released", () => {
-      const envelope = new ReactiveLayerEnvelope(true);
+      const envelope = new ReactiveLayerEnvelope(true, sceneTime);
 
       expect(envelope.current.attackValue).toBe(0);
       expect(envelope.isSustaining).toBe(false);
@@ -33,7 +39,7 @@ describe("ReactiveLayerEnvelope", () => {
 
   describe("attack", () => {
     it("sets attackValue and timeAttacked (ms since first render), deriving isSustaining/status", () => {
-      const envelope = new ReactiveLayerEnvelope(true);
+      const envelope = new ReactiveLayerEnvelope(true, sceneTime);
 
       envelope.attack(0.75);
 
@@ -47,14 +53,14 @@ describe("ReactiveLayerEnvelope", () => {
     });
 
     it("rejects an attackValue outside the normalized 0-1 range", () => {
-      const envelope = new ReactiveLayerEnvelope(true);
+      const envelope = new ReactiveLayerEnvelope(true, sceneTime);
 
       expect(() => envelope.attack(1.5)).toThrow();
       expect(() => envelope.attack(-0.1)).toThrow();
     });
 
     it("re-attacking updates attackValue and timeAttacked to ms since first render at the moment of THIS attack", () => {
-      const envelope = new ReactiveLayerEnvelope(true);
+      const envelope = new ReactiveLayerEnvelope(true, sceneTime);
 
       envelope.attack(0.5);
       vi.advanceTimersByTime(50);
@@ -67,7 +73,7 @@ describe("ReactiveLayerEnvelope", () => {
     });
 
     it("timeAttacked is a frozen snapshot — it does not grow as time passes without a new attack", () => {
-      const envelope = new ReactiveLayerEnvelope(true);
+      const envelope = new ReactiveLayerEnvelope(true, sceneTime);
 
       vi.advanceTimersByTime(42);
       envelope.attack(1);
@@ -87,7 +93,7 @@ describe("ReactiveLayerEnvelope", () => {
 
   describe("sustain", () => {
     it("does not by itself change status", () => {
-      const envelope = new ReactiveLayerEnvelope(true);
+      const envelope = new ReactiveLayerEnvelope(true, sceneTime);
 
       envelope.attack(1);
       envelope.sustain(500);
@@ -98,7 +104,7 @@ describe("ReactiveLayerEnvelope", () => {
 
   describe("release", () => {
     it("does not release immediately — it schedules the release sustainPeriod ms later", () => {
-      const envelope = new ReactiveLayerEnvelope(true);
+      const envelope = new ReactiveLayerEnvelope(true, sceneTime);
 
       envelope.attack(1);
       envelope.sustain(200);
@@ -117,7 +123,7 @@ describe("ReactiveLayerEnvelope", () => {
     });
 
     it("defaults sustainPeriod to 0, so release() with no prior sustain() applies on the next tick", () => {
-      const envelope = new ReactiveLayerEnvelope(true);
+      const envelope = new ReactiveLayerEnvelope(true, sceneTime);
 
       envelope.attack(1);
       envelope.release(100);
@@ -128,7 +134,7 @@ describe("ReactiveLayerEnvelope", () => {
     });
 
     it("defaults releasePeriod to 1000ms when not given", () => {
-      const envelope = new ReactiveLayerEnvelope(true);
+      const envelope = new ReactiveLayerEnvelope(true, sceneTime);
 
       envelope.attack(1);
       envelope.release();
@@ -142,7 +148,7 @@ describe("ReactiveLayerEnvelope", () => {
     });
 
     it("transitions to idle exactly at releasePeriod ms after release takes effect", () => {
-      const envelope = new ReactiveLayerEnvelope(true);
+      const envelope = new ReactiveLayerEnvelope(true, sceneTime);
 
       envelope.attack(1);
       envelope.release(100);
@@ -157,7 +163,7 @@ describe("ReactiveLayerEnvelope", () => {
     });
 
     it("reports timeReleased (ms since first render, frozen at the moment of release) once released, and null before", () => {
-      const envelope = new ReactiveLayerEnvelope(true);
+      const envelope = new ReactiveLayerEnvelope(true, sceneTime);
 
       envelope.attack(1);
       expect(envelope.timeOf.release).toBeNull();
@@ -174,7 +180,7 @@ describe("ReactiveLayerEnvelope", () => {
     });
 
     it("a re-attack before a scheduled release fires supersedes it", () => {
-      const envelope = new ReactiveLayerEnvelope(true);
+      const envelope = new ReactiveLayerEnvelope(true, sceneTime);
 
       envelope.attack(1);
       envelope.sustain(200);
@@ -192,7 +198,7 @@ describe("ReactiveLayerEnvelope", () => {
     });
 
     it("does nothing if called before an attack ever happened", () => {
-      const envelope = new ReactiveLayerEnvelope(true);
+      const envelope = new ReactiveLayerEnvelope(true, sceneTime);
 
       envelope.release(100);
       vi.advanceTimersByTime(0);
@@ -204,8 +210,8 @@ describe("ReactiveLayerEnvelope", () => {
 
   describe("isPermanent", () => {
     it("has no effect on status/hasBeenReleased derivation — it's read by callers (placeInScene, Scene), not by the envelope itself", () => {
-      const permanent = new ReactiveLayerEnvelope(true);
-      const temporary = new ReactiveLayerEnvelope(false);
+      const permanent = new ReactiveLayerEnvelope(true, sceneTime);
+      const temporary = new ReactiveLayerEnvelope(false, sceneTime);
 
       permanent.attack(1);
       temporary.attack(1);
@@ -221,7 +227,7 @@ describe("ReactiveLayerEnvelope", () => {
 
   describe("chaining", () => {
     it("attack, sustain and release each return the same instance", () => {
-      const envelope = new ReactiveLayerEnvelope(true);
+      const envelope = new ReactiveLayerEnvelope(true, sceneTime);
 
       expect(envelope.attack(1)).toBe(envelope);
       expect(envelope.sustain(200)).toBe(envelope);
@@ -229,7 +235,7 @@ describe("ReactiveLayerEnvelope", () => {
     });
 
     it("supports a full attack().sustain().release() chain with correct behavior", () => {
-      const envelope = new ReactiveLayerEnvelope(true);
+      const envelope = new ReactiveLayerEnvelope(true, sceneTime);
 
       const result = envelope.attack(1).sustain(200).release(100);
 
@@ -253,7 +259,7 @@ describe("ReactiveLayerEnvelope", () => {
 
   describe("attack duration", () => {
     it("defaults the attack period to 500ms and exposes it on current", () => {
-      const envelope = new ReactiveLayerEnvelope(true);
+      const envelope = new ReactiveLayerEnvelope(true, sceneTime);
 
       envelope.attack(0.8);
       expect(envelope.current.attackPeriod).toBe(500);
@@ -263,7 +269,7 @@ describe("ReactiveLayerEnvelope", () => {
     });
 
     it("does not delay the attack itself -- timeOf.attack is when attack() was called", () => {
-      const envelope = new ReactiveLayerEnvelope(true);
+      const envelope = new ReactiveLayerEnvelope(true, sceneTime);
 
       vi.advanceTimersByTime(100);
       envelope.attack(1, 2000);
@@ -275,7 +281,7 @@ describe("ReactiveLayerEnvelope", () => {
 
   describe("sustain timing", () => {
     it("exposes when sustain() was called on timeOf.sustain, and null before", () => {
-      const envelope = new ReactiveLayerEnvelope(true);
+      const envelope = new ReactiveLayerEnvelope(true, sceneTime);
 
       envelope.attack(1);
       expect(envelope.timeOf.sustain).toBeNull();
@@ -289,7 +295,7 @@ describe("ReactiveLayerEnvelope", () => {
 
   describe("decay timing", () => {
     it("has no decay time until decay() is called", () => {
-      const envelope = new ReactiveLayerEnvelope(true);
+      const envelope = new ReactiveLayerEnvelope(true, sceneTime);
 
       vi.advanceTimersByTime(100);
       envelope.attack(1);
@@ -298,7 +304,7 @@ describe("ReactiveLayerEnvelope", () => {
     });
 
     it("defaults the decay period to 10000ms and exposes it on current", () => {
-      const envelope = new ReactiveLayerEnvelope(true);
+      const envelope = new ReactiveLayerEnvelope(true, sceneTime);
 
       envelope.attack(1).decay();
       expect(envelope.current.decayPeriod).toBe(10000);
@@ -308,13 +314,13 @@ describe("ReactiveLayerEnvelope", () => {
     });
 
     it("returns the same instance from decay(), so it chains", () => {
-      const envelope = new ReactiveLayerEnvelope(true);
+      const envelope = new ReactiveLayerEnvelope(true, sceneTime);
 
       expect(envelope.attack(1).decay()).toBe(envelope);
     });
 
     it("starts decay only once the default 500ms attack has elapsed, when chained with attack()", () => {
-      const envelope = new ReactiveLayerEnvelope(true);
+      const envelope = new ReactiveLayerEnvelope(true, sceneTime);
 
       vi.advanceTimersByTime(100);
       envelope.attack(1).decay(2000);
@@ -324,7 +330,7 @@ describe("ReactiveLayerEnvelope", () => {
     });
 
     it("starts decay after a custom attack duration", () => {
-      const envelope = new ReactiveLayerEnvelope(true);
+      const envelope = new ReactiveLayerEnvelope(true, sceneTime);
 
       vi.advanceTimersByTime(100);
       envelope.attack(1, 1200).decay();
@@ -333,7 +339,7 @@ describe("ReactiveLayerEnvelope", () => {
     });
 
     it("starts decay immediately for a zero-length attack", () => {
-      const envelope = new ReactiveLayerEnvelope(true);
+      const envelope = new ReactiveLayerEnvelope(true, sceneTime);
 
       vi.advanceTimersByTime(100);
       envelope.attack(1, 0).decay();
@@ -342,7 +348,7 @@ describe("ReactiveLayerEnvelope", () => {
     });
 
     it("starts decay when decay() is called, if the attack has already finished by then", () => {
-      const envelope = new ReactiveLayerEnvelope(true);
+      const envelope = new ReactiveLayerEnvelope(true, sceneTime);
 
       vi.advanceTimersByTime(100);
       envelope.attack(1);
@@ -354,7 +360,7 @@ describe("ReactiveLayerEnvelope", () => {
     });
 
     it("starts decay at the end of the attack, if decay() is called partway through it", () => {
-      const envelope = new ReactiveLayerEnvelope(true);
+      const envelope = new ReactiveLayerEnvelope(true, sceneTime);
 
       envelope.attack(1, 500);
 
@@ -365,7 +371,7 @@ describe("ReactiveLayerEnvelope", () => {
     });
 
     it("is a frozen snapshot -- it does not move as time passes", () => {
-      const envelope = new ReactiveLayerEnvelope(true);
+      const envelope = new ReactiveLayerEnvelope(true, sceneTime);
 
       envelope.attack(1).decay();
       vi.advanceTimersByTime(5000);
@@ -374,7 +380,7 @@ describe("ReactiveLayerEnvelope", () => {
     });
 
     it("clears the previous decay on a fresh attack", () => {
-      const envelope = new ReactiveLayerEnvelope(true);
+      const envelope = new ReactiveLayerEnvelope(true, sceneTime);
 
       envelope.attack(1).decay();
       expect(envelope.timeOf.decay).not.toBeNull();
@@ -386,7 +392,7 @@ describe("ReactiveLayerEnvelope", () => {
     });
 
     it("re-schedules decay relative to the new attack when re-attacked and decayed again", () => {
-      const envelope = new ReactiveLayerEnvelope(true);
+      const envelope = new ReactiveLayerEnvelope(true, sceneTime);
 
       envelope.attack(1).decay();
 
@@ -397,7 +403,7 @@ describe("ReactiveLayerEnvelope", () => {
     });
 
     it("uses the decay() call time when there was never an attack", () => {
-      const envelope = new ReactiveLayerEnvelope(true);
+      const envelope = new ReactiveLayerEnvelope(true, sceneTime);
 
       vi.advanceTimersByTime(250);
       envelope.decay();
@@ -406,7 +412,7 @@ describe("ReactiveLayerEnvelope", () => {
     });
 
     it("does not affect status -- a decaying layer is still sustained until released", () => {
-      const envelope = new ReactiveLayerEnvelope(true);
+      const envelope = new ReactiveLayerEnvelope(true, sceneTime);
 
       envelope.attack(1).decay(1000);
       vi.advanceTimersByTime(5000);
@@ -417,7 +423,7 @@ describe("ReactiveLayerEnvelope", () => {
 
   describe("decay cancellation by release", () => {
     it("cancels decay when the note is released before the attack period ends", () => {
-      const envelope = new ReactiveLayerEnvelope(true);
+      const envelope = new ReactiveLayerEnvelope(true, sceneTime);
 
       envelope.attack(1, 500).decay();
       expect(envelope.timeOf.decay).toBe(500);
@@ -430,7 +436,7 @@ describe("ReactiveLayerEnvelope", () => {
     });
 
     it("cancels decay when the release lands exactly as decay would start", () => {
-      const envelope = new ReactiveLayerEnvelope(true);
+      const envelope = new ReactiveLayerEnvelope(true, sceneTime);
 
       envelope.attack(1, 500).decay();
 
@@ -441,7 +447,7 @@ describe("ReactiveLayerEnvelope", () => {
     });
 
     it("keeps decay when the note is released after decay has begun", () => {
-      const envelope = new ReactiveLayerEnvelope(true);
+      const envelope = new ReactiveLayerEnvelope(true, sceneTime);
 
       envelope.attack(1, 500).decay();
 
@@ -455,7 +461,7 @@ describe("ReactiveLayerEnvelope", () => {
     it("measures the cancelling release against when it actually fires, after any sustain period", () => {
       // release() is deferred by the sustain period, so a release *called*
       // during the attack can still land after decay has started.
-      const envelope = new ReactiveLayerEnvelope(true);
+      const envelope = new ReactiveLayerEnvelope(true, sceneTime);
 
       envelope.attack(1, 500).decay().sustain(1000);
 
@@ -468,7 +474,7 @@ describe("ReactiveLayerEnvelope", () => {
     });
 
     it("does not let a release from a previous attack cancel the new attack's decay", () => {
-      const envelope = new ReactiveLayerEnvelope(true);
+      const envelope = new ReactiveLayerEnvelope(true, sceneTime);
 
       envelope.attack(1);
       vi.advanceTimersByTime(100);
@@ -481,7 +487,7 @@ describe("ReactiveLayerEnvelope", () => {
     });
 
     it("cancels decay regardless of preserveStateIfNotReleased", () => {
-      const envelope = new ReactiveLayerEnvelope(true);
+      const envelope = new ReactiveLayerEnvelope(true, sceneTime);
 
       envelope.attack(1, 500, true).decay();
 
@@ -508,7 +514,7 @@ describe("ReactiveLayerEnvelope", () => {
     };
 
     it("exposes the current attack's release on timeOf.release", () => {
-      const envelope = new ReactiveLayerEnvelope(true);
+      const envelope = new ReactiveLayerEnvelope(true, sceneTime);
 
       vi.advanceTimersByTime(100);
       envelope.attack(1);
@@ -520,7 +526,7 @@ describe("ReactiveLayerEnvelope", () => {
     });
 
     it("defaults preserveStateIfNotReleased to false: an earlier attack's release stays visible after a re-attack", () => {
-      const envelope = new ReactiveLayerEnvelope(true);
+      const envelope = new ReactiveLayerEnvelope(true, sceneTime);
 
       reattackAfterEarlierCycle(envelope);
 
@@ -528,7 +534,7 @@ describe("ReactiveLayerEnvelope", () => {
     });
 
     it("keeps an earlier attack's release visible when preserveStateIfNotReleased is explicitly false", () => {
-      const envelope = new ReactiveLayerEnvelope(true);
+      const envelope = new ReactiveLayerEnvelope(true, sceneTime);
 
       reattackAfterEarlierCycle(envelope, false);
 
@@ -538,7 +544,7 @@ describe("ReactiveLayerEnvelope", () => {
     it("hides an earlier attack's release when re-attacked with preserveStateIfNotReleased", () => {
       // A stale release would remain in the animation timeline as a completed
       // segment, blocking the re-attack from inheriting the live value.
-      const envelope = new ReactiveLayerEnvelope(true);
+      const envelope = new ReactiveLayerEnvelope(true, sceneTime);
 
       reattackAfterEarlierCycle(envelope, true);
 
@@ -546,7 +552,7 @@ describe("ReactiveLayerEnvelope", () => {
     });
 
     it("leaves hasBeenReleased untouched when hiding the release -- registry culling relies on it", () => {
-      const envelope = new ReactiveLayerEnvelope(true);
+      const envelope = new ReactiveLayerEnvelope(true, sceneTime);
 
       reattackAfterEarlierCycle(envelope, true);
 
@@ -554,7 +560,7 @@ describe("ReactiveLayerEnvelope", () => {
     });
 
     it("hides an in-flight release when re-attacked mid-release with preserveStateIfNotReleased", () => {
-      const envelope = new ReactiveLayerEnvelope(true);
+      const envelope = new ReactiveLayerEnvelope(true, sceneTime);
 
       envelope.attack(1);
       vi.advanceTimersByTime(2000);
@@ -568,7 +574,7 @@ describe("ReactiveLayerEnvelope", () => {
     });
 
     it("applies preserveStateIfNotReleased per attack, not permanently", () => {
-      const envelope = new ReactiveLayerEnvelope(true);
+      const envelope = new ReactiveLayerEnvelope(true, sceneTime);
 
       reattackAfterEarlierCycle(envelope, true);
       expect(envelope.timeOf.release).toBeNull();
@@ -579,7 +585,7 @@ describe("ReactiveLayerEnvelope", () => {
     });
 
     it("exposes the new release once a re-attacked layer is released again", () => {
-      const envelope = new ReactiveLayerEnvelope(true);
+      const envelope = new ReactiveLayerEnvelope(true, sceneTime);
 
       reattackAfterEarlierCycle(envelope, true);
 
@@ -588,5 +594,88 @@ describe("ReactiveLayerEnvelope", () => {
 
       expect(envelope.timeOf.release).toBe(3000);
     });
+  });
+});
+
+// No fake timers here: the envelope reads only the injected scene clock, so
+// a manual one is enough to drive it -- and proves nothing in it depends on
+// a timer firing.
+describe("ReactiveLayerEnvelope on scene time", () => {
+  const createManualClock = (startInMs: number) => {
+    let sceneTimeInMs = startInMs;
+
+    return {
+      now: () => sceneTimeInMs,
+      advance: (deltaInMs: number) => {
+        sceneTimeInMs += deltaInMs;
+      },
+    };
+  };
+
+  it("reports timeOf in absolute scene time, not time since the envelope was created", () => {
+    const clock = createManualClock(4000);
+    const envelope = new ReactiveLayerEnvelope(true, clock.now);
+
+    clock.advance(250);
+    envelope.attack(1, 500).decay();
+
+    expect(envelope.timeOf.attack).toBe(4250);
+    expect(envelope.timeOf.decay).toBe(4750);
+  });
+
+  it("lands a release once scene time reaches the end of the sustain period, with no timer", () => {
+    const clock = createManualClock(1000);
+    const envelope = new ReactiveLayerEnvelope(true, clock.now);
+
+    envelope.attack(1).sustain(200).release(100);
+
+    clock.advance(199);
+    expect(envelope.current.status).toBe("sustained");
+
+    clock.advance(1);
+    expect(envelope.current.status).toBe("releasing");
+    expect(envelope.timeOf.release).toBe(1200);
+  });
+
+  it("holds a pending release while the scene clock is paused", () => {
+    const clock = createManualClock(0);
+    const envelope = new ReactiveLayerEnvelope(true, clock.now);
+
+    envelope.attack(1).sustain(200).release(100);
+
+    // However much wall time passes, the scene has not reached the release.
+    expect(envelope.current.status).toBe("sustained");
+    expect(envelope.hasBeenReleased).toBe(false);
+  });
+
+  it("lands a due release ahead of a re-attack that arrives after it", () => {
+    const clock = createManualClock(0);
+    const envelope = new ReactiveLayerEnvelope(true, clock.now);
+
+    envelope.attack(1).sustain(200).release(100);
+
+    // Nothing reads the envelope between the release falling due (t=200)
+    // and the re-attack (t=300): the release must still be recorded as
+    // having happened at t=200, before the new attack.
+    clock.advance(300);
+    envelope.attack(1);
+
+    expect(envelope.timeOf.release).toBe(200);
+    expect(envelope.timeOf.attack).toBe(300);
+    expect(envelope.current.status).toBe("sustained");
+  });
+
+  it("keeps the earlier of two releases requested against the same attack", () => {
+    const clock = createManualClock(0);
+    const envelope = new ReactiveLayerEnvelope(true, clock.now);
+
+    envelope.attack(1).sustain(200).release(100);
+    clock.advance(50);
+    envelope.release(300);
+
+    clock.advance(150);
+
+    expect(envelope.timeOf.release).toBe(200);
+    expect(envelope.current.releasePeriod).toBe(100);
   });
 });

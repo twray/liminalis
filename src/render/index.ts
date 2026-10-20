@@ -595,6 +595,19 @@ export const createDrawContext = (
         activeMeasurementsManager,
       }),
       withStyles: appliedStylesManager.withStyles.bind(appliedStylesManager),
+      // Conditional content under its own identity scope, which claims its
+      // positional slot whether or not the condition holds. A bare `if` would
+      // shift every unkeyed sibling after it by the number of primitives it
+      // declares, the frame it toggles -- handing one primitive's animation
+      // state to another. Here the slot is held while the content is absent,
+      // the way a container's is, so siblings keep their identity.
+      when: (condition: boolean, callback: () => void) => {
+        registry.withScope(undefined, () => {
+          if (condition) {
+            callback();
+          }
+        });
+      },
       background: (props: BackgroundProps) => {
         if (frameMeasurementPassManager.isMeasuringFrameBounds()) {
           return;

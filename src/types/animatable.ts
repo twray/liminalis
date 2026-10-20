@@ -43,6 +43,12 @@ export type PartialNumericProps<T> = Partial<{
  * Options for an animation segment
  */
 export interface AnimationSegmentOptions {
+  /**
+   * Absolute scene time at which the segment starts -- the same base as a
+   * frame's `current.time` and a reactive layer's `timeOf.*`. `null` leaves
+   * the segment unscheduled until it is given a time. Segments without `at`
+   * run sequentially from the primitive's first declaration.
+   */
   at?: EventTime | null;
   duration?: number;
   endTime?: number;
