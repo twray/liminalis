@@ -1,6 +1,7 @@
 import {
   DEFAULT_BLEND_MODE,
-  DEFAULT_STROKE_WIDTH,
+  DEFAULT_OPACITY,
+  DEFAULT_TEXT_STYLES,
   hasVisibleStroke,
   renderWithTransform,
   setContextGlobals,
@@ -8,25 +9,21 @@ import {
 
 import type { Bounds, ClipScope, TextProps } from "../types";
 
-const DEFAULT_TEXT_FILL_STYLE = "#333";
-const DEFAULT_TEXT_STROKE_STYLE = "transparent";
-const DEFAULT_TEXT_FONT_STYLE = "normal";
-const DEFAULT_TEXT_FONT_SIZE = "12px";
-const DEFAULT_TEXT_FONT_WEIGHT = "normal";
-const DEFAULT_TEXT_FONT_FAMILY = "Arial, sans-serif";
-
 export const resolveTextProps = (props: TextProps) => {
   const {
     x = 0,
     y = 0,
-    fontStyle = DEFAULT_TEXT_FONT_STYLE,
-    fontSize = DEFAULT_TEXT_FONT_SIZE,
-    fontWeight = DEFAULT_TEXT_FONT_WEIGHT,
-    fontFamily = DEFAULT_TEXT_FONT_FAMILY,
-    strokeStyle = DEFAULT_TEXT_STROKE_STYLE,
-    strokeWidth = DEFAULT_STROKE_WIDTH,
-    fillStyle = DEFAULT_TEXT_FILL_STYLE,
-    opacity = 1,
+    // Through the draw API these are always present, seeded from
+    // DEFAULT_TEXT_STYLES by AppliedStylesManager. The fallbacks only serve
+    // direct callers, and read the same source rather than restating it.
+    fontStyle = DEFAULT_TEXT_STYLES.fontStyle,
+    fontSize = DEFAULT_TEXT_STYLES.fontSize,
+    fontWeight = DEFAULT_TEXT_STYLES.fontWeight,
+    fontFamily = DEFAULT_TEXT_STYLES.fontFamily,
+    strokeStyle = DEFAULT_TEXT_STYLES.strokeStyle,
+    strokeWidth = DEFAULT_TEXT_STYLES.strokeWidth,
+    fillStyle = DEFAULT_TEXT_STYLES.fillStyle,
+    opacity = DEFAULT_OPACITY,
     blend = DEFAULT_BLEND_MODE,
     font,
   } = props;
@@ -48,7 +45,7 @@ export const getTextBounds = (
   text: string,
   props: TextProps,
 ): Bounds => {
-  const { x, y, font, strokeStyle } = resolveTextProps(props);
+  const { x, y, font, strokeStyle, strokeWidth } = resolveTextProps(props);
 
   context.save();
 
@@ -68,7 +65,6 @@ export const getTextBounds = (
   const descent = metrics.actualBoundingBoxDescent ?? 0;
   const height = Math.max(ascent + descent, fallbackHeight);
 
-  const { strokeWidth = 0 } = props;
   const shouldInflateForStroke = hasVisibleStroke({ strokeStyle, strokeWidth });
 
   if (!shouldInflateForStroke) {

@@ -3,6 +3,7 @@ import {
   computeTransformedMultipointAABB,
   DEFAULT_BLEND_MODE,
   DEFAULT_FILL_STYLE,
+  DEFAULT_OPACITY,
   DEFAULT_STROKE_ALIGNMENT,
   DEFAULT_STROKE_LINE_CAP,
   DEFAULT_STROKE_LINE_JOIN,
@@ -138,7 +139,7 @@ export const polygon = (
     lineJoin = DEFAULT_STROKE_LINE_JOIN,
     miterLimit = DEFAULT_STROKE_MITER_LIMIT,
     lineCap = DEFAULT_STROKE_LINE_CAP,
-    opacity = 1,
+    opacity = DEFAULT_OPACITY,
     blend = DEFAULT_BLEND_MODE,
     closePath,
   } = props;

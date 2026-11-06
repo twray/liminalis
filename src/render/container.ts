@@ -144,6 +144,7 @@ export interface ContainerPrimitiveCommonParams extends RenderCollaborators {
   boundsCollectionManager: BoundsCollectionManager;
   withFrameBoundsMeasurementPass: <T>(callbackFn: () => T) => T;
   isMeasuringFrameBounds: () => boolean;
+  isOverlayPrimitiveSuppressed: () => boolean;
   activeMeasurementsManager: ActiveMeasurementsManager;
 }
 
@@ -180,6 +181,7 @@ export const createContainerPrimitive = <
   boundsCollectionManager,
   withFrameBoundsMeasurementPass,
   isMeasuringFrameBounds,
+  isOverlayPrimitiveSuppressed,
   activeMeasurementsManager,
   resolveState,
   buildScopeProps,
@@ -190,14 +192,20 @@ export const createContainerPrimitive = <
   return (
     frameCallback: FrameCallback,
     options: TOptions = {} as TOptions,
-  ): IAnimatableLike<TOptions> =>
+  ): IAnimatableLike<TOptions> => {
+    // Checked before the scope opens, so a suppressed container claims no
+    // identity slot and never runs its frameCallback.
+    if (isOverlayPrimitiveSuppressed()) {
+      return createNoopAnimatable({ ...options });
+    }
+
     // Scopes this entire invocation — including the container's own
     // identity (registry.queue below) and everything its frameCallback
     // does — under one path segment. An explicit `key` pins that segment so
     // a container's identity (and its content's) survives reordering among
     // same-shaped siblings; omitted, it falls back to positional numbering
     // within the enclosing scope, matching call-order identity elsewhere.
-    registry.withScope(options.key, (): IAnimatableLike<TOptions> => {
+    return registry.withScope(options.key, (): IAnimatableLike<TOptions> => {
       const mergedProps = { ...options };
       const contentBoundsCollector = createBoundsCollector();
 
@@ -404,4 +412,5 @@ export const createContainerPrimitive = <
 
       return containerAnimatable;
     });
+  };
 };

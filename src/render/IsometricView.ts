@@ -7,6 +7,7 @@ import type {
 } from "../types/index.js";
 import { DebugMode } from "../types/util.js";
 import { lerp, offsetColorHsl, parseColorToRgb } from "../util/index.js";
+import { DEFAULT_ISOMETRIC_STYLES, DEFAULT_OPACITY } from "./common";
 
 interface TileData {
   type: IsometricTileFaceType;
@@ -32,10 +33,6 @@ interface TileCoordinates {
 }
 
 class IsometricView {
-  private static readonly DEFAULT_FILL_COLOR = "#333333";
-  private static readonly DEFAULT_STROKE_COLOR = "transparent";
-  private static readonly DEFAULT_STROKE_WIDTH = 1;
-
   public readonly context: CanvasRenderingContext2D;
   public readonly contextWidth: number;
   public readonly contextHeight: number;
@@ -256,10 +253,10 @@ class IsometricView {
     type = "base",
     width = 1,
     height = 1,
-    fillStyle = IsometricView.DEFAULT_FILL_COLOR,
-    strokeStyle = IsometricView.DEFAULT_STROKE_COLOR,
-    strokeWidth = IsometricView.DEFAULT_STROKE_WIDTH,
-    opacity = 1,
+    fillStyle = DEFAULT_ISOMETRIC_STYLES.fillStyle,
+    strokeStyle = DEFAULT_ISOMETRIC_STYLES.strokeStyle,
+    strokeWidth = DEFAULT_ISOMETRIC_STYLES.strokeWidth,
+    opacity = DEFAULT_OPACITY,
     translateX = 0,
     translateY = 0,
     translateZ = 0,
@@ -422,10 +419,10 @@ class IsometricView {
     lengthX = 1,
     lengthY = 1,
     lengthZ = 1,
-    fillStyle = IsometricView.DEFAULT_FILL_COLOR,
-    strokeStyle = IsometricView.DEFAULT_STROKE_COLOR,
-    strokeWidth = IsometricView.DEFAULT_STROKE_WIDTH,
-    opacity = 1,
+    fillStyle = DEFAULT_ISOMETRIC_STYLES.fillStyle,
+    strokeStyle = DEFAULT_ISOMETRIC_STYLES.strokeStyle,
+    strokeWidth = DEFAULT_ISOMETRIC_STYLES.strokeWidth,
+    opacity = DEFAULT_OPACITY,
     translateX = 0,
     translateY = 0,
     translateZ = 0,
@@ -491,6 +488,10 @@ class IsometricView {
     context.save();
     context.beginPath();
     context.lineWidth = 2;
+    // Opacity is applied to the whole tile -- fill AND stroke -- through
+    // globalAlpha, the same way setContextGlobals applies it to 2D
+    // primitives. Baking it into the fill colour alone left strokes opaque.
+    context.globalAlpha = opacity;
 
     if (type === "base" && debugMode) {
       context.font = "bold 12px Arial";
@@ -521,7 +522,9 @@ class IsometricView {
           }
         }
 
-        renderedFill = `rgba(${colorRgb[0]}, ${colorRgb[1]}, ${colorRgb[2]}, ${opacity})`;
+        // Opaque on purpose: globalAlpha above already carries the opacity,
+        // so an alpha here would apply it twice.
+        renderedFill = `rgb(${colorRgb[0]}, ${colorRgb[1]}, ${colorRgb[2]})`;
       } else {
         renderedFill = fillStyle;
       }

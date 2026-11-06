@@ -1,7 +1,7 @@
 import { imageAssetCache } from "../core/ImageAssetCache";
 import ActiveMeasurementsManager from "./ActiveMeasurementsManager";
 import AnimatableRegistry from "./AnimatableRegistry";
-import AppliedStylesManager from "./AppliedStylesManager";
+import AppliedStylesManager, { type StyleFamily } from "./AppliedStylesManager";
 import BoundsCollectionManager from "./BoundsCollectionManager";
 import DrawGroupBitmapCache from "./DrawGroupBitmapCache";
 import DrawGroupManager from "./DrawGroupManager";
@@ -25,8 +25,10 @@ import type { ClipScope, DrawAPI, Measurements } from "./types";
 
 import {
   DEFAULT_BLEND_MODE,
-  DEFAULT_STROKE_STYLE,
-  DEFAULT_STROKE_WIDTH,
+  DEFAULT_ISOMETRIC_STYLES,
+  DEFAULT_OPACITY,
+  DEFAULT_SHAPE_STYLES,
+  DEFAULT_TEXT_STYLES,
   EMPTY_BOUNDS,
   centerOf,
   computeTransformedRectangularAABB,
@@ -96,8 +98,8 @@ import type {
 // A primitive needs the real backdrop beneath it whenever it composites with
 // anything other than source-over. Read off the already-merged props, so a
 // blend arriving via withStyles({ blend }) counts exactly as one declared on
-// the primitive -- mergeStyles seeds `blend` for every primitive, so this is
-// total for anything declared through the draw API.
+// the primitive. An undeclared blend is absent rather than seeded (see
+// DEFAULT_SHAPE_STYLES), and absent means the default, source-over.
 //
 // It does NOT see a blend set by mutating the context directly (which scene
 // code can reach via RenderProps.context on the onRender callback). That
@@ -111,6 +113,9 @@ const blendsWithBackdrop = (props: { blend?: GlobalCompositeOperation }) =>
   props.blend !== undefined && props.blend !== DEFAULT_BLEND_MODE;
 
 interface QueueAnimatableHooks<TProps> {
+  // Which family's default styles the primitive is seeded with. Omitted, a
+  // primitive is a shape.
+  styleFamily?: StyleFamily;
   getExtraSignature?: (props: TProps) => string;
   getBounds?: (props: TProps) => Bounds | null;
   getTransformedAABB?: (props: TProps) => Bounds;
@@ -204,16 +209,18 @@ export const createDrawContext = (
     const boundsCollectionManager = new BoundsCollectionManager();
     const activeMeasurementsManager = new ActiveMeasurementsManager();
 
-    // blend is deliberately NOT seeded here. Seeding it made every primitive
-    // arrive with blend: "source-over" already set, which is indistinguishable
-    // from a caller explicitly asking for source-over -- and inheriting the
-    // canvas's own composite operation requires telling those two apart.
-    // Primitives still fall back to DEFAULT_BLEND_MODE in their own
-    // destructuring, so an undeclared blend with an untouched context behaves
-    // exactly as before.
+    // The one place style defaults are applied; they are declared in
+    // common.ts. blend and opacity are deliberately not among them: seeding
+    // blend made every primitive arrive with blend: "source-over" already
+    // set, which is indistinguishable from a caller explicitly asking for
+    // source-over -- and inheriting the canvas's own composite operation
+    // (and alpha) requires telling those two apart. Primitives fall back to
+    // DEFAULT_BLEND_MODE / DEFAULT_OPACITY in their own destructuring, so an
+    // undeclared blend or opacity with an untouched context behaves the same.
     const appliedStylesManager = new AppliedStylesManager({
-      strokeStyle: DEFAULT_STROKE_STYLE,
-      strokeWidth: DEFAULT_STROKE_WIDTH,
+      shape: DEFAULT_SHAPE_STYLES,
+      text: DEFAULT_TEXT_STYLES,
+      isometric: DEFAULT_ISOMETRIC_STYLES,
     });
 
     // Resolves a primitive's effective context globals at DECLARE time, so a
@@ -264,13 +271,24 @@ export const createDrawContext = (
         if (
           typeof ambientAlpha === "number" &&
           Number.isFinite(ambientAlpha) &&
-          ambientAlpha !== 1
+          ambientAlpha !== DEFAULT_OPACITY
         ) {
           inherited = { ...(inherited ?? declared), opacity: ambientAlpha };
         }
       }
 
       return (inherited ?? declared) as T;
+    };
+
+    // Whether a 2D draw-API primitive must be skipped because it was called
+    // from inside an isometric() callback, warning (once) when it is. Such a
+    // primitive has no place in an isometric view, so it registers no
+    // animatable, consumes no identity slot, reports no bounds and pushes no
+    // draw operation. The one check every 2D entry point goes through, so the
+    // contract cannot drift between them.
+    const isOverlayPrimitiveSuppressed = (): boolean => {
+      renderWarningManager.warnIfOverlayPrimitiveInsideIsometric();
+      return renderWarningManager.isInsideIsometricRenderCallback();
     };
 
     // Queues a standard animatable draw operation.
@@ -290,16 +308,20 @@ export const createDrawContext = (
       hooks?: QueueAnimatableHooks<TProps>,
     ): IAnimatableLike<TProps> => {
       const {
+        styleFamily = "shape",
         getExtraSignature,
         getBounds,
         getTransformedAABB: getTransformedBounds,
       } = hooks ?? {};
 
-      renderWarningManager.warnIfOverlayPrimitiveInsideIsometric();
-
       const mergedProps = withInheritedContextGlobals(
-        appliedStylesManager.mergeStyles(props),
+        appliedStylesManager.mergeStyles(props, styleFamily),
       );
+
+      if (isOverlayPrimitiveSuppressed()) {
+        return createNoopAnimatable(mergedProps);
+      }
+
       // Opt-in stable identity. Read off the public props rather than the
       // hooks so every primitive gets it for free.
       const identityKey = (props as { key?: string }).key;
@@ -430,7 +452,7 @@ export const createDrawContext = (
       createScope: (getProps: () => TProps) => ClipScope,
       hooks?: QueueAnimatableHooks<TProps>,
     ): ((props: TProps, frame?: FrameCallback) => IAnimatableLike<TProps>) => {
-      const { getTransformedAABB } = hooks ?? {};
+      const { styleFamily = "shape", getTransformedAABB } = hooks ?? {};
 
       const resolveTransformedAABB = (currentProps: TProps): Bounds =>
         getTransformedAABB
@@ -444,8 +466,8 @@ export const createDrawContext = (
         props: TProps,
         frameCallback?: FrameCallback,
       ): IAnimatableLike<TProps> => {
-        renderWarningManager.warnIfOverlayPrimitiveInsideIsometric();
-
+        // Without a frame callback this is plain queueAnimatable, which
+        // applies the isometric suppression itself.
         if (!frameCallback) {
           return queueAnimatable(
             primitiveType,
@@ -453,6 +475,7 @@ export const createDrawContext = (
             (currentContext, drawProps) =>
               renderFn(currentContext, propsFn(drawProps)),
             {
+              styleFamily,
               getBounds: (drawProps) => getFrameBounds(propsFn(drawProps)),
               ...(getTransformedAABB
                 ? {
@@ -465,8 +488,13 @@ export const createDrawContext = (
         }
 
         const mergedProps = withInheritedContextGlobals(
-          appliedStylesManager.mergeStyles(props),
+          appliedStylesManager.mergeStyles(props, styleFamily),
         );
+
+        if (isOverlayPrimitiveSuppressed()) {
+          return createNoopAnimatable(mergedProps);
+        }
+
         const lifecycleProps = propsFn(mergedProps);
         const frameBounds = getFrameBounds(lifecycleProps);
 
@@ -572,6 +600,7 @@ export const createDrawContext = (
         frameMeasurementPassManager.isMeasuringFrameBounds.bind(
           frameMeasurementPassManager,
         ),
+      isOverlayPrimitiveSuppressed,
       activeMeasurementsManager,
     };
 
@@ -593,6 +622,11 @@ export const createDrawContext = (
         appliedStylesManager,
         renderWarningManager,
         activeMeasurementsManager,
+        isMeasuringFrameBounds:
+          frameMeasurementPassManager.isMeasuringFrameBounds.bind(
+            frameMeasurementPassManager,
+          ),
+        isOverlayPrimitiveSuppressed,
       }),
       withStyles: appliedStylesManager.withStyles.bind(appliedStylesManager),
       // Conditional content under its own identity scope, which claims its
@@ -609,7 +643,10 @@ export const createDrawContext = (
         });
       },
       background: (props: BackgroundProps) => {
-        if (frameMeasurementPassManager.isMeasuringFrameBounds()) {
+        if (
+          frameMeasurementPassManager.isMeasuringFrameBounds() ||
+          isOverlayPrimitiveSuppressed()
+        ) {
           return;
         }
 
@@ -694,9 +731,10 @@ export const createDrawContext = (
               textValue,
               getProps,
             }),
+          { styleFamily: "text" },
         )(props, frameCallback),
       getTextBounds: (textValue: string, props: TextProps = {}) => {
-        const mergedProps = appliedStylesManager.mergeStyles(props);
+        const mergedProps = appliedStylesManager.mergeStyles(props, "text");
         return getTextBounds(context, textValue, mergedProps);
       },
       image: (imageSrc: string, props: ImageProps = {}) =>

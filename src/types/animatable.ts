@@ -15,22 +15,39 @@ type EasingUtilsExportKey = {
 export type EasingUtilsFunctionName = Extract<EasingUtilsExportKey, string>;
 
 /**
- * Keys in T whose value type is numeric.
- */
-export type NumericKeys<T> = {
-  [K in keyof T]-?: T[K] extends number ? K : never;
-}[keyof T];
-
-/**
- * Recursively map a type to only its numeric leaves.
+ * Recursively map a type to only its numeric leaves. A value with no numeric
+ * leaf at all -- `string[]`, `{ family: string }`, a function -- maps to
+ * `never` rather than to an empty shell (`never[]`, `{}`), so it reads as
+ * non-numeric to NumericKeys below. Mutually recursive with NumericKeys: an
+ * object is numeric exactly when it has at least one numeric key.
  */
 export type DeepNumericProps<T> = T extends number | undefined
   ? number
   : T extends (infer U)[]
-    ? DeepNumericProps<U>[]
+    ? [DeepNumericProps<U>] extends [never]
+      ? never
+      : DeepNumericProps<U>[]
     : T extends object
-      ? { [K in keyof T]?: DeepNumericProps<T[K]> }
+      ? [NumericKeys<T>] extends [never]
+        ? never
+        : { [K in keyof T]?: DeepNumericProps<T[K]> }
       : never;
+
+/**
+ * Keys in T that hold at least one numeric leaf -- exactly the keys
+ * PartialNumericProps<T> can target, because both are defined by
+ * DeepNumericProps. Optional props (`x?: number`) and nested ones
+ * (`points: Point2D[]`, `cornerRadius: Corners | number`) both count.
+ *
+ * NonNullable strips the `undefined` an optional prop carries, which would
+ * otherwise defeat the check. The tuple wrapper stops a union such as
+ * `Corners | number` from being distributed and tested member by member.
+ */
+export type NumericKeys<T> = {
+  [K in keyof T]-?: [DeepNumericProps<NonNullable<T[K]>>] extends [never]
+    ? never
+    : K;
+}[keyof T];
 
 /**
  * Create a partial type that allows animating any nested numeric leaf.
@@ -68,9 +85,23 @@ export interface AnimationSegment<TProps> {
 }
 
 /**
- * Interface of an animatable-like object
+ * Interface of an animatable-like object.
+ *
+ * TAnimatableKeys narrows which props animateTo() may target. It defaults to
+ * every numeric prop, which suits primitives whose numeric props all
+ * interpolate meaningfully (rect, circle, ...). A primitive with numeric props
+ * that must NOT be interpolated passes an allow-list instead -- e.g. an
+ * isometric tile, whose isoX/isoY/isoZ are integer grid coordinates. The
+ * constraint guarantees that allow-list only ever names numeric props.
+ *
+ * Narrowing is type-level only: the runtime Animatable still interpolates any
+ * numeric leaf it is handed, and remains assignable to every narrowed view
+ * because its animateTo accepts the wider PartialNumericProps<TProps>.
  */
-export interface IAnimatableLike<TProps> {
+export interface IAnimatableLike<
+  TProps,
+  TAnimatableKeys extends NumericKeys<TProps> = NumericKeys<TProps>,
+> {
   readonly currentProps: Readonly<TProps>;
   setCurrentFrameTime(timeInMs: number): void;
   updateInitialProps(props: TProps): void;
@@ -79,12 +110,12 @@ export interface IAnimatableLike<TProps> {
   clearSnapshot(): void;
   hasSegmentTargeting(key: keyof TProps): boolean;
   animateTo(
-    targetProps: PartialNumericProps<TProps>,
+    targetProps: PartialNumericProps<Pick<TProps, TAnimatableKeys>>,
     options?: AnimationSegmentOptions,
-  ): IAnimatableLike<TProps>;
+  ): IAnimatableLike<TProps, TAnimatableKeys>;
   withOptions(
     options: Partial<AnimationSegmentOptions>,
-  ): IAnimatableLike<TProps>;
-  loop(): IAnimatableLike<TProps>;
+  ): IAnimatableLike<TProps, TAnimatableKeys>;
+  loop(): IAnimatableLike<TProps, TAnimatableKeys>;
   getCurrentProps(timeInMs: number): TProps;
 }

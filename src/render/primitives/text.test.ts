@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { IAnimatableLike } from "../../types";
 import type { Bounds } from "../types";
+import { DEFAULT_TEXT_STYLES } from "../common";
 import { getTextBounds } from "./text";
 import { createSpyMockContext } from "./testMockCanvasContext";
 
@@ -25,9 +26,15 @@ describe("text rendering", () => {
       0,
     );
 
-    expect(mockContext.font).toBe("normal normal 12px Arial, sans-serif");
+    const { fontStyle, fontWeight, fontSize, fontFamily } = DEFAULT_TEXT_STYLES;
+
+    expect(mockContext.font).toBe(
+      `${fontStyle} ${fontWeight} ${fontSize} ${fontFamily}`,
+    );
     expect(mockContext.fillText).toHaveBeenCalledWith("Hello", 10, 20);
-    expect(mockContext.strokeText).toHaveBeenCalledWith("Hello", 10, 20);
+    // Text's default stroke is transparent. It used to be stroked anyway,
+    // because the shape family's #333 stroke leaked into it.
+    expect(mockContext.strokeText).not.toHaveBeenCalled();
   });
 
   it("applies base draw styles to text including stroke and decomposed font properties", async () => {
@@ -540,14 +547,13 @@ describe("framed clipping for text", () => {
     // The mask's offscreen surface is now sized and positioned to the
     // text's own local bounds — not the full canvas blitted at (0,0) —
     // which is the whole point of local-bounds bitmap caching. Bounds
-    // are computed with the same ambient default stroke style/width
-    // appliedStylesManager merges in before text() ever sees its props.
+    // are computed with the same text-family defaults appliedStylesManager
+    // merges in before text() ever sees its props.
     const bounds = getTextBounds(mockContext, "Mask", {
+      ...DEFAULT_TEXT_STYLES,
       x: 120,
       y: 140,
       fontSize: "48px",
-      strokeStyle: "#333",
-      strokeWidth: 1,
     });
     expect(mockContext.drawImage).toHaveBeenCalledWith(
       offscreenCanvas,
@@ -640,11 +646,10 @@ describe("framed clipping for text", () => {
     expect(offscreenContext.strokeText).not.toHaveBeenCalled();
 
     const bounds = getTextBounds(mockContext, "Mask", {
+      ...DEFAULT_TEXT_STYLES,
       x: 80,
       y: 90,
       fontSize: "36px",
-      strokeStyle: "#333",
-      strokeWidth: 1,
     });
     expect(mockContext.drawImage).toHaveBeenCalledWith(
       offscreenCanvas,

@@ -42,3 +42,22 @@ export interface IsometricCuboid
     IsometricTransformations {}
 
 export type IsometricObject = IsometricTile | IsometricCuboid;
+
+// The props of an isometric primitive that can be interpolated smoothly.
+// Grid placement (isoX/isoY/isoZ) and grid extents (width/height, lengthX/Y/Z)
+// are deliberately absent: they index into the integer isometric grid, so an
+// in-between value addresses no cell at all. An allow-list rather than an
+// Omit<> of those keys, so a numeric prop added to a primitive later is not
+// animatable until someone decides it should be.
+export interface IsometricAnimatableProps
+  extends IsometricTransformations,
+    Pick<IsometricStyles, "opacity"> {}
+
+export type IsometricTileAnimatableKeys = keyof IsometricAnimatableProps;
+
+// IsometricView.addCuboidAt does not apply `scale` -- scaling each face about
+// its own midpoint would pull the faces apart -- so it is not offered here.
+export type IsometricCuboidAnimatableKeys = Exclude<
+  IsometricTileAnimatableKeys,
+  "scale"
+>;

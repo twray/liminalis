@@ -2,12 +2,14 @@ import { describe, expect, it, vi } from "vitest";
 
 import { offsetColorHsl, parseColorToRgb } from "../util";
 import IsometricView from "./IsometricView";
+import { DEFAULT_ISOMETRIC_STYLES, DEFAULT_OPACITY } from "./common";
 
 interface RecordedContextCalls {
   calls: string[];
   fillStyle: string;
   strokeStyle: string;
   lineWidth: number;
+  globalAlpha: number;
 }
 
 const createMockContext = (): {
@@ -19,6 +21,7 @@ const createMockContext = (): {
     fillStyle: "",
     strokeStyle: "",
     lineWidth: 0,
+    globalAlpha: 1,
   };
 
   const context = {
@@ -51,6 +54,13 @@ const createMockContext = (): {
     },
     get lineWidth() {
       return recorded.lineWidth;
+    },
+    set globalAlpha(value: number) {
+      recorded.globalAlpha = value;
+      recorded.calls.push(`globalAlpha:${value}`);
+    },
+    get globalAlpha() {
+      return recorded.globalAlpha;
     },
     set lineJoin(value: string) {
       recorded.calls.push(`lineJoin:${value}`);
@@ -156,10 +166,8 @@ describe("IsometricView", () => {
       const tile = view.getTileSpatialCoordinates(0, 0, 0)!.tiles[0];
 
       expect(tile).toMatchObject({
-        fillStyle: "#333333",
-        strokeStyle: "transparent",
-        strokeWidth: 1,
-        opacity: 1,
+        ...DEFAULT_ISOMETRIC_STYLES,
+        opacity: DEFAULT_OPACITY,
       });
     });
 
@@ -200,6 +208,34 @@ describe("IsometricView", () => {
         expect.objectContaining({ type: "base", isoX: 1, isoY: 1, isoZ: 0, width: 1, height: 1 }),
       );
     });
+
+    it("paints every face of a cuboid, strokes included, at the cuboid's opacity", () => {
+      const { context, recorded } = createMockContext();
+      const view = new IsometricView(context, 100, 100, 50);
+
+      view.addCuboidAt({
+        isoX: 0,
+        isoY: 0,
+        isoZ: 0,
+        lengthX: 1,
+        lengthY: 1,
+        lengthZ: 1,
+        strokeStyle: "#fff",
+        opacity: 0.4,
+      });
+      view.render();
+
+      const alphaWrites = recorded.calls.filter((call) =>
+        call.startsWith("globalAlpha:"),
+      );
+
+      expect(alphaWrites).toEqual([
+        "globalAlpha:0.4",
+        "globalAlpha:0.4",
+        "globalAlpha:0.4",
+      ]);
+      expect(recorded.calls.filter((call) => call === "stroke")).toHaveLength(3);
+    });
   });
 
   describe("renderTile", () => {
@@ -236,7 +272,7 @@ describe("IsometricView", () => {
       );
     });
 
-    it("parses fillStyle to rgba for a non-debug base tile", () => {
+    it("parses fillStyle to an opaque rgb for a non-debug base tile", () => {
       const { context, recorded } = createMockContext();
       const view = new IsometricView(context, 100, 100, 50);
       const [r, g, b] = parseColorToRgb("#336699");
@@ -251,7 +287,7 @@ describe("IsometricView", () => {
         debugMode: false,
       });
 
-      expect(recorded.fillStyle).toBe(`rgba(${r}, ${g}, ${b}, 0.5)`);
+      expect(recorded.fillStyle).toBe(`rgb(${r}, ${g}, ${b})`);
       expect(recorded.strokeStyle).toBe("#000");
       expect(recorded.lineWidth).toBe(2);
     });
@@ -271,7 +307,7 @@ describe("IsometricView", () => {
         debugMode: false,
       });
 
-      expect(recorded.fillStyle).toBe(`rgba(${r}, ${g}, ${b}, 1)`);
+      expect(recorded.fillStyle).toBe(`rgb(${r}, ${g}, ${b})`);
     });
 
     it("lightens the fill for side-left tiles via offsetColorHsl", () => {
@@ -289,7 +325,35 @@ describe("IsometricView", () => {
         debugMode: false,
       });
 
-      expect(recorded.fillStyle).toBe(`rgba(${r}, ${g}, ${b}, 1)`);
+      expect(recorded.fillStyle).toBe(`rgb(${r}, ${g}, ${b})`);
+    });
+
+    it("applies opacity to the stroke and fill alike, via globalAlpha set before either is painted", () => {
+      const { context, recorded } = createMockContext();
+      const view = new IsometricView(context, 100, 100, 50);
+
+      view.renderTile({
+        type: "side-left",
+        points: [{ x: 0, y: 0 }],
+        fillStyle: "#336699",
+        strokeStyle: "#000",
+        strokeWidth: 2,
+        opacity: 0.25,
+        debugMode: false,
+      });
+
+      const alphaIndex = recorded.calls.indexOf("globalAlpha:0.25");
+
+      expect(alphaIndex).toBeGreaterThan(recorded.calls.indexOf("save"));
+      expect(alphaIndex).toBeLessThan(recorded.calls.indexOf("stroke"));
+      expect(alphaIndex).toBeLessThan(recorded.calls.indexOf("fill"));
+      // Applied once, through globalAlpha only: neither colour carries it.
+      expect(recorded.fillStyle).not.toContain("0.25");
+      expect(recorded.strokeStyle).toBe("#000");
+      // Scoped to this tile by the surrounding save/restore.
+      expect(recorded.calls.indexOf("restore")).toBeGreaterThan(
+        recorded.calls.indexOf("fill"),
+      );
     });
 
     it("passes a transparent fillStyle through without color parsing", () => {

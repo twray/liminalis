@@ -29,9 +29,13 @@ class RenderWarningManager {
     }
   }
 
+  isInsideIsometricRenderCallback(): boolean {
+    return this.#isometricRenderCallbackDepth > 0;
+  }
+
   warnIfOverlayPrimitiveInsideIsometric(): void {
     if (
-      this.#isometricRenderCallbackDepth === 0 ||
+      !this.isInsideIsometricRenderCallback() ||
       this.#hasWarnedBasedOnType[
         WARNING_TYPE.NON_ISOMETRIC_SHAPE_INSIDE_ISOMETRIC
       ]

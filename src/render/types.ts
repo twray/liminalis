@@ -6,7 +6,9 @@ import type {
   FillStyles,
   IAnimatableLike,
   IsometricCuboid,
+  IsometricCuboidAnimatableKeys,
   IsometricTile,
+  IsometricTileAnimatableKeys,
   JoinableStrokeStyles,
   MergeFirstOrder,
   NormalizedFloat,
@@ -445,7 +447,7 @@ export interface DrawPrimitives {
   withStyles: (styles: PartialDrawStyles, callback: () => void) => void;
   when: (condition: boolean, callback: () => void) => void;
   isometric: (
-    callback: (methods: IsometricMethods) => void,
+    callback: (methods: IsometricAPI) => void,
     options?: IsometricOptions,
   ) => void;
   background: (props: BackgroundProps) => void;
@@ -521,9 +523,17 @@ export type ContainerDrawAPI = DrawContextOf<
   [DrawAPI, DynamicMeasurementContext]
 >;
 
-export interface IsometricMethods {
-  tile: (props: IsometricTile) => void;
-  cuboid: (props: IsometricCuboid) => void;
+export interface IsometricPrimitives {
+  tile: (
+    props: IsometricTile,
+  ) => IAnimatableLike<IsometricTile, IsometricTileAnimatableKeys>;
+  cuboid: (
+    props: IsometricCuboid,
+  ) => IAnimatableLike<IsometricCuboid, IsometricCuboidAnimatableKeys>;
+}
+
+export interface IsometricAPI {
+  render: IsometricPrimitives;
 }
 
 export interface DrawContext {

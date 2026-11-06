@@ -204,6 +204,7 @@ describe("createContainerPrimitive", () => {
         frameMeasurementPassManager.withFrameBoundsMeasurementPass(callbackFn),
       isMeasuringFrameBounds: () =>
         frameMeasurementPassManager.isMeasuringFrameBounds(),
+      isOverlayPrimitiveSuppressed: () => false,
     };
 
     return {

@@ -2,6 +2,7 @@ import type { Point2D } from "../../types";
 import {
   DEFAULT_BLEND_MODE,
   DEFAULT_FILL_STYLE,
+  DEFAULT_OPACITY,
   DEFAULT_STROKE_ALIGNMENT,
   DEFAULT_STROKE_LINE_CAP,
   DEFAULT_STROKE_LINE_JOIN,
@@ -367,7 +368,7 @@ export const bezier = (
     lineJoin = DEFAULT_STROKE_LINE_JOIN,
     miterLimit = DEFAULT_STROKE_MITER_LIMIT,
     lineCap = DEFAULT_STROKE_LINE_CAP,
-    opacity = 1,
+    opacity = DEFAULT_OPACITY,
     blend = DEFAULT_BLEND_MODE,
   } = props;
 

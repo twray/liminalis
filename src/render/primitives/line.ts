@@ -1,6 +1,7 @@
 import {
   computeTransformedMultipointAABB,
   DEFAULT_BLEND_MODE,
+  DEFAULT_OPACITY,
   DEFAULT_STROKE_LINE_CAP,
   DEFAULT_STROKE_STYLE,
   DEFAULT_STROKE_WIDTH,
@@ -25,7 +26,7 @@ export const line = (
     strokeStyle = DEFAULT_STROKE_STYLE,
     strokeWidth = DEFAULT_STROKE_WIDTH,
     lineCap = DEFAULT_STROKE_LINE_CAP,
-    opacity = 1,
+    opacity = DEFAULT_OPACITY,
     blend = DEFAULT_BLEND_MODE,
   } = props;
 

@@ -1,6 +1,8 @@
 import type {
+  CappableStrokeStyles,
   Dimensions2D,
   FillStyles,
+  JoinableStrokeStyles,
   Positioned2D,
   WithBlend,
   WithFitMode,
@@ -29,11 +31,53 @@ export const DEFAULT_BACKGROUND_COLOR = "#fff";
 export const DEFAULT_FILL_STYLE = "transparent";
 export const DEFAULT_STROKE_STYLE = "#333";
 export const DEFAULT_STROKE_WIDTH = 1;
-export const DEFAULT_STROKE_ALIGNMENT = "center";
-export const DEFAULT_STROKE_LINE_CAP = "butt";
-export const DEFAULT_STROKE_LINE_JOIN = "miter";
+export const DEFAULT_STROKE_ALIGNMENT: StrokeAlignment = "center";
+export const DEFAULT_STROKE_LINE_CAP: NonNullable<
+  CappableStrokeStyles["lineCap"]
+> = "butt";
+export const DEFAULT_STROKE_LINE_JOIN: NonNullable<
+  JoinableStrokeStyles["lineJoin"]
+> = "miter";
 export const DEFAULT_STROKE_MITER_LIMIT = 10;
 export const DEFAULT_BLEND_MODE: GlobalCompositeOperation = "source-over";
+export const DEFAULT_OPACITY = 1;
+
+// Style defaults: the ONLY place they are declared. Every other default a
+// renderer falls back on is one of the constants above, imported.
+//
+// Grouped by primitive family, because the families genuinely differ: a shape
+// is an outline by default, whereas text and isometric primitives are solid.
+// These are the cascading styles (what withStyles() accepts), and they are
+// applied in exactly one place -- AppliedStylesManager, seeded with them where
+// it is instantiated (createDrawContext). Per-primitive props that do not
+// cascade (lineJoin, lineCap, miterLimit, strokeAlignment) fall back to the
+// constants above inside their renderer instead.
+//
+// blend and opacity are deliberately absent: a primitive that declares
+// neither inherits the canvas context's own globalCompositeOperation and
+// globalAlpha (see withInheritedContextGlobals), which seeding them here would
+// switch off. Their renderers fall back to DEFAULT_BLEND_MODE / DEFAULT_OPACITY.
+export const DEFAULT_SHAPE_STYLES = {
+  fillStyle: DEFAULT_FILL_STYLE,
+  strokeStyle: DEFAULT_STROKE_STYLE,
+  strokeWidth: DEFAULT_STROKE_WIDTH,
+} as const satisfies PartialDrawStyles;
+
+export const DEFAULT_TEXT_STYLES = {
+  fillStyle: "#333",
+  strokeStyle: "transparent",
+  strokeWidth: DEFAULT_STROKE_WIDTH,
+  fontStyle: "normal",
+  fontSize: "12px",
+  fontWeight: "normal",
+  fontFamily: "Arial, sans-serif",
+} as const satisfies PartialDrawStyles;
+
+export const DEFAULT_ISOMETRIC_STYLES = {
+  fillStyle: "#333",
+  strokeStyle: "transparent",
+  strokeWidth: DEFAULT_STROKE_WIDTH,
+} as const satisfies PartialDrawStyles;
 
 export const EMPTY_BOUNDS = { x: 0, y: 0, width: 0, height: 0 };
 
@@ -437,7 +481,7 @@ export const drawImageSourceWithFit = (
   const {
     x = 0,
     y = 0,
-    opacity = 1,
+    opacity = DEFAULT_OPACITY,
     blend = DEFAULT_BLEND_MODE,
     width,
     height,
@@ -536,7 +580,7 @@ export const setContextGlobals = (
   // undefined opacity arriving here used to silently render nothing, and
   // opacity is now legitimately absent when a primitive declares none and
   // inherits the context's own globalAlpha instead.
-  const { opacity = 1, blend = DEFAULT_BLEND_MODE } = props;
+  const { opacity = DEFAULT_OPACITY, blend = DEFAULT_BLEND_MODE } = props;
 
   context.globalAlpha = opacity;
   context.globalCompositeOperation = blend;
@@ -688,11 +732,16 @@ export const memoPropsMatch = (
   return nextKeyCount === propKeys.length;
 };
 
-export const toIsometricStyles = (
-  styles: PartialDrawStyles,
-): PartialIsometricStyles =>
-  ({
-    fillStyle: styles.fillStyle ?? styles.fillStyle,
-    strokeStyle: styles.strokeStyle ?? styles.strokeStyle,
-    strokeWidth: styles.strokeWidth ?? styles.strokeWidth,
-  }) as PartialIsometricStyles;
+// Picks the styles an isometric primitive understands, copying only those that
+// are actually set. An absent style must stay absent rather than become
+// `key: undefined`, which would overwrite the isometric default it is spread
+// over.
+export const toIsometricStyles = ({
+  fillStyle,
+  strokeStyle,
+  strokeWidth,
+}: PartialDrawStyles): PartialIsometricStyles => ({
+  ...(fillStyle !== undefined ? { fillStyle } : {}),
+  ...(strokeStyle !== undefined ? { strokeStyle } : {}),
+  ...(strokeWidth !== undefined ? { strokeWidth } : {}),
+});

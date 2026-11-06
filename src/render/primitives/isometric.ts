@@ -5,6 +5,7 @@ import type {
   PartialIsometricStyles,
 } from "../../types";
 import ActiveMeasurementsManager from "../ActiveMeasurementsManager";
+import type AnimatableRegistry from "../AnimatableRegistry";
 import AppliedStylesManager from "../AppliedStylesManager";
 import DrawGroupManager from "../DrawGroupManager";
 import IsometricView from "../IsometricView";
@@ -15,6 +16,7 @@ import { cuboid, tile } from "./isometricPrimitives/";
 import type {
   DrawPrimitives,
   DrawUtilities,
+  IsometricAPI,
   IsometricOptions,
   RenderCollaborators,
 } from "../types";
@@ -25,35 +27,54 @@ interface CreateIsometricPrimitiveParams extends RenderCollaborators {
   appliedStylesManager: AppliedStylesManager;
   renderWarningManager: RenderWarningManager;
   activeMeasurementsManager: ActiveMeasurementsManager;
+  isMeasuringFrameBounds: () => boolean;
+  isOverlayPrimitiveSuppressed: () => boolean;
 }
 
-const DEFAULT_FILL_STYLE = "#333";
-const DEFAULT_STROKE_STYLE = "transparent";
-const DEFAULT_STROKE_WIDTH = 1;
+// One resolved isometric primitive, ready to be laid onto the view. Produced
+// at flush time (with animated props baked in) and replayed at paint time,
+// once the IsometricView exists.
+type IsometricDrawCommand = (isometricView: IsometricView) => void;
 
-const getIsometricMethods = (
-  isometricView: IsometricView,
-  _timeInMs: number,
-  inheritedStyles: PartialIsometricStyles | (() => PartialIsometricStyles) = {},
-) => {
-  const resolveInheritedStyles = (): PartialIsometricStyles =>
-    typeof inheritedStyles === "function" ? inheritedStyles() : inheritedStyles;
+const createIsometricAPI = (
+  registry: AnimatableRegistry,
+  drawCommands: IsometricDrawCommand[],
+  // The isometric family's defaults with any withStyles() applied over them,
+  // resolved per primitive -- see AppliedStylesManager.
+  resolveStyles: () => PartialIsometricStyles,
+): IsometricAPI => {
+  const mergeStyles = <T extends PartialIsometricStyles>(props: T): T => ({
+    ...resolveStyles(),
+    ...props,
+  });
 
-  const mergeStyles = <T extends PartialIsometricStyles>(
-    props: T,
-  ): T & PartialIsometricStyles =>
-    ({
-      fillStyle: DEFAULT_FILL_STYLE,
-      strokeStyle: DEFAULT_STROKE_STYLE,
-      strokeWidth: DEFAULT_STROKE_WIDTH,
-      ...resolveInheritedStyles(),
-      ...props,
-    }) as T & PartialIsometricStyles;
+  // The isometric counterpart of queueAnimatable: registers the primitive's
+  // declared props with the registry, and at flush time turns the animated
+  // props into a draw command for the view. The concrete Animatable it
+  // returns is narrowed to each primitive's animatable keys by the
+  // IsometricPrimitives signatures.
+  const queueIsometricPrimitive = <TProps extends PartialIsometricStyles>(
+    primitiveType: string,
+    props: TProps,
+    draw: (isometricView: IsometricView, props: TProps) => void,
+  ) =>
+    registry.queue(
+      mergeStyles(props),
+      (animatedProps) => {
+        drawCommands.push((isometricView) =>
+          draw(isometricView, animatedProps),
+        );
+      },
+      { primitiveType },
+    );
 
   return {
-    tile: (props: IsometricTile) => tile(isometricView, mergeStyles(props)),
-    cuboid: (props: IsometricCuboid) =>
-      cuboid(isometricView, mergeStyles(props)),
+    render: {
+      tile: (props: IsometricTile) =>
+        queueIsometricPrimitive("isometric:tile", props, tile),
+      cuboid: (props: IsometricCuboid) =>
+        queueIsometricPrimitive("isometric:cuboid", props, cuboid),
+    },
   };
 };
 
@@ -65,11 +86,21 @@ export const createIsometricPrimitive = ({
   appliedStylesManager,
   renderWarningManager,
   activeMeasurementsManager,
+  isMeasuringFrameBounds,
+  isOverlayPrimitiveSuppressed,
 }: CreateIsometricPrimitiveParams): DrawPrimitives["isometric"] => {
   return (
-    callback: (methods: ReturnType<typeof getIsometricMethods>) => void,
+    callback: (isometricAPI: IsometricAPI) => void,
     options: IsometricOptions = {},
   ) => {
+    // An ancestor container's measurement pass re-invokes this same call for
+    // real afterwards, so registering or reserving anything here would
+    // duplicate the view (and give every tile two identities). An isometric
+    // view contributes no bounds, so there is nothing to report either.
+    if (isMeasuringFrameBounds() || isOverlayPrimitiveSuppressed()) {
+      return;
+    }
+
     // Defaults to the nearest enclosing container's measurements (the
     // group()/layer()/place() this isometric() is nested inside, if any),
     // falling back to the outer canvas's own measurements at the top level —
@@ -89,75 +120,84 @@ export const createIsometricPrimitive = ({
         : {}),
     };
 
-    const inheritedBaseStyles = toIsometricStyles(
-      appliedStylesManager.mergeStyles({} as PartialDrawStyles),
-    );
-
     const targetGroupHandle = drawGroupManager.captureCurrentGroupHandle();
+    const drawCommands: IsometricDrawCommand[] = [];
 
-    registry.queue(
-      {
-        ...viewportProps,
-        ...inheritedBaseStyles,
-        frameTime: timeInMs,
-      },
-      (queuedIsometricProps) => {
-        targetGroupHandle.pushPrimitiveOperation({
-          // An isometric view composites its own contents; the viewport
-          // itself is always source-over onto whatever sits beneath it.
-          blendsWithBackdrop: false,
-          signature: DrawGroupManager.createPrimitiveSignature(
-            "isometric",
-            queuedIsometricProps,
-          ),
-          render: (targetContext) => {
-            const inheritedStylesFromQueue =
-              toIsometricStyles(queuedIsometricProps);
-
-            appliedStylesManager.withStyles(inheritedStylesFromQueue, () => {
+    // One identity scope for the view and everything declared inside it, so
+    // a callback that declares a varying number of tiles cannot shift the
+    // positional identity of the siblings that follow this isometric().
+    registry.withScope(undefined, () => {
+      // Queued BEFORE the callback runs, so flush resolves the view first and
+      // its tiles after; the operation's render closure reads drawCommands
+      // only at paint time, by which point every tile has pushed its command.
+      registry.queue(
+        // frameTime keeps the signature unique per frame, so the bitmap cache
+        // never serves a stale view. The tiles' props resolve after this
+        // signature is built, so they cannot take part in it.
+        { ...viewportProps, frameTime: timeInMs },
+        (queuedViewportProps) => {
+          targetGroupHandle.pushPrimitiveOperation({
+            // An isometric view composites its own contents; the viewport
+            // itself is always source-over onto whatever sits beneath it.
+            blendsWithBackdrop: false,
+            signature: DrawGroupManager.createPrimitiveSignature(
+              "isometric",
+              queuedViewportProps,
+            ),
+            render: (targetContext) => {
               targetContext.save();
 
               try {
                 targetContext.beginPath();
                 targetContext.rect(
-                  queuedIsometricProps.x,
-                  queuedIsometricProps.y,
-                  queuedIsometricProps.width,
-                  queuedIsometricProps.height,
+                  queuedViewportProps.x,
+                  queuedViewportProps.y,
+                  queuedViewportProps.width,
+                  queuedViewportProps.height,
                 );
                 targetContext.clip();
                 targetContext.translate(
-                  queuedIsometricProps.x,
-                  queuedIsometricProps.y,
+                  queuedViewportProps.x,
+                  queuedViewportProps.y,
                 );
 
                 const isometricView = new IsometricView(
                   targetContext,
-                  queuedIsometricProps.width,
-                  queuedIsometricProps.height,
-                  queuedIsometricProps.tileWidth,
+                  queuedViewportProps.width,
+                  queuedViewportProps.height,
+                  queuedViewportProps.tileWidth,
                 );
 
-                renderWarningManager.withIsometricRenderCallback(() => {
-                  callback(
-                    getIsometricMethods(isometricView, timeInMs, () =>
-                      toIsometricStyles(
-                        appliedStylesManager.mergeStyles(
-                          {} as PartialDrawStyles,
-                        ),
-                      ),
-                    ),
-                  );
-                });
+                drawCommands.forEach((drawCommand) =>
+                  drawCommand(isometricView),
+                );
 
                 isometricView.render();
               } finally {
                 targetContext.restore();
               }
-            });
-          },
-        });
-      },
-    );
+            },
+          });
+        },
+        { primitiveType: "isometric" },
+      );
+
+      // Runs at declare time, like every other primitive's callback, so the
+      // tiles it declares are registered before flush. Inherited styles are
+      // read per primitive, so a withStyles() wrapped around (or inside) the
+      // callback applies exactly as it does to 2D primitives.
+      renderWarningManager.withIsometricRenderCallback(() => {
+        callback(
+          createIsometricAPI(registry, drawCommands, () =>
+            toIsometricStyles(
+              appliedStylesManager.mergeStyles(
+                {} as PartialDrawStyles,
+                "isometric",
+              ),
+            ),
+          ),
+        );
+      });
+    });
   };
 };
